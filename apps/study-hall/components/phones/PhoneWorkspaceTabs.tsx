@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useState, type ReactNode } from "react";
 import { AdminTabs, AdminTabPanel } from "@/components/ui/AdminTabs";
 import { requestCheckNavigation } from "@/lib/check-navigation";
+import { MobileWorkspaceScope } from "@/components/ui/MobileWorkspaceTools";
 
 const PhoneSubmissionManager = dynamic(
   () => import("@/components/phones/PhoneSubmissionManager").then((module) => module.PhoneSubmissionManager),
@@ -28,7 +29,7 @@ export function PhoneWorkspaceTabs({ check, approval, divisionSlug, pointsEnable
         label="휴대폰 업무"
         idPrefix="phone-workspace"
       />
-      <AdminTabPanel id="check" activeId={activeTab} idPrefix="phone-workspace">{check}</AdminTabPanel>
+      <AdminTabPanel id="check" activeId={activeTab} idPrefix="phone-workspace"><MobileWorkspaceScope active={activeTab === "check"}>{check}</MobileWorkspaceScope></AdminTabPanel>
       <AdminTabPanel id="history" activeId={activeTab} idPrefix="phone-workspace">
         {historyOpened ? <PhoneSubmissionManager divisionSlug={divisionSlug} pointsEnabled={pointsEnabled} isActive={activeTab === "history"} /> : null}
       </AdminTabPanel>

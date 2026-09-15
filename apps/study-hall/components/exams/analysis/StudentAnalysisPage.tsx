@@ -1,4 +1,5 @@
 "use client";
+import { MobileWorkspaceTools } from '@/components/ui/MobileWorkspaceTools';
 import { useEffect, useState } from 'react';
 import type { ExamTypeItem } from '@/lib/services/exam.service';
 import type { RegularStudentReport as RegularReport, RegularCohortAnalysis } from '@/lib/exam-analysis-types';
@@ -49,18 +50,21 @@ export function StudentAnalysisPage({ division, studentId, examTypes, initial }:
   : cohortStudents;
  const returnQuery=new URLSearchParams({tab:kind,view:'analysis',examTypeId:selected?.id||'',...(kind==='regular'?{examDate:current?.regular?.session.examDate||date}:range)});
  const navigateStudent=(id:string)=>{const query=new URLSearchParams({kind,examTypeId:selected?.id||'',examDate:current?.regular?.session.examDate||date,...range});window.location.assign(`${root}/students/${encodeURIComponent(id)}?${query}`);};
- return <div className="admin-flat-page">
-  <a className="admin-button self-start" href={`${root}?${returnQuery}`}>← 성적 목록으로</a>
-  <div className="admin-workspace-toolbar">
+ return <div className="admin-flat-page admin-compact-workspace">
+  <a className="admin-button self-start max-md:hidden" href={`${root}?${returnQuery}`}>← 성적 목록으로</a>
+  <div className="admin-workspace-toolbar max-md:sr-only">
    <h1 className="admin-page-title">{report?.student.name || '학생'} 개인 성적 분석</h1>
 
   </div>
   <AdminTabs label="분석할 시험 구분" idPrefix={KIND_TAB_PREFIX} activeId={kind} onChange={next=>{setKind(next);setTypeId('');setDate('');}} items={[{id:'regular',label:'정기 모의고사'},{id:'morning',label:'아침 모의고사'}]}/>
+  <MobileWorkspaceTools title="개인 성적 조회 조건">
+  <a className="admin-button self-start md:hidden" href={`${root}?${returnQuery}`}>성적 목록으로</a>
   <div className="admin-filter-bar">
-   <label className="admin-label">학생 검색<StudentSearchCombobox students={studentOptions} value={studentId} onChange={id=>{if(id&&id!==studentId)navigateStudent(id);}} placeholder="이름 또는 수험번호 검색" className="w-full sm:w-72"/></label>
+   <label className="admin-label">학생 검색<StudentSearchCombobox students={studentOptions} value={studentId} onChange={id=>{if(id&&id!==studentId)navigateStudent(id);}} placeholder="이름 또는 수험번호 검색" className="w-full min-w-0"/></label>
    <label className="admin-label">시험 종류<select value={selected?.id||''} onChange={event=>{setTypeId(event.target.value);setDate('');}}>{types.map(type=><option key={type.id} value={type.id}>{type.name}</option>)}</select></label>
    {kind==='regular'?<label className="admin-label">시험 날짜<select value={current?.regular?.session.examDate||date} onChange={event=>setDate(event.target.value)}>{current?.dates.map(value=><option key={value} value={value}>{value.slice(0,10)}</option>)}</select></label>:<><label className="admin-label">시작일<input type="date" value={range.from} onChange={event=>setRange({...range,from:event.target.value})}/></label><label className="admin-label">종료일<input type="date" value={range.to} onChange={event=>setRange({...range,to:event.target.value})}/></label></>}
   </div>
+  </MobileWorkspaceTools>
   <div role="tabpanel" id={`${KIND_TAB_PREFIX}-panel-${kind}`} aria-labelledby={`${KIND_TAB_PREFIX}-${kind}`}>
    {!selected?<p className="admin-empty-state">등록된 시험 종류가 없습니다.</p>:current?.error?<div role="alert" className="admin-notice admin-notice-danger"><p>{current.error}</p><button type="button" className="admin-button" onClick={()=>setAttempt(value=>value+1)}>다시 시도</button></div>:!report?<p role="status" className="admin-help">개인 성적을 불러오는 중입니다.</p>:current?.regular?<RegularStudentReport report={current.regular} mode="admin"/>:current?.morning?<MorningStudentReport report={current.morning} mode="admin"/>:null}
   </div>

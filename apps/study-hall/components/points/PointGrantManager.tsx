@@ -26,6 +26,7 @@ import { toast } from "@/lib/sonner";
 import { PointCategoryBadge, PointValueBadge } from "@/components/points/PointBadges";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { AdminTabs, AdminTabPanel } from "@/components/ui/AdminTabs";
+import { MobileWorkspaceTools } from "@/components/ui/MobileWorkspaceTools";
 import { SlideOver } from "@/components/ui/SlideOver";
 import { StudentSearchCombobox } from "@/components/ui/StudentSearchCombobox";
 import {
@@ -117,6 +118,8 @@ export const PointGrantManager = memo(function PointGrantManager({
   const [panelMode, setPanelMode] = useState<GrantMode | null>(null);
   const [rankingOrder, setRankingOrder] = useState<"top" | "bottom">("top");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [detailRecordId, setDetailRecordId] = useState<string | null>(null);
+  const detailRecord = records.find((record) => record.id === detailRecordId);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [historyStudent, setHistoryStudent] = useState<PointHistoryStudent | null>(null);
@@ -509,6 +512,7 @@ export const PointGrantManager = memo(function PointGrantManager({
         idPrefix="point-view"
       />
 
+      <MobileWorkspaceTools title="상벌점 조회·부여">
       <div className="admin-workspace-toolbar">
         <p className="admin-help">운영 학생 <strong className="text-admin-text">{activeStudents.length}명</strong></p>
         <div className="flex flex-wrap gap-2">
@@ -537,9 +541,10 @@ export const PointGrantManager = memo(function PointGrantManager({
           <CalendarDays className="h-4 w-4" />이번 달
         </button>
       </form>
+      </MobileWorkspaceTools>
 
       <AdminTabPanel id="records" activeId={viewTab} idPrefix="point-view" className="space-y-4">
-        <div className="admin-workspace-toolbar">
+        <div className="admin-workspace-toolbar max-md:hidden">
           <div>
             <h2 className="admin-section-title">상벌점 부여 내역 <span className="text-admin-accent">{records.length}건</span></h2>
             <p className="admin-help mt-1">{appliedRange.dateFrom} ~ {appliedRange.dateTo} · 최근 최대 50건</p>
@@ -550,22 +555,13 @@ export const PointGrantManager = memo(function PointGrantManager({
         </div>
         {records.length ? (
           <>
-          <div className="space-y-4 md:hidden">
+          <div className="md:hidden">
             {records.map((record) => (
-              <article key={record.id} className="admin-record-card">
-                <div className="admin-workspace-toolbar">
-                  <button type="button" onClick={() => void openStudentHistory(getHistoryStudentFromRecord(record))} className="text-left font-semibold text-admin-accent">
-                    {record.studentName}<span className="admin-help block">{record.studentNumber}</span>
-                  </button>
-                  <div className="flex items-center gap-2"><span className="admin-help">{record.points > 0 ? "상점" : "벌점"}</span><PointValueBadge points={record.points} /></div>
-                </div>
-                <p className="mt-4 font-semibold">{record.ruleName || "직접 입력"}</p>
-                {record.notes ? <p className="mt-2 whitespace-pre-wrap break-words text-sm">{record.notes}</p> : null}
-                <div className="admin-workspace-toolbar mt-4 border-t border-admin-line-soft pt-4">
-                  <p className="admin-help">{formatDateTime(record.date)}<br />처리자 {record.recordedByName}</p>
-                  <button type="button" onClick={() => setConfirmDeleteId(record.id)} disabled={deletingId === record.id} className="admin-button admin-button-danger-outline w-11 px-0" aria-label={`${record.studentName} 상벌점 기록 삭제`} title="기록 삭제"><Trash2 className="h-4 w-4" /></button>
-                </div>
-              </article>
+              <button key={record.id} type="button" className="admin-list-row admin-list-row-stack w-full text-left" onClick={() => setDetailRecordId(record.id)} aria-label={`${record.studentName} 상벌점 상세`}>
+                <span className="admin-list-row-label">{record.categoryLabel} · {formatDateTime(record.date)}</span>
+                <span className="flex w-full items-center justify-between gap-4"><span className="admin-list-row-title">{record.studentName} · {record.ruleName || "직접 입력"}</span><PointValueBadge points={record.points} /></span>
+                <span className="admin-list-row-meta">{record.studentNumber} · 처리자 {record.recordedByName}</span>
+              </button>
             ))}
           </div>
           <div className="admin-table-frame hidden md:block">
@@ -618,9 +614,9 @@ export const PointGrantManager = memo(function PointGrantManager({
             <button type="button" onClick={() => setRankingOrder("bottom")} className="admin-choice-button" data-active={rankingOrder === "bottom"} aria-pressed={rankingOrder === "bottom"}>하위</button>
           </div>
         </div>
-        <div className="space-y-3 md:hidden">
+        <div className="md:hidden">
           {rankedStudents.map((student, index) => (
-            <button key={student.id} type="button" onClick={() => void openStudentHistory(student)} className="admin-record-card flex w-full items-center gap-3 text-left">
+            <button key={student.id} type="button" onClick={() => void openStudentHistory(student)} className="admin-list-row flex w-full items-center gap-3 text-left">
               <span className="w-8 shrink-0 text-center font-bold tabular-nums">{index + 1}</span>
               <span className="min-w-0 flex-1"><span className="block font-semibold">{student.name}</span><span className="admin-help">{student.studentNumber}</span></span>
               <PointValueBadge points={student.netPoints} />
@@ -646,6 +642,22 @@ export const PointGrantManager = memo(function PointGrantManager({
           </table>
         </div>
       </AdminTabPanel>
+
+      <SlideOver open={Boolean(detailRecord)} onClose={() => setDetailRecordId(null)} title="상벌점 기록 상세">
+        {detailRecord ? <div className="space-y-4">
+          <h2 className="admin-section-title">{detailRecord.studentName} <PointValueBadge points={detailRecord.points} /></h2>
+          <dl className="admin-record-details">
+            <div><dt className="admin-label">적용 일자</dt><dd>{formatDateTime(detailRecord.date)}</dd></div>
+            <div><dt className="admin-label">부여 사유</dt><dd>{detailRecord.ruleName || "직접 입력"}</dd></div>
+            <div><dt className="admin-label">메모</dt><dd>{detailRecord.notes || "없음"}</dd></div>
+            <div><dt className="admin-label">처리자</dt><dd>{detailRecord.recordedByName}</dd></div>
+          </dl>
+          <div className="flex flex-wrap gap-4">
+            <button type="button" className="admin-text-action" onClick={() => { setDetailRecordId(null); void openStudentHistory(getHistoryStudentFromRecord(detailRecord)); }}>학생 전체 이력</button>
+            <button type="button" className="admin-button admin-button-danger-outline" disabled={deletingId === detailRecord.id} onClick={() => { setDetailRecordId(null); setConfirmDeleteId(detailRecord.id); }}><Trash2 className="h-4 w-4" />기록 삭제</button>
+          </div>
+        </div> : null}
+      </SlideOver>
 
       <ConfirmDialog
         open={confirmDeleteId !== null}
@@ -688,7 +700,7 @@ export const PointGrantManager = memo(function PointGrantManager({
 
             <div className="overflow-hidden rounded-lg border border-slate-200">
               {isHistoryLoading ? (
-                <div className="flex items-center justify-center gap-2 px-4 py-12 text-sm text-slate-500">
+                <div className="flex items-center justify-center gap-2 px-4 py-12 admin-help">
                   <LoaderCircle className="h-4 w-4 animate-spin" />
                   이력을 불러오는 중입니다.
                 </div>
@@ -711,7 +723,7 @@ export const PointGrantManager = memo(function PointGrantManager({
                           <tr key={record.id} className="border-b border-slate-100 last:border-b-0">
                             <td>{formatDateTime(record.displayDateTime)}</td>
                             <td>
-                              <span className={`inline-flex rounded-lg border px-2.5 py-1 text-xs font-semibold ${ record.points > 0 ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-rose-200 bg-rose-50 text-rose-700" }`}>
+                              <span className={`inline-flex rounded-lg border px-3 py-1 text-xs font-semibold ${ record.points > 0 ? "border-admin-success-line bg-admin-success-soft text-admin-success" : "border-admin-danger-line bg-admin-danger-soft text-admin-danger" }`}>
                                 {record.points > 0 ? "상점" : "벌점"}
                               </span>
                             </td>

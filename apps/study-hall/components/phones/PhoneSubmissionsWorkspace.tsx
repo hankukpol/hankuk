@@ -71,7 +71,6 @@ export async function PhoneSubmissionsWorkspace({
       initialActivePeriodId={initialPeriodId}
       seatRooms={seatRooms}
       initialSeatLayout={initialSeatLayout}
-      viewTabsVariant={showHistory ? "secondary" : "primary"}
     />
     <OutstandingPhoneReturns divisionSlug={divisionSlug} records={outstandingReturns} />
     </div>
@@ -79,7 +78,7 @@ export async function PhoneSubmissionsWorkspace({
 
   return (
     <div className="admin-flat-page">
-      <section className={`admin-section${mode === "assistant" ? " max-md:sr-only" : ""}`}>
+      <section className="admin-section max-md:sr-only">
         <h1 className="admin-page-title">
           {mode === "assistant" ? "휴대폰 체크" : "휴대폰 관리"}
         </h1>

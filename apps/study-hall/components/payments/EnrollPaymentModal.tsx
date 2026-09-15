@@ -234,7 +234,7 @@ export function EnrollPaymentModal({
                       {student.studyTrack ? ` · ${student.studyTrack}` : ""}
                     </p>
                   </div>
-                  <span className="text-xs font-semibold text-amber-700">연장 수납으로 전환</span>
+                  <span className="text-xs font-semibold text-admin-warning">연장 수납으로 전환</span>
                 </button>
               ))}
             </div>

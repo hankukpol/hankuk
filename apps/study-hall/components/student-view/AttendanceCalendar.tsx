@@ -34,7 +34,7 @@ function getStatusClasses(
     case "OFF":
       return "border-slate-200 bg-slate-100 text-slate-500";
     case "UNPROCESSED":
-      return "border-orange-200 bg-orange-50 text-orange-700";
+      return "border-attend-unprocessed/30 bg-attend-unprocessed/10 text-attend-unprocessed";
     default:
       return getAttendanceStatusClasses(status, reason);
   }
@@ -177,7 +177,7 @@ export function AttendanceCalendar({
                   <p className="text-[13px] font-medium text-admin-text-muted">
                     날짜
                   </p>
-                  <p className="mt-1.5 text-sm font-semibold text-admin-text">
+                  <p className="mt-2 text-sm font-semibold text-admin-text">
                     주간 출석표
                   </p>
                 </div>
@@ -189,7 +189,7 @@ export function AttendanceCalendar({
                     <p className="text-[13px] font-medium text-admin-text-muted">
                       {row.label || "교시"}
                     </p>
-                    <p className="mt-1.5 text-sm font-semibold text-admin-text">
+                    <p className="mt-2 text-sm font-semibold text-admin-text">
                       {row.periodName}
                     </p>
                     <p className="mt-1 text-[13px] leading-4 text-admin-text-muted">
@@ -229,7 +229,7 @@ export function AttendanceCalendar({
                       <p className="text-[13px] font-medium opacity-75">
                         {period.periodName}
                       </p>
-                      <p className="mt-1.5 text-sm font-semibold">
+                      <p className="mt-2 text-sm font-semibold">
                         {getStatusLabel(period.status, period.reason, period.statusLabel)}
                       </p>
                       <p className="mt-1 text-[13px] leading-4 opacity-80">

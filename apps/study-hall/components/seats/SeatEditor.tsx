@@ -1,12 +1,15 @@
 "use client";
+import { MobileWorkspaceTools } from "@/components/ui/MobileWorkspaceTools";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { LoaderCircle, Plus, RefreshCcw, Save, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "@/lib/sonner";
 
 import { ActionCompleteModal } from "@/components/ui/ActionCompleteModal";
+import { DialogActions } from "@/components/ui/DialogActions";
 import { SlideOver } from "@/components/ui/SlideOver";
 import { UnsavedChangesGuard } from "@/components/ui/UnsavedChangesGuard";
+import { AdminTabPanel, AdminTabs } from "@/components/ui/AdminTabs";
 import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
 import { SeatMap } from "@/components/seats/SeatMap";
 import {
@@ -247,6 +250,10 @@ export function SeatEditor({
   const [movingSeatId, setMovingSeatId] = useState<string | null>(null);
   const [extraSelectedLocalIds, setExtraSelectedLocalIds] = useState<Set<string>>(new Set());
   const [isDirty, setIsDirty] = useState(false);
+  const [activeTab, setActiveTab] = useState<"list" | "layout">("list");
+  const [roomEditor, setRoomEditor] = useState<"edit" | "new" | null>(null);
+  const [roomSnapshot, setRoomSnapshot] = useState<{ form: RoomFormState; seats: DraftSeat[]; dirty: boolean } | null>(null);
+  const roomFormId = useId();
   const [saveSuccessModal, setSaveSuccessModal] = useState<{
     title: string;
     description: string;
@@ -458,6 +465,39 @@ export function SeatEditor({
     setIsSeatEditModalOpen(false);
   }, [editingLocalId]);
 
+  useEffect(() => {
+    if (roomEditor === "edit" && !roomSnapshot && !isLoadingLayout && layout.room?.id === selectedRoomId) {
+      setRoomSnapshot({ form: roomForm, seats: draftSeats, dirty: isDirty });
+    }
+  }, [roomEditor, roomSnapshot, isLoadingLayout, layout.room?.id, selectedRoomId, roomForm, draftSeats, isDirty]);
+
+  async function selectRoom(roomId: string, edit: boolean) {
+    if (edit && isDirty) {
+      toast.error("좌석 변경사항을 먼저 저장한 후 자습실 설정을 수정해 주세요.");
+      return;
+    }
+    if (roomId !== selectedRoomId && isDirty && !await confirm({
+      title: "자습실 변경", description: "저장하지 않은 좌석 변경사항을 폐기하고 다른 자습실을 여시겠습니까?",
+      confirmLabel: "변경 폐기", cancelLabel: "계속 편집", variant: "warning",
+    })) return;
+    setSelectedRoomId(roomId);
+    if (edit) { setRoomSnapshot(null); setRoomEditor("edit"); }
+    else setActiveTab("layout");
+  }
+
+  async function closeRoomEditor() {
+    if (isSavingRoom || isCreatingRoom || isDeletingRoom) return;
+    const current = roomEditor === "new" ? newRoomForm : roomForm;
+    if (roomSnapshot && JSON.stringify(current) !== JSON.stringify(roomSnapshot.form)) {
+      if (!await confirm({ title: "변경사항 폐기", description: "저장하지 않은 자습실 정보가 있습니다.", confirmLabel: "변경 폐기", cancelLabel: "계속 편집", variant: "warning" })) return;
+    }
+    if (roomSnapshot) {
+      if (roomEditor === "new") setNewRoomForm(roomSnapshot.form);
+      else { setRoomForm(roomSnapshot.form); setDraftSeats(roomSnapshot.seats); setIsDirty(roomSnapshot.dirty); }
+    }
+    setRoomEditor(null); setRoomSnapshot(null);
+  }
+
   function selectSeatByCell(positionX: number, positionY: number, seatId: string | null, shiftKey: boolean) {
     void positionX;
     void positionY;
@@ -572,6 +612,10 @@ export function SeatEditor({
   }
 
   async function handleCreateRoom() {
+    if (isCreatingRoom || isDirty) {
+      if (isDirty) toast.error("좌석 변경사항을 먼저 저장한 후 자습실을 추가해 주세요.");
+      return;
+    }
     setIsCreatingRoom(true);
 
     try {
@@ -594,6 +638,7 @@ export function SeatEditor({
 
       const room = data.room as StudyRoomItem;
       toast.success("자습실을 생성했습니다.");
+      setRoomEditor(null); setRoomSnapshot(null);
       setNewRoomForm({ name: "", columns: 9, rows: 6, aisleColumnsText: "5", isActive: true });
       await refreshRooms(room.id);
     } catch (error) {
@@ -604,6 +649,7 @@ export function SeatEditor({
   }
 
   async function handleSaveRoom() {
+    if (isSavingRoom || isLoadingLayout || isDeletingRoom) return;
     if (!selectedRoomId) {
       toast.error("먼저 자습실을 선택해 주세요.");
       return;
@@ -613,6 +659,7 @@ export function SeatEditor({
 
     try {
       await persistRoomConfiguration(selectedRoomId, { showSuccessToast: true });
+      setRoomEditor(null); setRoomSnapshot(null);
       await refreshRooms(selectedRoomId);
       await loadLayout(selectedRoomId);
       setSaveSuccessModal({
@@ -654,6 +701,7 @@ export function SeatEditor({
       }
 
       toast.success("자습실을 삭제했습니다.");
+      setRoomEditor(null); setRoomSnapshot(null);
       const fallbackRoomId = rooms.find((room) => room.id !== selectedRoomId)?.id ?? null;
       await refreshRooms(fallbackRoomId);
       await refreshStudents();
@@ -793,260 +841,87 @@ export function SeatEditor({
   }
 
   return (
-    <div className="admin-flat-page">
+    <>
       <UnsavedChangesGuard
         isDirty={isDirty}
         message="저장하지 않은 좌석 변경사항이 있습니다. 페이지를 이동하면 현재 좌석 배치 수정 내용이 사라집니다."
       />
 
-      <section className="grid gap-3 md:grid-cols-4">
-        <article className="admin-section">
-          <p className="admin-help">자습실 수</p>
-          <h2 className="admin-section-title">{rooms.length}개</h2>
+      <section className="admin-metric-strip" aria-label="자습실 현황 요약">
+        <article className="admin-metric-box">
+          <p className="admin-metric-box-label">자습실 수</p>
+          <p className="admin-metric-box-value">{rooms.length}개</p>
         </article>
-        <article className="admin-section">
-          <p className="admin-help">운영 좌석</p>
-          <h2 className="admin-section-title">{activeSeatCount}석</h2>
+        <article className="admin-metric-box">
+          <p className="admin-metric-box-label">운영 좌석</p>
+          <p className="admin-metric-box-value">{activeSeatCount}석</p>
         </article>
-        <article className="admin-section">
-          <p className="admin-help">배정 학생</p>
-          <h2 className="admin-section-title">{assignedSeatCount}명</h2>
+        <article className="admin-metric-box">
+          <p className="admin-metric-box-label">배정 학생</p>
+          <p className="admin-metric-box-value">{assignedSeatCount}명</p>
         </article>
-        <article className="admin-section">
-          <p className="admin-help">즉시 배정 가능</p>
-          <h2 className="admin-section-title">{availableSeatCount}석</h2>
+        <article className="admin-metric-box">
+          <p className="admin-metric-box-label">즉시 배정 가능</p>
+          <p className="admin-metric-box-value">{availableSeatCount}석</p>
         </article>
       </section>
 
-      <div className="grid gap-6 xl:grid-cols-3">
-        <article className="admin-section">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="admin-section-title">자습실 목록</h2>
-            </div>
-            <button
-              type="button"
-              onClick={() => refreshRooms(selectedRoomId)}
-              disabled={isRefreshingRooms}
-              className="admin-button"
-            >
-              {isRefreshingRooms ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
-              새로고침
-            </button>
-          </div>
+      <AdminTabs
+        items={[
+          { id: "list", label: "자습실 목록" },
+          { id: "layout", label: "좌석 배치", disabled: !selectedRoomId },
+        ]}
+        activeId={activeTab}
+        onChange={setActiveTab}
+        label="자습실과 좌석 설정 구분"
+        idPrefix="seat-settings"
+        variant="secondary"
+      />
 
-          <div className="mt-5 grid gap-3">
-            {rooms.map((room) => (
-              <button
-                key={room.id}
-                type="button"
-                onClick={() => setSelectedRoomId(room.id)}
-                className="admin-choice-card"
-                data-active={selectedRoomId === room.id}
-                aria-pressed={selectedRoomId === room.id}
-              >
-                <span className="flex items-center justify-between gap-3">
-                  <span className="admin-choice-card-title">{room.name}</span>
-                  <span className="admin-badge">{room.isActive ? "운영 중" : "비활성"}</span>
-                </span>
-                <span className="admin-help">
-                  {room.columns}열 · {room.rows}행 · 좌석 {room.seatsCount}개 · 배정 {room.assignedStudentsCount}명
-                </span>
-              </button>
-            ))}
-          </div>
-        </article>
-
-        <article className="admin-section">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="admin-section-title">
-                {currentRoom?.name ?? "자습실"} 설정
-              </h2>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={handleSaveRoom}
-                disabled={!selectedRoomId || isSavingRoom}
-                className="admin-button"
-              >
-                {isSavingRoom ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                자습실 저장
-              </button>
-              <button
-                type="button"
-                onClick={handleDeleteRoom}
-                disabled={!selectedRoomId || isDeletingRoom}
-                className="admin-button admin-button-danger-outline"
-              >
-                {isDeletingRoom ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                자습실 삭제
-              </button>
+      <AdminTabPanel id="list" activeId={activeTab} idPrefix="seat-settings" className="mt-6">
+        <section className="admin-section">
+          <MobileWorkspaceTools title="자습실 목록 작업" active={activeTab === "list"}>
+          <div className="admin-workspace-toolbar">
+            <h2 className="admin-section-title">자습실 목록</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" className="admin-text-action inline-flex items-center gap-2" disabled={isRefreshingRooms} onClick={() => void refreshRooms(selectedRoomId)}><RefreshCcw className="h-4 w-4" />새로고침</button>
+              <button type="button" className="admin-button admin-button-primary" onClick={() => { setRoomSnapshot({ form: newRoomForm, seats: [], dirty: false }); setRoomEditor("new"); }}><Plus className="h-4 w-4" />자습실 추가</button>
             </div>
           </div>
-
-          {currentRoom ? (
-            <>
-              <div className="mt-5 grid gap-4">
-                <label className="block">
-                  <span className="admin-label mb-2 block">자습실 이름</span>
-                  <input
-                    value={roomForm.name}
-                    onChange={(event) => updateRoomForm({ name: event.target.value })}
-                    className="w-full"
-                  />
-                </label>
-                <label className="block">
-                  <span className="admin-label mb-2 block">복도 열 번호</span>
-                  <input
-                    value={roomForm.aisleColumnsText}
-                    onChange={(event) => updateRoomForm({ aisleColumnsText: event.target.value })}
-                    className="w-full"
-                    placeholder="예: 5, 10"
-                  />
-                </label>
-              </div>
-
-              <div className="mt-4 grid gap-4 grid-cols-2">
-                <label className="block">
-                  <span className="admin-label mb-2 block">열 수</span>
-                  <input
-                    type="number"
-                    min={3}
-                    max={20}
-                    value={roomForm.columns}
-                    onChange={(event) => updateRoomForm({ columns: Number(event.target.value) || 9 })}
-                    className="w-full"
-                  />
-                </label>
-                <label className="block">
-                  <span className="admin-label mb-2 block">행 수</span>
-                  <input
-                    type="number"
-                    min={2}
-                    max={20}
-                    value={roomForm.rows}
-                    onChange={(event) => updateRoomForm({ rows: Number(event.target.value) || 6 })}
-                    className="w-full"
-                  />
-                </label>
-              </div>
-
-              <label className="mt-4 flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3">
-                <span>
-                  <span className="admin-label block">운영 상태</span>
-                  <span className="admin-help block">
-                    비활성 자습실은 좌석 현황·출석부에서 숨겨집니다. 배정된 학생이 남아 있으면 계속 보입니다.
-                  </span>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={roomForm.isActive}
-                  onChange={(event) => updateRoomForm({ isActive: event.target.checked })}
-                  className="h-5 w-5 rounded border-slate-300"
-                />
-              </label>
-            </>
-          ) : (
-            <div className="admin-help mt-5 px-4 py-8">
-              먼저 자습실을 생성해 주세요.
-            </div>
-          )}
-        </article>
-
-        <article className="admin-section">
-          <h2 className="admin-section-title">새 자습실 추가</h2>
-
-          <div className="mt-5 grid gap-4">
-            <label className="block">
-              <span className="admin-label mb-2 block">자습실 이름</span>
-              <input
-                value={newRoomForm.name}
-                onChange={(event) =>
-                  setNewRoomForm((current) => ({ ...current, name: event.target.value }))
-                }
-                className="w-full"
-                placeholder="예: 1열람실"
-              />
-            </label>
-            <label className="block">
-              <span className="admin-label mb-2 block">복도 열 번호</span>
-              <input
-                value={newRoomForm.aisleColumnsText}
-                onChange={(event) =>
-                  setNewRoomForm((current) => ({ ...current, aisleColumnsText: event.target.value }))
-                }
-                className="w-full"
-                placeholder="예: 5, 10"
-              />
-            </label>
-          </div>
-
-          <div className="mt-4 grid gap-4 grid-cols-2">
-            <label className="block">
-              <span className="admin-label mb-2 block">열 수</span>
-              <input
-                type="number"
-                min={3}
-                max={20}
-                value={newRoomForm.columns}
-                onChange={(event) =>
-                  setNewRoomForm((current) => ({
-                    ...current,
-                    columns: Number(event.target.value) || 9,
-                  }))
-                }
-                className="w-full"
-              />
-            </label>
-            <label className="block">
-              <span className="admin-label mb-2 block">행 수</span>
-              <input
-                type="number"
-                min={2}
-                max={20}
-                value={newRoomForm.rows}
-                onChange={(event) =>
-                  setNewRoomForm((current) => ({
-                    ...current,
-                    rows: Number(event.target.value) || 6,
-                  }))
-                }
-                className="w-full"
-              />
-            </label>
-          </div>
-
-          <label className="mt-4 flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3">
-            <span>
-              <span className="admin-label block">운영 상태</span>
-              <span className="admin-help block">
-                비활성 자습실은 좌석 현황·출석부에서 숨겨집니다. 배정된 학생이 남아 있으면 계속 보입니다.
-              </span>
-            </span>
-            <input
-              type="checkbox"
-              checked={newRoomForm.isActive}
-              onChange={(event) =>
-                setNewRoomForm((current) => ({ ...current, isActive: event.target.checked }))
-              }
-              className="h-5 w-5 rounded border-slate-300"
-            />
-          </label>
-
-          <button
-            type="button"
-            onClick={handleCreateRoom}
-            disabled={isCreatingRoom}
-            className="admin-button admin-button-primary mt-4"
-          >
-            {isCreatingRoom ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-            자습실 추가
-          </button>
-        </article>
-      </div>
-
+          </MobileWorkspaceTools>
+          {rooms.length ? <div className="admin-table-frame"><table aria-label="자습실 목록">
+            <thead><tr><th scope="col">자습실</th><th scope="col" className="hidden md:table-cell">구조</th><th scope="col">좌석 / 배정</th><th scope="col" className="hidden md:table-cell">상태</th><th scope="col">좌석 배치</th></tr></thead>
+            <tbody>{rooms.map((room) => <tr key={room.id}>
+              <td className="admin-table-name"><button type="button" className="admin-table-link" onClick={() => void selectRoom(room.id, true)}>{room.name}</button><span className="admin-help block md:hidden">{room.isActive ? "운영 중" : "비활성"} · {room.columns}열 {room.rows}행</span></td>
+              <td className="hidden md:table-cell">{room.columns}열 · {room.rows}행</td>
+              <td>{room.seatsCount}석 / {room.assignedStudentsCount}명</td>
+              <td className="hidden md:table-cell">{room.isActive ? "운영 중" : "비활성"}</td>
+              <td><button type="button" className="admin-table-link" aria-label={room.name + " 좌석 배치"} onClick={() => void selectRoom(room.id, false)}>배치 보기</button></td>
+            </tr>)}</tbody>
+          </table></div> : <p className="admin-empty-state">등록된 자습실이 없습니다.</p>}
+        </section>
+      </AdminTabPanel>
+      <SlideOver open={Boolean(roomEditor)} title={roomEditor === "new" ? "자습실 추가" : "자습실 설정"} onClose={() => void closeRoomEditor()}>
+        <form id={roomFormId} onSubmit={(event) => { event.preventDefault(); if (roomEditor === "new") void handleCreateRoom(); else void handleSaveRoom(); }} className="space-y-6">
+          {roomEditor === "edit" && !roomSnapshot ? <p className="admin-empty-state">자습실 정보를 불러오는 중입니다.</p> : (() => {
+            const value = roomEditor === "new" ? newRoomForm : roomForm;
+            const update = (patch: Partial<RoomFormState>) => roomEditor === "new" ? setNewRoomForm((current) => ({ ...current, ...patch })) : updateRoomForm(patch);
+            return <fieldset className="admin-panel" disabled={isSavingRoom || isCreatingRoom || isDeletingRoom}>
+              <label className="admin-form-row"><span className="admin-form-row-label">자습실 이름</span><span className="admin-form-row-control w-full md:w-auto"><input required value={value.name} onChange={(event) => update({ name: event.target.value })} className="w-full" /></span></label>
+              <label className="admin-form-row"><span className="admin-form-row-label">복도 열 번호</span><span className="admin-form-row-control w-full md:w-auto"><input value={value.aisleColumnsText} onChange={(event) => update({ aisleColumnsText: event.target.value })} placeholder="예: 5, 10" className="w-full" /></span></label>
+              <label className="admin-form-row"><span className="admin-form-row-label">열 수</span><span className="admin-form-row-control w-full md:w-auto"><input type="number" min={3} max={20} required value={value.columns} onChange={(event) => update({ columns: Number(event.target.value) })} className="w-full" /></span></label>
+              <label className="admin-form-row"><span className="admin-form-row-label">행 수</span><span className="admin-form-row-control w-full md:w-auto"><input type="number" min={2} max={20} required value={value.rows} onChange={(event) => update({ rows: Number(event.target.value) })} className="w-full" /></span></label>
+              <label className="admin-form-row"><span className="admin-form-row-label">운영 상태</span><span className="admin-form-row-control flex w-full items-center gap-3 md:w-auto"><input type="checkbox" checked={value.isActive} onChange={(event) => update({ isActive: event.target.checked })} /><span>운영 중</span></span></label>
+            </fieldset>;
+          })()}
+          <DialogActions>
+            {roomEditor === "edit" ? <button type="button" onClick={() => void handleDeleteRoom()} disabled={!roomSnapshot || isSavingRoom || isDeletingRoom} className="admin-button admin-button-danger-outline mr-auto"><Trash2 className="h-4 w-4" />삭제</button> : null}
+            <button type="button" className="admin-button" disabled={isSavingRoom || isCreatingRoom || isDeletingRoom} onClick={() => void closeRoomEditor()}>취소</button>
+            <button type="submit" form={roomFormId} disabled={!roomSnapshot || isSavingRoom || isCreatingRoom || isDeletingRoom} className="admin-button admin-button-primary">{isSavingRoom || isCreatingRoom ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}저장</button>
+          </DialogActions>
+        </form>
+      </SlideOver>
+      <AdminTabPanel id="layout" activeId={activeTab} idPrefix="seat-settings" className="mt-6">
       <article className="admin-section">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -1084,7 +959,7 @@ export function SeatEditor({
             {trackSummary.map((item) => (
               <span
                 key={item.track}
-                className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold ${getStudyTrackBadgeClasses(item.track)}`}
+                className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold ${getStudyTrackBadgeClasses(item.track)}`}
               >
                 {getStudyTrackShortLabel(item.track)}
                 <span className="opacity-80">{item.count}명</span>
@@ -1187,23 +1062,23 @@ export function SeatEditor({
           {editingSeat ? (
             <div className="space-y-5">
               <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-slate-700">좌석 번호</span>
+                <span className="mb-2 block text-sm font-medium text-slate-700">좌석 번호</span>
                 <input
                   value={editingSeat.label}
                   onChange={(event) => updateSelectedSeat({ label: event.target.value })}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm transition"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition"
                   placeholder="예: A-01"
                 />
               </label>
 
               <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-slate-700">학생 배정</span>
+                <span className="mb-2 block text-sm font-medium text-slate-700">학생 배정</span>
                 <select
                   value={editingSeat.assignedStudentId ?? ""}
                   onChange={(event) =>
                     updateSelectedSeat({ assignedStudentId: event.target.value || null })
                   }
-                  className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm transition"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition"
                   disabled={!editingSeat.isActive}
                 >
                   <option value="">배정 안 함</option>
@@ -1235,7 +1110,7 @@ export function SeatEditor({
                 <div className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
                   <p className="text-sm font-bold text-slate-950">{selectedAssignedStudent.name}</p>
                   <span
-                    className={`inline-flex rounded-lg border px-2 py-0.5 text-xs font-semibold ${getStudyTrackBadgeClasses( selectedAssignedStudent.studyTrack, )}`}
+                    className={`inline-flex rounded-lg border px-2 py-1 text-xs font-semibold ${getStudyTrackBadgeClasses( selectedAssignedStudent.studyTrack, )}`}
                   >
                     {formatStudyTrackLabel(selectedAssignedStudent.studyTrack)}
                   </span>
@@ -1256,7 +1131,8 @@ export function SeatEditor({
           notice="저장된 좌석 정보는 현재 화면에 바로 반영되며, 새로고침 이후에도 유지됩니다."
         />
       </article>
+      </AdminTabPanel>
       {confirmDialog}
-    </div>
+    </>
   );
 }

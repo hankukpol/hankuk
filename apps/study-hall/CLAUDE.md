@@ -11,6 +11,8 @@
 
 ## 프로젝트 핵심 원칙
 
+**모든 개발·수정 전에 [ACADEMY_TEMPLATES.md](ACADEMY_TEMPLATES.md)를 따른다.** 납품형 제품의 학원별 독립 템플릿, 실제 계산 연동, 적용일·미리보기·이력 및 기존 운영 기록 보호가 필수다. 구현 현황과 무관하게 유지하는 개발 원칙이다. Git 커밋·푸시·운영 반영은 사용자 승인 후 진행한다.
+
 ### 학원별 독립 설정 원칙 (운영자 확정, 2026-09-14)
 
 - 경찰파트에서 먼저 구현한 출결·수업·휴무·반휴·휴대폰·성적·상벌점·경고도 모든 학원이 사용하는 공통 기능으로 개발한다. 경찰 전용 분기나 경찰 규칙을 공통 기본값으로 강제하지 않는다.
@@ -78,13 +80,17 @@ web/
 │   │       ├── interviews/
 │   │       ├── warnings/           경고 대상자 + 연락처 복사
 │   │       ├── announcements/
-│   │       ├── settings/
-│   │       │   ├── page.tsx        설정 허브
+│   │       ├── settings/           경로 탭 10개 (SettingsPageShell)
+│   │       │   ├── page.tsx        general 로 redirect (허브 화면 없음)
+│   │       │   ├── general/        직렬 기본 정보
+│   │       │   ├── features/       기능 사용 여부
 │   │       │   ├── periods/        교시 설정
 │   │       │   ├── rules/          경고기준·지각기준·휴가한도
-│   │       │   ├── seats/          좌석 배치도
-│   │       │   ├── exams/          시험 종류·과목
-│   │       │   └── general/        직렬 기본 정보
+│   │       │   ├── tuition/        등록 금액
+│   │       │   ├── seats/          자습실·좌석 배치도
+│   │       │   ├── exams/          시험 템플릿·과목
+│   │       │   └── exam-schedules/ 시험 일정
+│   │       │   ※ 나머지 두 탭은 ../points/rules, ../staff 로 연결
 │   │       └── reports/
 │   └── api/
 │       ├── auth/

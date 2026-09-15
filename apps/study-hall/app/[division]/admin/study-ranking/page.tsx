@@ -21,7 +21,7 @@ export default async function AdminStudyRankingPage({
 
   return (
     <div className="admin-flat-page">
-      <section>
+      <section className="max-md:sr-only">
         <h1 className="admin-page-title">
           월간 학습시간 랭킹
         </h1>

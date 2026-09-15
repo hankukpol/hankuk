@@ -1,6 +1,7 @@
 import dynamic from "next/dynamic";
 import { notFound, redirect } from "next/navigation";
 import { ChartNoAxesColumn } from "lucide-react";
+import { MobileWorkspaceTools } from "@/components/ui/MobileWorkspaceTools";
 
 import { ExamScoreChartLoader } from "@/components/exams/ExamScoreChartLoader";
 import { ExamTabLayout } from "@/components/exams/ExamTabLayout";
@@ -137,8 +138,9 @@ export default async function StudentExamsPage({ params, searchParams }: Student
     const morningContent = (
       <div className="admin-flat-page">
         <section className="admin-flat-page">
-          <h2 className="admin-section-title">아침 성적 분석</h2>
+          <h2 className="admin-section-title max-md:sr-only">아침 성적 분석</h2>
           {selectedMorningType ? <>
+            <MobileWorkspaceTools title="아침 성적 조회 조건">
             <form className="admin-filter-bar" action={`/${params.division}/student/exams`} method="get">
               <label className="admin-label" htmlFor="student-morning-type">시험 종류</label>
               <select id="student-morning-type" name="morningType" defaultValue={selectedMorningType.id}>{morningTypes.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</select>
@@ -148,6 +150,7 @@ export default async function StudentExamsPage({ params, searchParams }: Student
               <input id="student-morning-to" name="morningTo" type="date" required defaultValue={morningRange.to} />
               <button type="submit" className="admin-button admin-button-primary">아침 분석 조회</button>
             </form>
+            </MobileWorkspaceTools>
             {!rangeResult.success ? <p role="alert" className="admin-notice admin-notice-danger">날짜를 확인해 주세요. 시작일부터 종료일까지 날짜 차이 92일 이내로 선택해 주세요.</p> : morningReport ? <MorningStudentReport report={morningReport} mode="student" records={<MorningExamStudentView weeks={morningWeeks} />} /> : <p className="admin-empty-state">선택한 기간에 가져온 아침 문항 분석 자료가 없습니다. 기존 성적 기록은 아래에서 확인할 수 있습니다.</p>}
           </> : <p className="admin-empty-state">분석할 아침 시험 종류가 없습니다.</p>}
         </section>
@@ -175,6 +178,7 @@ export default async function StudentExamsPage({ params, searchParams }: Student
         </section>
 
         <ScoreTargetPanel
+          variant="rows"
           divisionSlug={params.division}
           studentId={session.studentId}
           initialTargets={scoreTargets}
@@ -244,8 +248,9 @@ export default async function StudentExamsPage({ params, searchParams }: Student
     const regularContent = (
       <div className="space-y-5">
         <section className="admin-flat-page">
-          <h2 className="admin-section-title">정기 성적 분석</h2>
+          <h2 className="admin-section-title max-md:sr-only">정기 성적 분석</h2>
           {selectedSession ? <>
+            <MobileWorkspaceTools title="정기 성적 조회 조건">
             <form className="admin-filter-bar" action={`/${params.division}/student/exams`} method="get">
               <label className="admin-label" htmlFor="student-analysis-session">분석 시험일</label>
               <select id="student-analysis-session" name="analysisSession" defaultValue={selectedSession.key}>
@@ -253,6 +258,7 @@ export default async function StudentExamsPage({ params, searchParams }: Student
               </select>
               <button type="submit" className="admin-button admin-button-primary">분석 조회</button>
             </form>
+            </MobileWorkspaceTools>
             {regularReport ? <RegularStudentReport report={regularReport} mode="student" records={regularRecords} /> : <p className="admin-empty-state">선택한 시험일의 문항 분석 자료가 없습니다. 아래에서 기존 성적 기록을 확인할 수 있습니다.</p>}
           </> : <p className="admin-empty-state">가져온 문항 분석 자료가 없습니다. 아래에서 기존 성적 기록을 확인할 수 있습니다.</p>}
         </section>
@@ -275,6 +281,7 @@ export default async function StudentExamsPage({ params, searchParams }: Student
       >
         {hasMorningTypes || hasRegularTypes || morningWeeks.length > 0 || regularExams.length > 0 || selectedMorningType || selectedSession ? (
           <ExamTabLayout
+            variant="secondary"
             key={morningRequested ? `morning:${selectedMorningType?.id}:${morningRange.from}:${morningRange.to}` : requestedSession ?? "default"}
             morningContent={morningContent}
             regularContent={regularContent}

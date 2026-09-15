@@ -1,4 +1,5 @@
 "use client";
+import { MobileWorkspaceTools } from "@/components/ui/MobileWorkspaceTools";
 
 import { LoaderCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -61,6 +62,7 @@ export function AdminStudyRankingManager({
 
   return (
     <div className="admin-flat-page">
+      <MobileWorkspaceTools title="학습시간 랭킹 조회 조건">
       <section className="admin-section">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
@@ -77,11 +79,12 @@ export function AdminStudyRankingManager({
               value={month}
               max={getKstMonth()}
               onChange={(event) => void handleMonthChange(event.target.value)}
-              className="mt-1 block rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 transition"
+              className="mt-1 block rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 transition"
             />
           </div>
         </div>
       </section>
+      </MobileWorkspaceTools>
 
       <section className="admin-metric-strip">
         <article className="admin-metric-box">

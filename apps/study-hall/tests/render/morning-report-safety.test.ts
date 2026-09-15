@@ -5,6 +5,7 @@ import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
 import * as React from "react";
+import * as ReactDOM from "react-dom";
 import * as jsx from "react/jsx-runtime";
 import { renderToStaticMarkup } from "react-dom/server";
 
@@ -28,6 +29,8 @@ function load(file: string, overrides: Record<string, unknown> = {}): Record<str
     require(name: string) {
       if (name in overrides) return overrides[name];
       if (name === "react") return React;
+      if (name === "react-dom") return ReactDOM;
+      if (name === "lucide-react") return new Proxy({}, { get: () => () => null });
       if (name === "react/jsx-runtime") return jsx;
       if (name === "recharts") return new Proxy({}, { get: () => ({ children }: { children: React.ReactNode }) => React.createElement("div", null, children) });
       const local = name.startsWith("@/") ? name.slice(2) : path.relative(root, path.resolve(path.dirname(filename), name));

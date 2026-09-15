@@ -5,20 +5,18 @@
  *
  *   const report = window.__mobileAudit({ kind: "sub" });   // 또는 { kind: "home" }
  *
- * 헤드리스로 돌리려면 playwright 가 필요한데 study-hall 에 없다(score-predict 전용).
- * package.json 은 지금 동결이라 의존성을 늘리지 않고, 이 파일을 page.evaluate 나
- * 브라우저 콘솔에 주입해 쓴다. 의존성이 허용되면 러너만 붙이면 된다.
+ * 설치된 Playwright의 page.evaluate 또는 브라우저 콘솔에 주입해 쓴다.
  *
  * 측정은 브라우저 패널을 띄운 상태에서 한다. 숨기면 rAF 가 멈춰
  * computed style 이 캐시 값을 돌려준다(MOBILE_DESIGN.md 4절 주의).
  */
 (function () {
   const px = (v) => Math.round(parseFloat(v) || 0);
-  const visible = (el) => !!el.offsetParent || el === document.body;
+  const visible = (el) => el.getBoundingClientRect().height > 0 && getComputedStyle(el).visibility !== "hidden";
 
   /** 이 규격이 예외로 두는 것: 이미지·모달·안내 상자. */
   function isExempt(el) {
-    if (el.closest('[role="dialog"], dialog, .admin-dialog-panel, .admin-chat-dock')) return true;
+    if (el.closest('[role="dialog"], dialog, .admin-dialog-panel, .admin-chat-dock, .admin-action-menu-panel, .admin-overlay')) return true;
     if (el.matches("img, svg, canvas, video")) return true;
     if (el.closest(".admin-notice, .admin-empty-state")) return true;
     return false;
@@ -65,18 +63,14 @@
       const bottom = parseFloat(s.bottom) || 0;
       if (top < 0 || bottom < 0) return own - top - bottom;
     }
-    // 테두리도 배경도 없는 입력칸은 감싼 상자가 탭 영역이다. `.admin-input-group`
-    // 안의 input 은 23px 지만 상자가 44px 이고, 상자 어디를 눌러도 입력칸이 잡힌다.
-    const own_s = getComputedStyle(el);
-    if (own < 44 && el.parentElement && px(own_s.borderTopWidth) === 0 && own_s.backgroundColor === "rgba(0, 0, 0, 0)") {
-      return Math.max(own, el.parentElement.getBoundingClientRect().height);
-    }
+    // Only associated labels extend a native checkbox/radio hit area, not arbitrary parent boxes.
+    if (el.matches('input[type="checkbox"],input[type="radio"]')) return Math.max(own, ...[...(el.labels || [])].filter(visible).map((label) => label.getBoundingClientRect().height));
     return own;
   }
 
   function findSmallTargets(root) {
     return [...root.querySelectorAll('button, a[href], select, input:not([type="hidden"]), [role="tab"], [role="button"]')]
-      .filter((el) => visible(el))
+      .filter((el) => visible(el) && !el.closest(".admin-overlay"))
       .filter((el) => {
         const h = hitHeight(el);
         return h > 0 && h < 44;
@@ -102,30 +96,30 @@
       if (!visible(el) || isExempt(el)) continue;
       if (el.matches('[type="checkbox"], [type="radio"]')) continue;
       if (el.closest(".admin-tabs, .admin-subtabs")) continue;
-      const r = px(getComputedStyle(el).borderTopLeftRadius);
+      if (el.matches(".admin-seat-card") || el.closest(".admin-seat-grid")) continue;
+      if (el.matches(".admin-table-link,.admin-text-action,.admin-status-button")) continue;
+      if (el.matches("input") && el.closest(".admin-input-group")) continue;
+      const style = getComputedStyle(el);
+      const r = px(style.borderTopLeftRadius);
+      // Flat list rows, title links and disclosure headings are not framed controls.
+      if (r === 0 && px(style.borderTopWidth) === 0 && px(style.borderLeftWidth) === 0 && ["transparent", "rgba(0, 0, 0, 0)"].includes(style.backgroundColor)) continue;
       const isChip = el.classList.contains("admin-chip") || r >= 999;
       if (isChip) continue;
-      if (r !== 4) out.push({ r, tag: el.tagName.toLowerCase(), text: (el.textContent || "").trim().slice(0, 14) });
+      if (r !== 4) out.push({ r, tag: el.tagName.toLowerCase(), className: el.className, label: el.getAttribute("aria-label"), text: (el.textContent || "").trim().slice(0, 14) });
     }
     return out;
   }
 
-  /** 첫 데이터: 표 첫 행 → 목록 첫 행 → 요약 첫 칸 순으로 찾는다. */
+  /** 실제로 가장 먼저 보이는 데이터. 표보다 앞의 요약/빈 상태도 포함한다. */
   function findFirstData() {
-    const tries = [
-      ["표 첫 행", "tbody tr"],
-      ["목록 행", ".admin-list-row, .admin-record-card"],
-      ["요약 칸", ".admin-portal-summary > *, .admin-dashboard-metric, .admin-metric-box"],
-    ];
-    for (const [kind, sel] of tries) {
-      const el = [...document.querySelectorAll(sel)].find(visible);
-      if (el) return { kind, top: Math.round(el.getBoundingClientRect().top + window.scrollY) };
-    }
+    const selectors = "table,.admin-list-row,.admin-record-card,.admin-choice-card[data-dragging],[data-list-empty],.admin-empty-state,.admin-metric-strip,.admin-metric-box,.admin-check-summary,.admin-dashboard-metric,.admin-portal-summary,.admin-panel";
+    const el = [...document.querySelectorAll(selectors)].filter(visible).filter((node) => !isExempt(node) || node.matches(".admin-empty-state")).sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)[0];
+    if (el) return { kind: el.tagName.toLowerCase(), top: Math.round(el.getBoundingClientRect().top + window.scrollY) };
     return { kind: null, top: null };
   }
 
   function auditTabs() {
-    const rows = [...document.querySelectorAll(".admin-tabs, .admin-subtabs")].filter(visible);
+    const rows = [...document.querySelectorAll(".admin-tabs:not(.admin-portal-nav), .admin-subtabs")].filter(visible);
     // 폴더 모양: 배경이나 테두리를 가진 탭.
     const folder = rows.flatMap((row) =>
       [...row.children].filter((tab) => {
@@ -184,8 +178,7 @@
       ["문서 가로 넘침", "0", doc.scrollWidth - doc.clientWidth, doc.scrollWidth - doc.clientWidth === 0],
       ["표 프레임 밖 넘침", "0", escaped.length, escaped.length === 0],
       ["첫 데이터 top", `≤ ${firstLimit}px`, first.top === null ? "없음" : `${first.top}px (${first.kind})`, first.top !== null && first.top <= firstLimit],
-      // 하단 1px line-soft 가 높이에 포함돼 53 으로 잡힌다. 52~53 을 통과로 본다.
-      ["헤더 바 높이", "52px", bar ? px(getComputedStyle(bar).height) : "없음", bar ? [52, 53].includes(px(getComputedStyle(bar).height)) : false],
+      ["헤더 바 높이", "52px", bar ? px(getComputedStyle(bar).height) : "없음", bar ? px(getComputedStyle(bar).height) === 52 : false],
       ["카드형 컨테이너", "0개", cards.length, cards.length === 0],
       ["그림자", "0개", shadows.length, shadows.length === 0],
       ["44px 미만 터치", "0개", small.length, small.length === 0],

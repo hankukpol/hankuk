@@ -1,9 +1,12 @@
 "use client";
+import { MobileWorkspaceTools } from "@/components/ui/MobileWorkspaceTools";
 
-import { CalendarDays, Pencil, Plus, Save, Trash2, X } from "lucide-react";
-import { useState } from "react";
+import { LoaderCircle, Plus, Save, Trash2 } from "lucide-react";
+import { useId, useState } from "react";
 import { toast } from "@/lib/sonner";
 
+import { SlideOver } from "@/components/ui/SlideOver";
+import { DialogActions } from "@/components/ui/DialogActions";
 import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
 import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
 import { EXAM_SCHEDULE_TYPES, getExamScheduleTypeLabel, type ExamScheduleTypeValue } from "@/lib/exam-schedule-meta";
@@ -44,10 +47,10 @@ function DDayBadge({ dDayValue, dDayLabel }: { dDayValue: number; dDayLabel: str
   const isPast = dDayValue < 0;
   const isToday = dDayValue === 0;
   const className = isPast
-    ? "rounded-lg bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500"
+    ? "rounded-lg bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-500"
     : isToday
-      ? "rounded-lg bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-600"
-      : "rounded-lg bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-600";
+      ? "rounded-lg bg-admin-danger-soft px-2 py-1 text-xs font-semibold text-admin-danger"
+      : "rounded-lg bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-600";
   return <span className={className}>{dDayLabel}</span>;
 }
 
@@ -57,12 +60,15 @@ export function ExamScheduleManager({ divisionSlug, initialSchedules }: ExamSche
   const [isCreating, setIsCreating] = useState(false);
   const [form, setForm] = useState<FormState>(defaultForm);
   const [isSaving, setIsSaving] = useState(false);
+  const [initialForm, setInitialForm] = useState(defaultForm);
+  const formId = useId();
   const { showActionComplete, actionCompleteModal } = useActionCompleteModal();
   const { confirm, confirmDialog } = useConfirmDialog();
 
   function openCreate() {
     setEditingId(null);
     setForm(defaultForm);
+    setInitialForm(defaultForm);
     setIsCreating(true);
   }
 
@@ -70,6 +76,7 @@ export function ExamScheduleManager({ divisionSlug, initialSchedules }: ExamSche
     setIsCreating(false);
     setEditingId(item.id);
     setForm(toFormState(item));
+    setInitialForm(toFormState(item));
   }
 
   function cancelForm() {
@@ -77,7 +84,14 @@ export function ExamScheduleManager({ divisionSlug, initialSchedules }: ExamSche
     setIsCreating(false);
   }
 
+  async function closeEditor() {
+    if (isSaving) return;
+    if (JSON.stringify(form) !== JSON.stringify(initialForm) && !await confirm({ title: "변경사항 폐기", description: "저장하지 않은 시험 일정이 있습니다.", confirmLabel: "변경 폐기", cancelLabel: "계속 편집", variant: "warning" })) return;
+    cancelForm();
+  }
+
   async function handleSave() {
+    if (isSaving) return;
     if (!form.name.trim()) {
       toast.error("시험명을 입력해주세요.");
       return;
@@ -109,7 +123,7 @@ export function ExamScheduleManager({ divisionSlug, initialSchedules }: ExamSche
           return;
         }
         const { schedule } = await res.json();
-        setSchedules((prev) => prev.map((s) => (s.id === editingId ? schedule : s)));
+        setSchedules((prev) => prev.map((s) => (s.id === editingId ? schedule : s)).sort((a, b) => a.examDate.localeCompare(b.examDate)));
         toast.success("시험 일정이 수정되었습니다.");
         showActionComplete({
           title: "시험 일정 수정 완료",
@@ -140,32 +154,15 @@ export function ExamScheduleManager({ divisionSlug, initialSchedules }: ExamSche
       }
 
       cancelForm();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "저장에 실패했습니다.");
     } finally {
       setIsSaving(false);
     }
   }
 
-  async function handleToggleActive(item: ExamScheduleItem) {
-    const res = await fetch(`/api/${divisionSlug}/exam-schedules/${item.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ isActive: !item.isActive }),
-    });
-    if (!res.ok) {
-      toast.error("상태 변경에 실패했습니다.");
-      return;
-    }
-    const { schedule } = await res.json();
-    setSchedules((prev) => prev.map((s) => (s.id === item.id ? schedule : s)));
-    toast.success(schedule.isActive ? "활성화되었습니다." : "비활성화되었습니다.");
-    showActionComplete({
-      title: schedule.isActive ? "시험 일정 활성화 완료" : "시험 일정 비활성화 완료",
-      description: `"${schedule.name}" 일정 상태를 변경했습니다.`,
-      notice: "변경된 상태는 관리자 목록과 학생 포털 일정 표시에 바로 반영됩니다.",
-    });
-  }
-
   async function handleDelete(item: ExamScheduleItem) {
+    if (isSaving) return;
     const confirmed = await confirm({
       title: "시험 일정 삭제",
       description: `"${item.name}" 일정을 삭제하시겠습니까? 삭제 후에는 학생 포털 D-Day 목록에서도 함께 제거됩니다.`,
@@ -174,6 +171,8 @@ export function ExamScheduleManager({ divisionSlug, initialSchedules }: ExamSche
       variant: "danger",
     });
     if (!confirmed) return;
+    setIsSaving(true);
+    try {
     const res = await fetch(`/api/${divisionSlug}/exam-schedules/${item.id}`, {
       method: "DELETE",
     });
@@ -182,169 +181,58 @@ export function ExamScheduleManager({ divisionSlug, initialSchedules }: ExamSche
       return;
     }
     setSchedules((prev) => prev.filter((s) => s.id !== item.id));
+    cancelForm();
     toast.success("삭제되었습니다.");
     showActionComplete({
       title: "시험 일정 삭제 완료",
       description: `"${item.name}" 일정을 삭제했습니다.`,
       notice: "삭제된 일정은 현재 목록과 학생 포털 화면에서 더 이상 보이지 않습니다.",
     });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "삭제에 실패했습니다.");
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   return (
     <>
-      <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="admin-help">
-          총 <strong>{schedules.length}</strong>개 일정 (활성:{" "}
-          <strong>{schedules.filter((s) => s.isActive).length}</strong>개)
-        </p>
-        <button
-          type="button"
-          onClick={openCreate}
-          className="admin-button admin-button-primary"
-        >
-          <Plus className="h-4 w-4" />
-          일정 추가
-        </button>
-      </div>
-
-      {(isCreating || editingId) && (
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-5 space-y-4">
-          <p className="text-sm font-semibold text-slate-900">
-            {editingId ? "일정 수정" : "새 일정 추가"}
-          </p>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="text-xs font-medium text-slate-700">시험명 *</label>
-              <input
-                type="text"
-                value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                placeholder="예: 2026 경찰공채 1차 필기"
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-slate-700">시험 종류 *</label>
-              <select
-                value={form.type}
-                onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as ExamScheduleTypeValue }))}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              >
-                {EXAM_SCHEDULE_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-slate-700">시험 날짜 *</label>
-              <input
-                type="date"
-                value={form.examDate}
-                onChange={(e) => setForm((f) => ({ ...f, examDate: e.target.value }))}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-slate-700">메모 (선택)</label>
-              <input
-                type="text"
-                value={form.description}
-                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                placeholder="선택 사항"
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              />
-            </div>
-          </div>
-          <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={form.isActive}
-              onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))}
-              className="h-4 w-4 rounded"
-            />
-            활성화 (학생 포털에 D-Day 표시)
-          </label>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={isSaving}
-              className="admin-button admin-button-primary"
-            >
-              <Save className="h-4 w-4" />
-              {isSaving ? "저장 중..." : "저장"}
-            </button>
-            <button
-              type="button"
-              onClick={cancelForm}
-              className="admin-button"
-            >
-              <X className="h-4 w-4" />
-              취소
-            </button>
-          </div>
+      <section className="admin-section">
+        <MobileWorkspaceTools title="시험 일정 작업">
+        <div className="admin-workspace-toolbar">
+          <div><h2 className="admin-section-title">시험 일정 목록</h2><p className="admin-help mt-1">전체 {schedules.length}개 · 활성 {schedules.filter((item) => item.isActive).length}개</p></div>
+          <button type="button" onClick={openCreate} className="admin-button admin-button-primary"><Plus className="h-4 w-4" />일정 추가</button>
         </div>
-      )}
-
-      {schedules.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 py-16 text-slate-400">
-          <CalendarDays className="h-10 w-10" />
-          <p className="text-sm">등록된 시험 일정이 없습니다.</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {schedules.map((item) => (
-            <div
-              key={item.id}
-              className={`flex items-center gap-4 rounded-lg border p-4 ${ item.isActive ? "border-slate-200 bg-white" : "border-slate-100 bg-slate-50 opacity-60" }`}
-            >
-              <div className="flex-1 min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-semibold text-slate-900 text-sm">{item.name}</span>
-                  <span className="rounded-lg bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                    {getExamScheduleTypeLabel(item.type)}
-                  </span>
-                  {item.isActive && (
-                    <DDayBadge dDayValue={item.dDayValue} dDayLabel={item.dDayLabel} />
-                  )}
-                </div>
-                <p className="admin-help mt-1">
-                  {item.examDate}
-                  {item.description && ` · ${item.description}`}
-                </p>
-              </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => handleToggleActive(item)}
-                  title={item.isActive ? "비활성화" : "활성화"}
-                  className={`rounded-lg px-3 py-1 text-xs font-medium transition ${ item.isActive ? "bg-green-100 text-green-700 hover:bg-green-200" : "bg-slate-100 text-slate-500 hover:bg-slate-200" }`}
-                >
-                  {item.isActive ? "활성" : "비활성"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => openEdit(item)}
-                  className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 transition"
-                  title="수정"
-                >
-                  <Pencil className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDelete(item)}
-                  className="rounded-lg p-2 text-red-400 hover:bg-red-50 transition"
-                  title="삭제"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-      </div>
+        </MobileWorkspaceTools>
+        {schedules.length === 0 ? <p className="admin-empty-state">등록된 시험 일정이 없습니다.</p> : (
+          <div className="admin-table-frame"><table aria-label="시험 일정 목록">
+            <thead><tr><th scope="col">시험명</th><th scope="col" className="hidden md:table-cell">종류</th><th scope="col">시험일</th><th scope="col" className="hidden md:table-cell">D-Day</th><th scope="col">상태</th></tr></thead>
+            <tbody>{schedules.map((item) => <tr key={item.id}>
+              <td className="admin-table-name"><button type="button" className="admin-table-link" onClick={() => openEdit(item)}>{item.name}</button><span className="admin-help block md:hidden">{getExamScheduleTypeLabel(item.type)}</span></td>
+              <td className="hidden md:table-cell">{getExamScheduleTypeLabel(item.type)}</td>
+              <td>{item.examDate}<span className="mt-1 block md:hidden"><DDayBadge dDayValue={item.dDayValue} dDayLabel={item.dDayLabel} /></span></td>
+              <td className="hidden md:table-cell"><DDayBadge dDayValue={item.dDayValue} dDayLabel={item.dDayLabel} /></td>
+              <td><span className={item.isActive ? "text-admin-success" : "text-admin-text-muted"}>{item.isActive ? "활성" : "비활성"}</span></td>
+            </tr>)}</tbody>
+          </table></div>
+        )}
+      </section>
+      <SlideOver open={isCreating || Boolean(editingId)} title={editingId ? "시험 일정 수정" : "시험 일정 추가"} onClose={() => void closeEditor()}>
+        <form id={formId} onSubmit={(event) => { event.preventDefault(); void handleSave(); }} className="space-y-6">
+          <fieldset className="admin-panel" disabled={isSaving}>
+            <label className="admin-form-row"><span className="admin-form-row-label">시험명</span><span className="admin-form-row-control w-full md:w-auto"><input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} className="w-full" /></span></label>
+            <label className="admin-form-row"><span className="admin-form-row-label">시험 종류</span><span className="admin-form-row-control w-full md:w-auto"><select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as ExamScheduleTypeValue })} className="w-full">{EXAM_SCHEDULE_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></span></label>
+            <label className="admin-form-row"><span className="admin-form-row-label">시험 날짜</span><span className="admin-form-row-control w-full md:w-auto"><input type="date" required value={form.examDate} onChange={(event) => setForm({ ...form, examDate: event.target.value })} className="w-full" /></span></label>
+            <label className="admin-form-row"><span className="admin-form-row-label">메모</span><span className="admin-form-row-control w-full md:w-auto"><textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} className="w-full" /></span></label>
+            <label className="admin-form-row"><span className="admin-form-row-label">공개 상태</span><span className="admin-form-row-control flex w-full items-center gap-3 md:w-auto"><input type="checkbox" checked={form.isActive} onChange={(event) => setForm({ ...form, isActive: event.target.checked })} /><span>학생 포털에 D-Day 표시</span></span></label>
+          </fieldset>
+          <DialogActions>
+            {editingId ? <button type="button" disabled={isSaving} className="admin-button admin-button-danger-outline mr-auto" onClick={() => { const item = schedules.find((item) => item.id === editingId); if (item) void handleDelete(item); }}><Trash2 className="h-4 w-4" />삭제</button> : null}
+            <button type="button" disabled={isSaving} onClick={() => void closeEditor()} className="admin-button">취소</button>
+            <button type="submit" form={formId} disabled={isSaving} className="admin-button admin-button-primary">{isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}저장</button>
+          </DialogActions>
+        </form>
+      </SlideOver>
       {confirmDialog}
       {actionCompleteModal}
     </>

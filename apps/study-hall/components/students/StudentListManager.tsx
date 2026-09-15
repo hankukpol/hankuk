@@ -566,7 +566,7 @@ export function StudentListManager({
                   setExpiringFilter(next);
                   updateListQuery({ expiring: next ? "true" : null });
                 }}
-                className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition ${ expiringFilter ? "bg-rose-600 text-white" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50" }`}
+                className={`inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition ${ expiringFilter ? "bg-admin-danger text-white" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50" }`}
               >
                 <CalendarX className="h-3.5 w-3.5" />
                 수강 만료 임박
@@ -605,27 +605,27 @@ export function StudentListManager({
               <Users className="h-4 w-4" />
               <span>{filteredStudents.length}명 표시 중</span>
               {search.trim() ? (
-                <span className="rounded-lg bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
+                <span className="rounded-lg bg-white px-3 py-1 text-xs font-medium text-slate-700">
                   검색어 {search.trim()}
                 </span>
               ) : null}
               {statusFilter !== "ALL" ? (
-                <span className="rounded-lg bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
+                <span className="rounded-lg bg-white px-3 py-1 text-xs font-medium text-slate-700">
                   {getStudentStatusLabel(statusFilter)}
                 </span>
               ) : null}
               {warningFilter !== "ALL" ? (
-                <span className="rounded-lg bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
+                <span className="rounded-lg bg-white px-3 py-1 text-xs font-medium text-slate-700">
                   {warningLabels?.[warningFilter] ?? getWarningStageLabel(warningFilter)}
                 </span>
               ) : null}
               {trackFilter !== "ALL" ? (
-                <span className="rounded-lg bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
+                <span className="rounded-lg bg-white px-3 py-1 text-xs font-medium text-slate-700">
                   {trackFilter}
                 </span>
               ) : null}
               {expiringFilter ? (
-                <span className="rounded-lg bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700">
+                <span className="rounded-lg bg-admin-danger-soft px-3 py-1 text-xs font-medium text-admin-danger">
                   만료 임박
                 </span>
               ) : null}
@@ -645,7 +645,7 @@ export function StudentListManager({
             )}
           </div>
 
-          <div className="mt-6 hidden lg:block">
+          <div className="admin-table-frame mt-6 hidden lg:block">
             <table className="min-w-full">
               <thead>
                 <tr>
@@ -677,7 +677,7 @@ export function StudentListManager({
                       {student.phone || <span className="admin-help">미등록</span>}
                     </td>
                     <td>
-                      <span className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
+                      <span className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700">
                         {student.studyTrack || "미지정"}
                       </span>
                     </td>
@@ -693,7 +693,7 @@ export function StudentListManager({
                     </td>
                     <td>{formatDate(student.createdAt)}</td>
                     <td>
-                      <div className="flex items-center justify-center gap-1.5">
+                      <div className="flex items-center justify-center gap-2">
                         <Link
                           href={`/${divisionSlug}/admin/students/${student.id}`}
                           prefetch={false}
@@ -706,7 +706,7 @@ export function StudentListManager({
                           <button
                             type="button"
                             onClick={() => setDeleteTarget(student)}
-                            className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-2 text-slate-400 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600"
+                            className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-2 text-slate-400 transition hover:border-admin-danger-line hover:bg-admin-danger-soft hover:text-admin-danger"
                             title="학생 삭제"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -734,13 +734,13 @@ export function StudentListManager({
                 <div className="mt-4 flex flex-wrap gap-2">
                   <StudentStatusBadge status={student.status} />
                   {student.tuitionExempt ? <TuitionExemptBadge reason={student.tuitionExemptReason} /> : null}
-                  <span className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
+                  <span className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700">
                     직렬 {student.studyTrack || "미지정"}
                   </span>
-                  <span className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
+                  <span className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700">
                     좌석 {student.seatDisplay || "미배정"}
                   </span>
-                  <span className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
+                  <span className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700">
                     벌점 {(student.demeritPoints ?? toDemeritPoints(student.netPoints))}점
                   </span>
                 </div>
@@ -835,7 +835,7 @@ export function StudentListManager({
           <form id={`${dialogFormId}-1`} onSubmit={handleDeleteStudent} className="space-y-5">
             <div className="admin-notice admin-notice-danger">
               <div className="flex items-start gap-3">
-                <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" />
+                <CircleAlert className="mt-1 h-5 w-5 shrink-0" />
                 <div>
                   <p className="font-semibold">이 작업은 되돌릴 수 없습니다.</p>
                   <p className="mt-1">
@@ -874,7 +874,7 @@ export function StudentListManager({
               <button form={`${dialogFormId}-1`}
                 type="submit"
                 disabled={isDeleting}
-                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-rose-600 py-3 text-sm font-medium text-white transition hover:bg-rose-700 disabled:opacity-60"
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-admin-danger py-3 text-sm font-medium text-white transition hover:bg-admin-danger disabled:opacity-60"
               >
                 {isDeleting ? (
                   <LoaderCircle className="h-4 w-4 animate-spin" />

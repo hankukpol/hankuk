@@ -22,7 +22,7 @@ export default async function AdminPaymentsPage({ params }: AdminPaymentsPagePro
 
   return (
     <div className="admin-flat-page">
-      <section>
+      <section className="max-md:sr-only">
         <h1 className="admin-page-title">수납 관리</h1>
       </section>
 

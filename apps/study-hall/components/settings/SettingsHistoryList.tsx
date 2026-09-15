@@ -56,7 +56,7 @@ export function SettingsHistoryList({ history }: SettingsHistoryListProps) {
                 <p className="text-sm font-semibold text-slate-900">{entry.changedByName}</p>
                 <p className="admin-help tabular-nums">{formatChangedAt(entry.changedAt)}</p>
               </div>
-              <ul className="mt-3 space-y-1.5">
+              <ul className="mt-3 space-y-2">
                 {entry.changes.map((change) => (
                   <ChangeRow key={`${entry.id}:${change.field}`} change={change} />
                 ))}

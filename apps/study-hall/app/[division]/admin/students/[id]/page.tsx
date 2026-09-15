@@ -89,7 +89,7 @@ export default async function StudentDetailPage({ params }: StudentDetailPagePro
 
     return (
       <div className="admin-flat-page">
-        <div>
+        <div className="max-md:hidden">
           <Link
             href={`/${params.division}/admin/students`}
             className="inline-flex items-center gap-2 text-base font-bold text-slate-600 transition hover:text-slate-950"

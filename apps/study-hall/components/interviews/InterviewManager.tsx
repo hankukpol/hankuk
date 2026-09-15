@@ -8,6 +8,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/lib/sonner";
 
 import { SlideOver } from "@/components/ui/SlideOver";
+import { MobileWorkspaceTools } from "@/components/ui/MobileWorkspaceTools";
+import { formatKstDateTime } from "@/lib/date-utils";
 import { AdminTabs, AdminTabPanel } from "@/components/ui/AdminTabs";
 import { StudentSearchCombobox } from "@/components/ui/StudentSearchCombobox";
 import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
@@ -83,11 +85,11 @@ function toFormState(studentId?: string, prefill?: InterviewPrefill | null): For
 }
 
 function formatDate(value: string) {
-  return new Date(`${value}T00:00:00+09:00`).toLocaleDateString("ko-KR");
+  return new Date(`${value}T00:00:00+09:00`).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" });
 }
 
 function formatDateTime(value: string) {
-  return new Date(value).toLocaleString("ko-KR");
+  return formatKstDateTime(value);
 }
 
 export function InterviewManager({
@@ -107,6 +109,7 @@ export function InterviewManager({
   );
   const defaultStudentId = activeStudents[0]?.id ?? "";
   const [interviews, setInterviews] = useState(initialInterviews);
+  const [detailInterviewId, setDetailInterviewId] = useState<string | null>(null);
   const [followUps, setFollowUps] = useState(initialFollowUps);
   const [viewTab, setViewTab] = useState<"history" | "followUp" | "recommended">(
     prefill ? "history" : initialFollowUps.length ? "followUp" : "history",
@@ -310,11 +313,11 @@ export function InterviewManager({
     }
   }
 
-  function renderInterviewCard(interview: InterviewItem) {
+  function renderInterviewCard(interview: InterviewItem, framed = true) {
     const overdue = isFollowUpDue(interview, today);
 
     return (
-      <article key={interview.id} className="admin-record-card">
+      <article key={interview.id} className={framed ? "admin-record-card" : "space-y-4"}>
         <div className="admin-workspace-toolbar">
           <div className="flex flex-wrap items-center gap-3">
             <h3 className="admin-section-title">{interview.studentName}</h3>
@@ -359,6 +362,17 @@ export function InterviewManager({
     );
   }
 
+  const detailInterview = interviews.find((item) => item.id === detailInterviewId)
+    ?? followUps.find((item) => item.id === detailInterviewId);
+
+  function renderMobileInterview(interview: InterviewItem) {
+    return <button key={interview.id} type="button" className="admin-list-row admin-list-row-stack w-full text-left" onClick={() => setDetailInterviewId(interview.id)} aria-label={`${interview.studentName} 면담 상세`}>
+      <span className="admin-list-row-label">{getInterviewResultTypeLabel(interview.resultType)} · {formatDate(interview.date)}</span>
+      <span className="admin-list-row-title">{interview.studentName} · {interview.reason}</span>
+      <span className="admin-list-row-meta">{getInterviewStatusLabel(interview.status)}{interview.followUpDate ? ` · 후속 확인 ${formatDate(interview.followUpDate)}` : ""}</span>
+    </button>;
+  }
+
   return (
     <>
       <div className="admin-flat-page">
@@ -373,6 +387,7 @@ export function InterviewManager({
           label="면담 업무"
           idPrefix="interview-view"
         />
+        <MobileWorkspaceTools title="면담 기록 작업" icon={Plus}>
         <div className="admin-workspace-toolbar">
           <p className="admin-help">운영 학생 <strong className="text-admin-text">{activeStudents.length}명</strong></p>
           <div className="flex flex-wrap gap-2">
@@ -384,8 +399,10 @@ export function InterviewManager({
             </button>
           </div>
         </div>
+        </MobileWorkspaceTools>
 
         <AdminTabPanel id="history" activeId={viewTab} idPrefix="interview-view" className="space-y-4">
+          <MobileWorkspaceTools title="면담 조회 조건" active={viewTab === "history"}>
           <div className="admin-filter-bar">
             <label>
               <span className="admin-label mb-2 block">학생</span>
@@ -396,12 +413,16 @@ export function InterviewManager({
               <input type="month" value={filterMonth} onChange={(event) => setFilterMonth(event.target.value)} className="w-full" />
             </label>
           </div>
-          <div className="admin-workspace-toolbar">
+          </MobileWorkspaceTools>
+          <div className="admin-workspace-toolbar max-md:hidden">
             <h2 className="admin-section-title">면담 기록 <span className="text-admin-accent">{historyRows.length}건</span></h2>
             <p className="admin-help">{filterMonth} 전체 {interviews.length}건</p>
           </div>
-          <div className="space-y-4">
-            {historyRows.map(renderInterviewCard)}
+          <div className="md:hidden">{historyRows.map(renderMobileInterview)}</div>
+          <div className="hidden space-y-4 md:block">
+            {historyRows.map((interview) => renderInterviewCard(interview))}
+          </div>
+          <div>
             {!historyRows.length ? (
               <div className="admin-empty-state">
                 <p className="font-semibold">조회 조건에 맞는 면담 기록이 없습니다.</p>
@@ -416,8 +437,11 @@ export function InterviewManager({
             <h2 className="admin-section-title">후속 확인 대기 <span className="text-admin-danger">{followUps.length}건</span></h2>
             <p className="admin-help">후속 확인 예정일이 오늘({formatDate(today)})까지 도래한 진행 중 면담</p>
           </div>
-          <div className="space-y-4">
-            {followUps.map(renderInterviewCard)}
+          <div className="md:hidden">{followUps.map(renderMobileInterview)}</div>
+          <div className="hidden space-y-4 md:block">
+            {followUps.map((interview) => renderInterviewCard(interview))}
+          </div>
+          <div>
             {!followUps.length ? (
               <div className="admin-empty-state">
                 <p className="font-semibold">확인해야 할 후속 조치가 없습니다.</p>
@@ -454,6 +478,10 @@ export function InterviewManager({
           {!recommendedStudents.length ? <div className="admin-empty-state"><p className="font-semibold">면담 권장 대상이 없습니다.</p><p className="admin-help mt-2">현재 기준 벌점 {warnInterview}점 이상</p></div> : null}
         </AdminTabPanel>
       </div>
+
+      <SlideOver open={Boolean(detailInterview)} onClose={() => setDetailInterviewId(null)} title="면담 기록 상세">
+        {detailInterview ? renderInterviewCard(detailInterview, false) : null}
+      </SlideOver>
 
       <SlideOver
         open={isEditorOpen}
@@ -604,7 +632,7 @@ export function InterviewManager({
                   onChange={(event) =>
                     setForm((current) => ({ ...current, guardianContacted: event.target.checked }))
                   }
-                  className="mt-0.5"
+                  className="mt-1"
                 />
                 <span>
                   <span className="text-sm font-medium text-slate-900">보호자 연락 완료</span>

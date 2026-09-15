@@ -9,6 +9,8 @@ import { toast } from "@/lib/sonner";
 import { ExamAnalysisExport } from "@/components/reports/ExamAnalysisExport";
 import { formatExamDateLabel } from "@/lib/exam-date-label";
 import { AdminTabs } from "@/components/ui/AdminTabs";
+import { MobileWorkspaceTools } from "@/components/ui/MobileWorkspaceTools";
+import { MobileDisclosure } from "@/components/ui/MobileDisclosure";
 
 import { getWarningStageLabel } from "@/lib/student-meta";
 import type {
@@ -209,8 +211,8 @@ export function ReportsDashboard({
 
   return (
     <div className="admin-flat-page">
-      <section className="admin-section">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+      <section className="admin-section admin-compact-workspace">
+        <div className="flex flex-wrap items-center justify-between gap-4 max-md:sr-only">
           <div>
             <h1 className="admin-page-title">통계 / 보고서</h1>
             <p className="admin-page-description">
@@ -230,6 +232,11 @@ export function ReportsDashboard({
 
         {tab === "report" ? (
           <div role="tabpanel" id="report-view-panel-report" aria-labelledby="report-view-report">
+            <div className="admin-portal-summary md:hidden">
+              <div><p className="admin-portal-summary-label">조회 범위</p><p className="admin-help">{data.rangeLabel}</p></div>
+              <div><p className="admin-portal-summary-label">집계 대상</p><p className="admin-portal-summary-value">{data.studentRows.length}명</p></div>
+            </div>
+            <MobileDisclosure title="보고서 조회 조건">
             <form
               onSubmit={handleSubmit}
               className="mt-6 grid gap-4 xl:grid-cols-[180px_180px_180px_auto]"
@@ -282,7 +289,7 @@ export function ReportsDashboard({
                 </button>
               </div>
 
-              <div className="flex flex-wrap items-end gap-2 xl:justify-end">
+              <div className="flex flex-wrap items-end gap-2 xl:justify-end max-md:hidden">
                 {reportButtons.map((button) => (
                   <Link
                     key={button.label}
@@ -296,8 +303,11 @@ export function ReportsDashboard({
                 ))}
               </div>
             </form>
-
-            {flags.examManagement && <ExamAnalysisExport key={divisionSlug} divisionSlug={divisionSlug} />}
+            </MobileDisclosure>
+            <MobileWorkspaceTools title="보고서 내보내기" icon={Download}>
+              <div className="flex flex-wrap gap-2 md:hidden">{reportButtons.map((button) => <Link key={button.label} href={button.href} prefetch={false} className="admin-button"><Download className="h-4 w-4" />{button.label}</Link>)}</div>
+              {flags.examManagement && <ExamAnalysisExport key={divisionSlug} divisionSlug={divisionSlug} />}
+            </MobileWorkspaceTools>
 
             <section className="mt-6 rounded-lg border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
               <p className="font-semibold text-slate-900">{data.title}</p>
@@ -339,7 +349,7 @@ export function ReportsDashboard({
                                   <p className="font-medium text-slate-900">{item.studentName}</p>
                                   <p className="admin-help">{item.studentNumber}</p>
                                 </div>
-                                <span className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                                <span className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-admin-success">
                                   {formatPointDelta(item.pointDelta)}
                                 </span>
                               </div>
@@ -363,7 +373,7 @@ export function ReportsDashboard({
                                   <p className="font-medium text-slate-900">{item.studentName}</p>
                                   <p className="admin-help">{item.studentNumber}</p>
                                 </div>
-                                <span className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-rose-700">
+                                <span className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-admin-danger">
                                   {formatPointDelta(item.pointDelta)}
                                 </span>
                               </div>
@@ -493,7 +503,7 @@ export function ReportsDashboard({
                               <>
                                 <td>
                                   <span
-                                    className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${ row.pointDelta > 0 ? "border border-slate-200 bg-white text-emerald-700" : row.pointDelta < 0 ? "border border-slate-200 bg-white text-rose-700" : "bg-slate-100 text-slate-700" }`}
+                                    className={`rounded-lg px-3 py-1 text-xs font-semibold ${ row.pointDelta > 0 ? "border border-slate-200 bg-white text-admin-success" : row.pointDelta < 0 ? "border border-slate-200 bg-white text-admin-danger" : "bg-slate-100 text-slate-700" }`}
                                   >
                                     {formatPointDelta(row.pointDelta)}
                                   </span>
@@ -538,6 +548,11 @@ export function ReportsDashboard({
           </div>
         ) : (
           <div role="tabpanel" id="report-view-panel-activity" aria-labelledby="report-view-activity">
+            <div className="admin-portal-summary md:hidden">
+              <div><p className="admin-portal-summary-label">조회 범위</p><p className="admin-help">{activity.dateFrom} ~ {activity.dateTo}</p></div>
+              <div><p className="admin-portal-summary-label">활동 기록</p><p className="admin-portal-summary-value">{activity.items.length}건</p></div>
+            </div>
+            <MobileDisclosure title="활동 로그 조회 조건">
             <div className="mt-6 grid gap-4 xl:grid-cols-[180px_180px_180px_auto]">
               <label className="block">
                 <span className="admin-label mb-2 block">조회 시작일</span>
@@ -607,7 +622,7 @@ export function ReportsDashboard({
                   <Link
                     href={exportLinks.activity}
                     prefetch={false}
-                    className="admin-button"
+                    className="admin-button hidden md:inline-flex"
                   >
                     <Download className="h-4 w-4" />
                     활동 로그 내보내기
@@ -615,6 +630,17 @@ export function ReportsDashboard({
                 ) : null}
               </div>
             </div>
+            </MobileDisclosure>
+            {activity.availableActionTypes.length > 0 ? (
+              <div className="md:hidden">
+                <MobileWorkspaceTools title="활동 로그 내보내기" icon={Download}>
+                  <Link href={exportLinks.activity} prefetch={false} className="admin-button">
+                    <Download className="h-4 w-4" />
+                    활동 로그 내보내기
+                  </Link>
+                </MobileWorkspaceTools>
+              </div>
+            ) : null}
 
             <section className="admin-section mt-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -650,7 +676,7 @@ export function ReportsDashboard({
                               {formatDateTime(item.occurredAt)}
                             </td>
                             <td>
-                              <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                              <span className="rounded-lg bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
                                 {item.actionLabel}
                               </span>
                             </td>

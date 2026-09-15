@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
+import { inspectOverlaps } from "./design-overlap-inspect.mjs";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
@@ -22,7 +23,7 @@ try {
     const studentResponse = await context.request.get("/api/police/students", { headers: { Cookie: cookie } });
     assert.ok(studentResponse.ok());
     const students = (await studentResponse.json()).students;
-    const student = students[0];
+    const student = students.find((entry) => entry.studentNumber === "90001") ?? students[0];
     assert.ok(student?.id);
     let fixture = "";
     let settlementRequests = 0;
@@ -71,16 +72,34 @@ try {
     });
 
     async function settle() {
-      await page.waitForLoadState("networkidle");
+      await page.waitForLoadState("networkidle", { timeout: 1000 }).catch(() => {});
       await page.evaluate(() => document.fonts.ready);
       await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     }
     async function visit(route) {
       fixture = "";
-      await page.goto(`/police/admin/${route}`, { waitUntil: "networkidle" });
+      await page.goto(`/police/admin/${route}`, { waitUntil: "load", timeout: 90000 });
       await settle();
     }
+    async function closeTools() {
+      const open = page.locator('.admin-mobile-tools[data-open="true"]');
+      if (width < 768 && await open.count()) {
+        await page.keyboard.press("Escape");
+        await open.waitFor({ state: "hidden" });
+      }
+    }
+    async function show(control) {
+      if (!await control.isVisible()) {
+        const id = await control.evaluate((el) => el.closest(".admin-mobile-tools-panel")?.id);
+        assert.ok(id, "The requested control must be in the current mobile tools");
+        await closeTools();
+        await page.locator(`[aria-controls=${JSON.stringify(id)}][data-mobile-tools-trigger]`).click();
+        await control.waitFor({ state: "visible" });
+      }
+      return control;
+    }
     async function tab(name) {
+      await closeTools();
       await page.getByRole("tab", { name, exact: typeof name === "string" }).click();
       await settle();
       const selected = page.getByRole("tab", { name, exact: typeof name === "string" });
@@ -89,7 +108,10 @@ try {
       assert.ok(await page.locator(`[id="${id}"]`).isVisible());
     }
     async function capture(name, assertions) {
+      await closeTools();
       await settle();
+      const overlap = await page.evaluate(inspectOverlaps);
+      assert.deepEqual(overlap.issues, [], `${name}: form overlaps`);
       const layout = await page.evaluate(() => ({
         overflow: document.documentElement.scrollWidth > innerWidth + 1,
         clippedActiveTabs: [...document.querySelectorAll('.admin-tabs [role="tab"][aria-selected="true"]')].filter((element) => element.getClientRects().length).filter((element) => {
@@ -105,27 +127,36 @@ try {
       }));
       assert.equal(layout.overflow, false, `${name}: document overflow`);
       assert.equal(layout.clippedActiveTabs, 0, `${name}: active tab clipped`);
-      assert.ok(layout.cards.every((card) => !card.overflow && card.radius === "8px"), `${name}: record cards`);
+      assert.ok(layout.cards.every((card) => !card.overflow && card.radius === (width < 768 ? "0px" : "8px")), `${name}: record rows/cards`);
       assert.deepEqual(pageErrors, [], `${name}: runtime errors`);
       await page.screenshot({ path: path.join(output, `${width}-${name}.png`), fullPage: true });
-      results.push({ width, name, assertions, layout, pageErrors: [...pageErrors] });
+      results.push({ width, name, assertions, layout, overlap, pageErrors: [...pageErrors] });
       fs.writeFileSync(path.join(output, "results.json"), JSON.stringify(results, null, 2));
     }
 
     await visit("points");
     assert.equal(await page.getByRole("tab", { name: "부여 내역" }).getAttribute("aria-selected"), "true");
-    await page.getByLabel("시작일", { exact: true }).fill("2026-06-01");
-    await page.getByLabel("종료일", { exact: true }).fill("2026-06-30");
+    await (await show(page.getByLabel("시작일", { exact: true }))).fill("2026-06-01");
+    await (await show(page.getByLabel("종료일", { exact: true }))).fill("2026-06-30");
     await tab("학생별 순위");
-    await page.getByRole("button", { name: "하위", exact: true }).click();
+    await (await show(page.getByRole("button", { includeHidden: true, name: "하위", exact: true }))).click();
     await tab("부여 내역");
     assert.equal(await page.getByLabel("시작일", { exact: true }).inputValue(), "2026-06-01");
     fixture = "points";
-    await page.getByRole("button", { name: "조회", exact: true }).click();
-    await page.locator("p:visible").filter({ hasText: /^월간 학습 계획 이행$/ }).waitFor();
+    await (await show(page.getByRole("button", { includeHidden: true, name: "조회", exact: true }))).click();
+    await closeTools();
+    await page.locator(".admin-list-row-title:visible,td p:visible").filter({ hasText: /월간 학습 계획 이행/ }).waitFor();
     await capture("points-records-fixture", ["history default", "shared date draft persists", "past-month range", "long notes and positive/negative points"]);
+    if (width < 768) {
+      await page.getByRole("button", { includeHidden: true, name: `${student.name} 상벌점 상세`, exact: true }).first().click();
+      const detail = page.getByRole("dialog", { name: "상벌점 기록 상세", exact: true });
+      await detail.getByText(/UI 검증용 메모/).waitFor();
+      await capture("points-mobile-detail", ["full long memo remains accessible in the detail drawer"]);
+      await page.keyboard.press("Escape");
+      await detail.waitFor({ state: "hidden" });
+    }
     await tab("학생별 순위");
-    assert.equal(await page.getByRole("button", { name: "하위", exact: true }).getAttribute("aria-pressed"), "true");
+    assert.equal(await page.getByRole("button", { includeHidden: true, name: "하위", exact: true }).getAttribute("aria-pressed"), "true");
     await capture("points-ranking", ["ranking order persists"]);
 
     await visit("interviews");
@@ -133,7 +164,7 @@ try {
     const recommended = page.locator("#interview-view-panel-recommended .admin-record-card").first();
     if (await recommended.count()) {
       const name = await recommended.locator("h3").textContent();
-      await recommended.getByRole("button", { name: "바로 기록" }).click();
+      await recommended.getByRole("button", { includeHidden: true, name: "바로 기록" }).click();
       await page.getByRole("dialog").waitFor();
       assert.ok((await page.getByRole("dialog").textContent()).includes(name));
       await page.keyboard.press("Escape");
@@ -141,48 +172,58 @@ try {
     await capture("interview-recommended", ["recommendation record action opens selected student"]);
     await tab("면담 이력");
     fixture = "interview";
-    await page.getByLabel("조회 월", { exact: true }).fill("2026-06");
-    await page.getByText("오전 자습 집중도 저하와 반복 지각에 대한 상담", { exact: true }).waitFor();
+    await (await show(page.getByLabel("조회 월", { exact: true }))).fill("2026-06");
+    await closeTools();
+    await page.locator(".admin-list-row-title:visible,td:visible,dd:visible").filter({ hasText: /오전 자습 집중도 저하와 반복 지각에 대한 상담/ }).first().waitFor();
     await capture("interview-record-fixture", ["long reason/content/follow-up remain separate and readable"]);
+    if (width < 768) {
+      await page.getByRole("button", { name: `${student.name} 면담 상세`, exact: true }).click();
+      const detail = page.getByRole("dialog", { name: "면담 기록 상세", exact: true });
+      await detail.getByText(/최근 수면 시간과 통학 동선을 확인했습니다/).waitFor();
+      await detail.getByText(/다음 주 월요일 재면담 예정/).waitFor();
+      await capture("interview-mobile-detail", ["full content and follow-up remain in detail"]);
+      await page.keyboard.press("Escape");
+      await detail.waitFor({ state: "hidden" });
+    }
     await tab(/^면담 권장 대상/);
     await tab("면담 이력");
     assert.equal(await page.getByLabel("조회 월", { exact: true }).inputValue(), "2026-06");
 
     await visit("leave");
     fixture = "leave";
-    await page.getByLabel("조회 월", { exact: true }).fill("2026-06");
+    await (await show(page.getByLabel("조회 월", { exact: true }))).fill("2026-06");
     await tab("학생별 사용 현황");
-    await page.getByLabel("기준 월", { exact: true }).fill("2026-07");
+    await (await show(page.getByLabel("기준 월", { exact: true }))).fill("2026-07");
     await capture("leave-usage", ["usage cards separate used/remaining/limit"]);
     await tab("미사용 휴가 정산");
-    await page.getByLabel("정산 대상 월", { exact: true }).fill("2026-06");
-    await page.getByRole("button", { name: "미리보기", exact: true }).click();
+    await (await show(page.getByLabel("정산 대상 월", { exact: true }))).fill("2026-06");
+    await (await show(page.getByRole("button", { includeHidden: true, name: "미리보기", exact: true }))).click();
     await settle();
     await capture("leave-settlement", ["read-only settlement preview", "separate settlement month"]);
     await tab("학생별 사용 현황");
     assert.equal(await page.getByLabel("기준 월", { exact: true }).inputValue(), "2026-07");
-    await page.getByRole("button", { name: "이 학생 내역 보기" }).click();
+    await (await show(page.getByRole("button", { includeHidden: true, name: "이 학생 내역 보기" }))).click();
     await settle();
     assert.equal(await page.getByLabel("조회 월", { exact: true }).inputValue(), "2026-07");
     await capture("leave-history", ["usage to student history handoff preserves month and student"]);
 
     await visit("payments");
     const initiallyLoaded = settlementRequests;
-    await page.getByLabel("기준 월", { exact: true }).fill("2026-06");
+    await (await show(page.getByLabel("기준 월", { exact: true }))).fill("2026-06");
     await capture("payment-status", ["month summary belongs to status tab", "full-width comparison table"]);
     await tab("수납 내역");
-    await page.getByLabel("검색", { exact: true }).fill(student.name);
-    await page.getByLabel("시작일", { exact: true }).fill("2026-01-01");
+    await (await show(page.getByLabel("검색", { exact: true }))).fill(student.name);
+    await (await show(page.getByLabel("시작일", { exact: true }))).fill("2026-01-01");
     await tab("월별 수납 현황");
     assert.equal(await page.getByLabel("기준 월", { exact: true }).inputValue(), "2026-06");
     assert.equal(settlementRequests, initiallyLoaded, "hidden settlement does not load");
     await tab("수납 내역");
     assert.equal(await page.getByLabel("검색", { exact: true }).inputValue(), student.name);
     assert.equal(await page.getByLabel("시작일", { exact: true }).inputValue(), "2026-01-01");
-    await page.getByLabel("검색", { exact: true }).fill("");
+    await (await show(page.getByLabel("검색", { exact: true }))).fill("");
     await capture("payment-history", ["independent history filters persist", "amount/date/method/recorder columns"]);
     await tab("일일 정산");
-    await page.getByRole("button", { name: "직접 선택", exact: true }).click();
+    await (await show(page.getByRole("button", { includeHidden: true, name: "직접 선택", exact: true }))).click();
     await page.locator('#payment-view-panel-settlement input[type="date"]').first().fill("2026-06-01");
     await settle();
     await tab("수납 내역");
@@ -192,8 +233,9 @@ try {
     await capture("payment-settlement", ["custom range persists", "settlement refreshes on return"]);
 
     await visit("phone-submissions");
-    const periods = page.getByRole("button", { name: /^2교시$/ });
-    if (await periods.count()) await periods.click();
+    const periods = page.getByRole("tab", { name: "2교시", exact: true });
+    assert.equal(await periods.count(), 1);
+    await periods.click();
     const checkText = await page.locator("#phone-workspace-panel-check").textContent();
     await tab("이력 조회");
     await capture("phone-history", ["history is its own workflow"]);

@@ -18,6 +18,7 @@ type ScoreTargetPanelProps = {
   initialTargets: ScoreTargetItem[];
   availableExamTypes?: Array<Pick<ExamTypeItem, "id" | "name" | "studyTrack">>;
   canEdit?: boolean;
+  variant?: "cards" | "rows";
 };
 
 function formatDate(value: string | null) {
@@ -30,14 +31,14 @@ function formatDate(value: string | null) {
 
 function getStatusTone(target: ScoreTargetItem) {
   if (target.isAchieved) {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    return "border-admin-success-line bg-admin-success-soft text-admin-success";
   }
 
   if (target.latestScore === null) {
     return "border-slate-200 bg-slate-50 text-slate-600";
   }
 
-  return "border-amber-200 bg-amber-50 text-amber-700";
+  return "border-admin-warning-line bg-admin-warning-soft text-admin-warning";
 }
 
 export function ScoreTargetPanel({
@@ -46,6 +47,7 @@ export function ScoreTargetPanel({
   initialTargets,
   availableExamTypes = [],
   canEdit = false,
+  variant = "cards",
 }: ScoreTargetPanelProps) {
   const [targets, setTargets] = useState(initialTargets);
   const [selectedExamTypeId, setSelectedExamTypeId] = useState(
@@ -228,21 +230,21 @@ export function ScoreTargetPanel({
       ) : null}
 
       {targets.length > 0 ? (
-        <div className="mt-5 grid gap-3 lg:grid-cols-2">
+        <div className={variant === "rows" ? "mt-5 space-y-4" : "mt-5 grid gap-3 lg:grid-cols-2"}>
           {targets.map((target) => (
-            <article key={target.id} className={portalInsetClass}>
+            <article key={target.id} className={variant === "rows" ? "admin-section" : portalInsetClass}>
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-[13px] font-medium text-admin-text-muted">
                     {target.studyTrack || "공통"}
                   </p>
-                  <h4 className="mt-1.5 text-[16px] font-bold text-admin-text">
+                  <h4 className="mt-2 text-[16px] font-bold text-admin-text">
                     {target.examTypeName}
                   </h4>
                 </div>
 
                 <span
-                  className={`rounded-lg border px-3 py-1.5 text-[13px] font-medium ${getStatusTone(target)}`}
+                  className={`rounded-lg border px-3 py-2 text-[13px] font-medium ${getStatusTone(target)}`}
                 >
                   {target.isAchieved
                     ? "달성"
@@ -254,7 +256,7 @@ export function ScoreTargetPanel({
 
               {/* DESIGN.md 5.3 — 요약 세 칸은 손으로 만든 카드가 아니라 평면 격자다.
                   테두리 상자 셋을 쌓으면 그것이 곧 카드 나열이다(MOBILE_DESIGN.md 2.5). */}
-              <div className="admin-portal-summary admin-portal-summary-3 mt-4">
+              <div className="mt-4 grid grid-cols-3 gap-3">
                 <div>
                   <p className="admin-portal-summary-label">목표 점수</p>
                   <p className="admin-portal-summary-value">{target.targetScore}</p>

@@ -1,4 +1,5 @@
 "use client";
+import { MobileWorkspaceTools } from "@/components/ui/MobileWorkspaceTools";
 
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -13,11 +14,14 @@ import {
   Save,
   Trash2,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { toast } from "@/lib/sonner";
 
 import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
 import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
+import { AdminTabPanel, AdminTabs } from "@/components/ui/AdminTabs";
+import { DialogActions } from "@/components/ui/DialogActions";
+import { SlideOver } from "@/components/ui/SlideOver";
 
 type PeriodItem = {
   id: string;
@@ -34,7 +38,10 @@ type PeriodSettingsManagerProps = {
   divisionSlug: string;
   initialPeriods: PeriodItem[];
   policyEnabled?: boolean;
+  optionalStudyContent?: ReactNode;
 };
+
+type PeriodSettingsTab = "list" | "optional-study";
 
 const defaultForm = {
   name: "",
@@ -85,7 +92,8 @@ function SortablePeriodRow({
         transform: CSS.Transform.toString(transform),
         transition,
       }}
-      className={`rounded-lg border px-4 py-4 transition ${ isDragging ? "border-slate-400 bg-slate-100" : "border-slate-200 bg-white" }`}
+      className="admin-choice-card"
+      data-dragging={isDragging}
     >
       <div className="flex flex-wrap items-start gap-3">
         <button
@@ -102,12 +110,12 @@ function SortablePeriodRow({
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="admin-section-title">{period.name}</h2>
             <span
-              className={`rounded-lg px-2 py-1 text-xs font-medium ${ period.isMandatory ? "bg-admin-accent text-white" : "bg-slate-100 text-slate-600" }`}
+              className="admin-badge"
             >
               {period.isMandatory ? "필수" : "선택"}
             </span>
             <span
-              className={`rounded-lg px-2 py-1 text-xs font-medium ${ period.isActive ? "bg-white border border-slate-200 text-emerald-700" : "bg-white border border-slate-200 text-red-700" }`}
+              className="admin-badge"
             >
               {period.isActive ? "활성" : "비활성"}
             </span>
@@ -130,6 +138,7 @@ function SortablePeriodRow({
             onClick={() => onEdit(period)}
             className="admin-button admin-button-compact w-11 px-0"
             aria-label="교시 수정"
+            title="교시 수정"
           >
             <Pencil className="h-4 w-4" />
           </button>
@@ -137,8 +146,9 @@ function SortablePeriodRow({
             type="button"
             onClick={() => onDelete(period.id)}
             disabled={isDeleting}
-            className="admin-button admin-button-danger-outline"
+            className="admin-button admin-button-compact admin-button-danger-outline w-11 px-0"
             aria-label="교시 삭제"
+            title="교시 삭제"
           >
             {isDeleting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
           </button>
@@ -152,6 +162,7 @@ export function PeriodSettingsManager({
   divisionSlug,
   initialPeriods,
   policyEnabled = false,
+  optionalStudyContent,
 }: PeriodSettingsManagerProps) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
   const [periods, setPeriods] = useState<PeriodItem[]>(initialPeriods);
@@ -160,6 +171,9 @@ export function PeriodSettingsManager({
   const [isSaving, setIsSaving] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<PeriodSettingsTab>("list");
+  const editorFormId = useId();
   const { showActionComplete, actionCompleteModal } = useActionCompleteModal();
   const { confirm, confirmDialog } = useConfirmDialog();
 
@@ -167,8 +181,29 @@ export function PeriodSettingsManager({
     () => [...periods].sort((left, right) => left.displayOrder - right.displayOrder),
     [periods],
   );
+  const hasOptionalStudy = Boolean(optionalStudyContent);
+  const tabItems: ReadonlyArray<{ id: PeriodSettingsTab; label: string }> = hasOptionalStudy
+    ? [
+        { id: "list", label: "교시 목록" },
+        { id: "optional-study", label: "선택자습 신청" },
+      ]
+    : [{ id: "list", label: "교시 목록" }];
 
-  function resetForm() {
+  useEffect(() => {
+    if (hasOptionalStudy && window.location.hash === "#optional-study") {
+      setActiveTab("optional-study");
+    }
+  }, [hasOptionalStudy]);
+
+  function openCreateEditor() {
+    setEditingId(null);
+    setForm(defaultForm);
+    setIsEditorOpen(true);
+  }
+
+  function closeEditor() {
+    if (isSaving) return;
+    setIsEditorOpen(false);
     setEditingId(null);
     setForm(defaultForm);
   }
@@ -183,6 +218,7 @@ export function PeriodSettingsManager({
       isMandatory: period.isMandatory,
       isActive: period.isActive,
     });
+    setIsEditorOpen(true);
   }
 
   async function refreshPeriods() {
@@ -234,7 +270,9 @@ export function PeriodSettingsManager({
 
       toast.success(editingId ? "교시를 수정했습니다." : "교시를 추가했습니다.");
       await refreshPeriods();
-      resetForm();
+      setIsEditorOpen(false);
+      setEditingId(null);
+      setForm(defaultForm);
       showActionComplete({
         title: editingId ? "교시 수정 완료" : "교시 추가 완료",
         description: editingId ? "교시 정보가 수정되었습니다." : "새 교시가 추가되었습니다.",
@@ -284,7 +322,7 @@ export function PeriodSettingsManager({
       });
 
       if (editingId === id) {
-        resetForm();
+        closeEditor();
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "교시 삭제에 실패했습니다.");
@@ -340,8 +378,17 @@ export function PeriodSettingsManager({
 
   return (
     <>
-      <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+      <AdminTabs
+        items={tabItems}
+        activeId={activeTab}
+        onChange={setActiveTab}
+        label="교시 설정 구분"
+        idPrefix="period-settings"
+        variant="secondary"
+      />
+      <AdminTabPanel id="list" activeId={activeTab} idPrefix="period-settings" className="mt-6">
         <section className="admin-section">
+        <MobileWorkspaceTools title="교시 목록 작업" active={activeTab === "list"}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="admin-section-title">교시 목록 정렬</h2>
@@ -362,7 +409,7 @@ export function PeriodSettingsManager({
             </button>
             <button
               type="button"
-              onClick={resetForm}
+              onClick={openCreateEditor}
               className="admin-button admin-button-primary"
             >
               <Plus className="h-4 w-4" />
@@ -371,7 +418,8 @@ export function PeriodSettingsManager({
           </div>
         </div>
 
-        <div className="mt-5 space-y-3">
+        </MobileWorkspaceTools>
+        <div className="mt-5 space-y-3 max-md:mt-0">
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={orderedPeriods.map((period) => period.id)} strategy={verticalListSortingStrategy}>
               {orderedPeriods.map((period) => (
@@ -387,16 +435,14 @@ export function PeriodSettingsManager({
           </DndContext>
         </div>
         </section>
-
-        <section className="admin-section">
-        <h2 className="admin-section-title">
-          {editingId ? "교시 수정" : "새 교시 추가"}
-        </h2>
-        <p className="admin-help mt-2 leading-6">
-          활성 교시가 출석 입력 목록에 표시됩니다. 변경 후 출석부를 새로고침해 주세요.
-        </p>
-
-        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+      </AdminTabPanel>
+      <SlideOver
+        open={isEditorOpen}
+        title={editingId ? "교시 수정" : "새 교시 추가"}
+        description="활성 교시는 출석 입력 목록에 표시되며 저장 즉시 운영 화면에 반영됩니다."
+        onClose={closeEditor}
+      >
+        <form id={editorFormId} onSubmit={handleSubmit} className="space-y-4">
           <label className="block">
             <span className="admin-label mb-2 block">교시 이름</span>
             <input
@@ -473,27 +519,37 @@ export function PeriodSettingsManager({
             />
           </label>
 
-          <div className="flex flex-wrap gap-2 pt-2">
+          <DialogActions>
+            <button
+              type="button"
+              onClick={closeEditor}
+              disabled={isSaving}
+              className="admin-button"
+            >
+              취소
+            </button>
             <button
               type="submit"
+              form={editorFormId}
               disabled={isSaving}
               className="admin-button admin-button-primary"
             >
               {isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               {editingId ? "교시 수정" : "교시 추가"}
             </button>
-
-            <button
-              type="button"
-              onClick={resetForm}
-              className="admin-button"
-            >
-              초기화
-            </button>
-          </div>
+          </DialogActions>
         </form>
-        </section>
-      </div>
+      </SlideOver>
+      {optionalStudyContent ? (
+        <AdminTabPanel
+          id="optional-study"
+          activeId={activeTab}
+          idPrefix="period-settings"
+          className="mt-6"
+        >
+          {optionalStudyContent}
+        </AdminTabPanel>
+      ) : null}
       {confirmDialog}
       {actionCompleteModal}
     </>

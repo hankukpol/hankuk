@@ -2,17 +2,19 @@
 
 import { useId } from "react";
 import { DialogActions } from "@/components/ui/DialogActions";
+import { MobileWorkspaceTools } from "@/components/ui/MobileWorkspaceTools";
 
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useState } from "react";
-import { Ban, CircleAlert, LoaderCircle, RotateCcw, SlidersHorizontal, Trash2 } from "lucide-react";
+import { Ban, CircleAlert, LoaderCircle, Pencil, Save, RotateCcw, SlidersHorizontal, Trash2 } from "lucide-react";
 import { toast } from "@/lib/sonner";
 
 import { PaymentMethodSelect } from "@/components/payments/PaymentMethodSelect";
 import { StudentStatusBadge, TuitionExemptBadge, WarningStageBadge } from "@/components/students/StudentBadges";
 import { StudentDetailTabs } from "@/components/students/StudentDetailTabs";
 import { AdminTabs } from "@/components/ui/AdminTabs";
+import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
 import { Modal } from "@/components/ui/Modal";
 import { SlideOver } from "@/components/ui/SlideOver";
 import { toDemeritPoints } from "@/lib/student-meta";
@@ -96,7 +98,7 @@ function formatDate(value: string | null) {
     return "-";
   }
 
-  return new Date(value).toLocaleDateString("ko-KR");
+  return new Date(value).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" });
 }
 
 function formatCurrency(value: number | null) {
@@ -139,6 +141,19 @@ export function StudentDetailView({
   const router = useRouter();
   const [activePageTab, setActivePageTab] = useState<(typeof pageTabs)[number]["id"]>("basic");
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]["id"]>("attendance");
+  const [isBasicEditorOpen, setIsBasicEditorOpen] = useState(false);
+  const [editorState, setEditorState] = useState({ isDirty: false, isSaving: false });
+  const { confirm, confirmDialog } = useConfirmDialog();
+  async function closeBasicEditor() {
+    if (editorState.isSaving) return;
+    if (editorState.isDirty && !await confirm({ title: "변경사항 폐기", description: "저장하지 않은 학생 정보가 있습니다.", confirmLabel: "변경 폐기", cancelLabel: "계속 편집", variant: "warning" })) return;
+    setIsBasicEditorOpen(false);
+  }
+  async function closeMemoEditor() {
+    if (isSavingMemo) return;
+    if (memoDraft !== memo && !await confirm({ title: "변경사항 폐기", description: "저장하지 않은 메모가 있습니다.", confirmLabel: "변경 폐기", cancelLabel: "계속 편집", variant: "warning" })) return;
+    setIsEditingMemo(false); setMemoDraft(memo);
+  }
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
   const [withdrawnNote, setWithdrawnNote] = useState("");
   const [isWithdrawing, setIsWithdrawing] = useState(false);
@@ -363,6 +378,7 @@ export function StudentDetailView({
   }
 
   async function saveMemo(nextMemo: string) {
+    if (isSavingMemo) return;
     const normalized = nextMemo.trim();
     const current = memo.trim();
 
@@ -397,7 +413,6 @@ export function StudentDetailView({
       router.refresh();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "메모 저장에 실패했습니다.");
-      setMemoDraft(memo);
     } finally {
       setIsSavingMemo(false);
     }
@@ -405,127 +420,33 @@ export function StudentDetailView({
 
   return (
     <div className="admin-flat-page">
-      <section className="admin-student-detail-summary overflow-hidden rounded-lg border border-slate-200 bg-white">
-        <div className="grid gap-5 px-6 py-6 lg:grid-cols-[1.1fr_0.9fr] lg:px-8">
-          <div>
-            <h1 className="admin-page-title">
-              {initialStudent.name}
-            </h1>
-            <p className="admin-help mt-2">{initialStudent.studentNumber}</p>
-
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <StudentStatusBadge status={initialStudent.status} />
-              <WarningStageBadge stage={initialStudent.warningStage} label={initialStudent.warningStageLabel} />
-              {initialStudent.tuitionExempt ? (
-                <TuitionExemptBadge reason={initialStudent.tuitionExemptReason} />
-              ) : null}
-              {canEdit && warningManagementEnabled && pointManagementEnabled && initialStudent.demeritPoints === undefined && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedWarnTarget(initialStudent.warningStage);
-                    setIsWarnAdjustOpen(true);
-                  }}
-                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:border-slate-400"
-                >
-                  <SlidersHorizontal className="h-3 w-3" />
-                  경고 조정
-                </button>
-              )}
-              <span className="admin-badge">
-                직렬 {initialStudent.studyTrack || "미지정"}
-              </span>
-              <span className="admin-badge">
-                좌석 {initialStudent.seatDisplay || "미배정"}
-              </span>
-            </div>
-
-            {initialStudent.tuitionExempt ? (
-              <div className="mt-5 rounded-lg border border-sky-200 bg-sky-50 px-4 py-4 text-sm leading-6 text-sky-900">
-                <p className="font-semibold">수납 면제 학생</p>
-                <p className="mt-1">
-                  {initialStudent.tuitionExemptReason || "면제 사유가 아직 입력되지 않았습니다."}
-                </p>
-              </div>
-            ) : null}
-
-            <div className="mt-5">
-              <p className="text-sm font-medium text-slate-700">메모</p>
-              {canEdit ? (
-                isEditingMemo ? (
-                  <textarea
-                    value={memoDraft}
-                    onChange={(event) => setMemoDraft(event.target.value)}
-                    onBlur={() => void saveMemo(memoDraft)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Escape") {
-                        setMemoDraft(memo);
-                        setIsEditingMemo(false);
-                      }
-                    }}
-                    disabled={isSavingMemo}
-                    autoFocus
-                    className="mt-3 min-h-[110px] w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700 transition"
-                    placeholder="메모 추가..."
-                  />
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMemoDraft(memo);
-                      setIsEditingMemo(true);
-                    }}
-                    className="admin-help mt-3 block w-full px-4 py-3 text-left leading-6 transition hover:border-slate-400"
-                  >
-                    {memo || "메모 추가..."}
-                  </button>
-                )
-              ) : (
-                <div className="admin-help mt-3 px-4 py-3 leading-6">
-                  {memo || "등록된 메모가 없습니다."}
-                </div>
-              )}
-              {isSavingMemo ? (
-                <p className="admin-help mt-2">저장 중...</p>
-              ) : (
-                <p className="admin-help mt-2">
-                  클릭 후 수정하고 포커스를 벗어나면 자동 저장됩니다.
-                </p>
-              )}
-            </div>
+      <section className="admin-section">
+        <div className="admin-workspace-toolbar">
+          <div><h1 className="admin-page-title">{initialStudent.name}</h1><p className="admin-help mt-2">{initialStudent.studentNumber} · {initialStudent.studyTrack || "직렬 미지정"} · {initialStudent.seatDisplay || "좌석 미배정"}</p></div>
+          <MobileWorkspaceTools title={`${initialStudent.name} 학생 상태`}>
+          <a className="admin-button md:hidden" href={`/${divisionSlug}/admin/students`}>학생 명단으로 돌아가기</a>
+          <div className="flex flex-wrap items-center gap-2">
+            <StudentStatusBadge status={initialStudent.status} />
+            <WarningStageBadge stage={initialStudent.warningStage} label={initialStudent.warningStageLabel} />
+            {initialStudent.tuitionExempt ? <TuitionExemptBadge reason={initialStudent.tuitionExemptReason} /> : null}
+            {canEdit && warningManagementEnabled && pointManagementEnabled && initialStudent.demeritPoints === undefined ? <button type="button" onClick={() => { setSelectedWarnTarget(initialStudent.warningStage); setIsWarnAdjustOpen(true); }} className="admin-text-action inline-flex items-center gap-2"><SlidersHorizontal className="h-4 w-4" />경고 조정</button> : null}
           </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <article className="admin-section">
-              <p className="admin-help">누적 벌점</p>
-              <p className="mt-3 text-3xl font-extrabold text-slate-950">{currentDemeritPoints}점</p>
-            </article>
-            <article className="admin-section">
-              <p className="admin-help">등록 플랜</p>
-              <h2 className="admin-section-title">
-                {initialStudent.tuitionPlanName || "직접 입력"}
-              </h2>
-            </article>
-            <article className="admin-section">
-              <p className="admin-help">연락처</p>
-              <h2 className="admin-section-title">
-                {initialStudent.phone || "미등록"}
-              </h2>
-            </article>
-            <article className="admin-section">
-              <p className="admin-help">퇴실일</p>
-              <h2 className="admin-section-title">
-                {formatDate(initialStudent.withdrawnAt)}
-              </h2>
-            </article>
-          </div>
+        </MobileWorkspaceTools>
+        </div>
+        <div className="admin-metric-strip">
+          {[["누적 벌점", currentDemeritPoints + "점"], ["등록 플랜", initialStudent.tuitionPlanName || "직접 입력"], ["연락처", initialStudent.phone || "미등록"], ["퇴실일", formatDate(initialStudent.withdrawnAt)]].map(([label, value]) => <div key={label} className="admin-metric-box"><p className="admin-metric-box-label">{label}</p><p className={label === "누적 벌점" ? "admin-metric-box-value" : "admin-metric-box-value admin-metric-box-status"}>{value}</p></div>)}
+        </div>
+        {initialStudent.tuitionExempt ? <p className="admin-notice">수납 면제: {initialStudent.tuitionExemptReason || "사유 미등록"}</p> : null}
+        <div className="admin-workspace-toolbar">
+          <div className="min-w-0"><p className="admin-label">메모</p><p className="admin-help mt-2 whitespace-pre-wrap break-words">{memo || "등록된 메모가 없습니다."}</p></div>
+          {canEdit ? <button type="button" onClick={() => { setMemoDraft(memo); setIsEditingMemo(true); }} className="admin-text-action inline-flex shrink-0 items-center gap-2"><Pencil className="h-4 w-4" />메모 수정</button> : null}
         </div>
       </section>
 
       {initialStudent.status === "WITHDRAWN" ? (
-        <section className="rounded-lg border border-slate-200 bg-white px-5 py-4 text-sm leading-6 text-rose-800">
+        <section className="rounded-lg border border-slate-200 bg-white px-5 py-4 text-sm leading-6 text-admin-danger">
           <div className="flex items-start gap-3">
-            <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" />
+            <CircleAlert className="mt-1 h-5 w-5 shrink-0" />
             <div className="flex-1">
               <p className="font-semibold">퇴실 처리된 학생입니다.</p>
               <p className="mt-1">
@@ -573,10 +494,11 @@ export function StudentDetailView({
         <section className="admin-section" hidden={activePageTab !== "basic"} role="tabpanel" id="student-detail-panel-basic" aria-labelledby="student-detail-basic">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="admin-section-title">기본 정보 편집</h2>
+              <h2 className="admin-section-title">기본 정보</h2>
             </div>
 
             <div className="flex flex-wrap gap-2">
+              {canEdit && initialStudent.status !== "WITHDRAWN" ? <button type="button" className="admin-button admin-button-primary" onClick={() => { setEditorState({ isDirty: false, isSaving: false }); setIsBasicEditorOpen(true); }}><Pencil className="h-4 w-4" />학생 정보 수정</button> : null}
               {canEdit && initialStudent.status !== "WITHDRAWN" ? (
                 <button
                   type="button"
@@ -600,17 +522,8 @@ export function StudentDetailView({
             </div>
           </div>
 
-          <div className="mt-6">
-            <StudentForm
-              divisionSlug={divisionSlug}
-              mode="edit"
-              initialStudent={initialStudent}
-              canEdit={canEdit && initialStudent.status !== "WITHDRAWN"}
-              showAdvancedFields
-              studyTrackOptions={studyTrackOptions}
-              seatOptions={seatOptions}
-              tuitionPlans={tuitionPlans}
-            />
+          <div className="admin-panel mt-6">
+            {[["수험번호", initialStudent.studentNumber], ["이름", initialStudent.name], ["직렬", initialStudent.studyTrack || "미지정"], ["연락처", initialStudent.phone || "미등록"], ["좌석", initialStudent.seatDisplay || "미배정"], ["등록 플랜", initialStudent.tuitionPlanName || "직접 입력"], ["등록 금액", formatCurrency(initialStudent.tuitionAmount)], ["수납 면제", initialStudent.tuitionExempt ? initialStudent.tuitionExemptReason || "면제" : "해당 없음"], ["등록 시작일", formatDate(initialStudent.courseStartDate)], ["등록 종료일", formatDate(initialStudent.courseEndDate)]].map(([label, value]) => <div key={label} className="admin-form-row"><span className="admin-form-row-label">{label}</span><span className="admin-form-row-control w-full break-words md:w-auto">{value}</span></div>)}
           </div>
         </section>
         <section className="admin-section" hidden={activePageTab !== "operations"} role="tabpanel" id="student-detail-panel-operations" aria-labelledby="student-detail-operations">
@@ -671,6 +584,16 @@ export function StudentDetailView({
           </div>
         </section>
 
+      <SlideOver open={isBasicEditorOpen} title="학생 정보 수정" description={initialStudent.name} onClose={() => void closeBasicEditor()}>
+        <StudentForm divisionSlug={divisionSlug} mode="edit" initialStudent={initialStudent} canEdit={canEdit && initialStudent.status !== "WITHDRAWN"} showAdvancedFields studyTrackOptions={studyTrackOptions} seatOptions={seatOptions} tuitionPlans={tuitionPlans} onStateChange={setEditorState} onCancel={() => void closeBasicEditor()} onSuccess={() => setIsBasicEditorOpen(false)} />
+      </SlideOver>
+      <SlideOver open={isEditingMemo} title="학생 메모 수정" description={initialStudent.name} onClose={() => void closeMemoEditor()}>
+        <form id={dialogFormId + "-memo"} onSubmit={(event) => { event.preventDefault(); void saveMemo(memoDraft); }} className="space-y-6">
+          <label className="admin-field"><span className="admin-label">메모</span><textarea className="w-full" value={memoDraft} disabled={isSavingMemo} onChange={(event) => setMemoDraft(event.target.value)} /></label>
+          <DialogActions><button type="button" className="admin-button" disabled={isSavingMemo} onClick={() => void closeMemoEditor()}>취소</button><button type="submit" form={dialogFormId + "-memo"} className="admin-button admin-button-primary" disabled={isSavingMemo}>{isSavingMemo ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}메모 저장</button></DialogActions>
+        </form>
+      </SlideOver>
+      {confirmDialog}
       <SlideOver
         open={isWithdrawOpen}
         onClose={closeWithdrawPanel}
@@ -682,7 +605,7 @@ export function StudentDetailView({
             {paymentManagementEnabled ? (
               <section className="admin-section">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-rose-600 text-white">
+              <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-admin-danger text-white">
                 <Ban className="h-5 w-5" />
               </div>
               <div>
@@ -710,9 +633,9 @@ export function StudentDetailView({
               </div>
             </div>
 
-            <div className="mt-4 rounded-lg border border-slate-200 bg-white px-4 py-4 text-sm leading-6 text-rose-800">
+            <div className="mt-4 rounded-lg border border-slate-200 bg-white px-4 py-4 text-sm leading-6 text-admin-danger">
               <div className="flex items-start gap-3">
-                <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" />
+                <CircleAlert className="mt-1 h-5 w-5 shrink-0" />
                 <div>
                   <p className="font-semibold">
                     퇴실 처리 후에는 학생 수정 화면이 잠기고 퇴실일이 기록됩니다.
@@ -747,7 +670,7 @@ export function StudentDetailView({
                 checked={isRefundEnabled}
                 onChange={(event) => setIsRefundEnabled(event.target.checked)}
                 disabled={isWithdrawing}
-                className="h-4 w-4 rounded border-slate-300 accent-rose-600"
+                className="h-4 w-4 rounded border-slate-300 accent-admin-danger"
               />
               <span className="text-sm font-medium text-slate-700">환불 처리 함께 진행</span>
             </label>
@@ -965,7 +888,7 @@ export function StudentDetailView({
         <form id={`${dialogFormId}-2`} onSubmit={handleDelete} className="space-y-5">
           <div className="admin-notice admin-notice-danger">
             <div className="flex items-start gap-3">
-              <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" />
+              <CircleAlert className="mt-1 h-5 w-5 shrink-0" />
               <div>
                 <p className="font-semibold">이 작업은 되돌릴 수 없습니다.</p>
                 <p className="mt-1">
@@ -996,7 +919,7 @@ export function StudentDetailView({
             <button form={`${dialogFormId}-2`}
               type="submit"
               disabled={isDeleteConfirming}
-              className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-rose-600 py-3 text-sm font-medium text-white transition hover:bg-rose-700 disabled:opacity-60"
+              className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-admin-danger py-3 text-sm font-medium text-white transition hover:bg-admin-danger disabled:opacity-60"
             >
               {isDeleteConfirming ? (
                 <LoaderCircle className="h-4 w-4 animate-spin" />

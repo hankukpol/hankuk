@@ -1,4 +1,8 @@
 "use client";
+import { MobileWorkspaceTools } from "@/components/ui/MobileWorkspaceTools";
+import { Printer } from "lucide-react";
+import { ReportDocumentProvider, ReportMetrics } from "./ReportPresentation";
+import { RegularSubjectOverview } from "./SubjectOverview";
 
 import type { RegularStudentReport as Report } from "@/lib/exam-analysis-types";
 import { ExamScoreChart } from "@/components/exams/ExamScoreChart";
@@ -20,10 +24,11 @@ export function RegularStudentReport({ report, mode, section, records }: { repor
   const trend = report.trend.filter((result) => result.examTypeId === session.examTypeId && result.examDate && result.examDate.slice(0, 10) <= session.examDate.slice(0, 10) && (!history || result.examDate.slice(0, 10) >= history.from));
   const hasTrend = report.hasPreviousExam !== false && new Set(trend.map((result) => result.examDate!.slice(0, 10))).size >= 2;
   const rank = (entry: { rank: number | null; count: number } | null) => entry ? `${value(entry.rank, "등")}` : "지역 정보 없음";
-  return <div className="admin-flat-page" data-report-root>
-    {mode === "admin" && !section && <ReportPrintButton />}
-    <header>{!section && <h2 className="admin-section-title">{session.examTypeName} {session.examDate.slice(0, 10)} 분석</h2>}<p className="admin-help">시험일 {session.examDate.slice(0, 10)}{mode === "admin" && report.student.name ? ` · ${report.student.name}` : ""}</p></header>
-    <PersonalReportTabs section={section}>
+  const heading = <header>{!section && <h2 className="admin-section-title">{session.examTypeName} {session.examDate.slice(0, 10)} 분석</h2>}<p className="admin-help">시험일 {session.examDate.slice(0, 10)}{mode === "admin" && report.student.name ? ` · ${report.student.name}` : ""}</p></header>;
+  return <ReportDocumentProvider value={mode === "admin"}><div className="admin-flat-page admin-compact-workspace" data-report-root>
+    {mode === "admin" && !section ? <MobileWorkspaceTools title="개인 성적 보고서" icon={Printer}><ReportPrintButton />{heading}</MobileWorkspaceTools> : heading}
+    <PersonalReportTabs section={section} navigation={mode === "student" ? "anchors" : "tabs"}>
+    {mode === "admin" && <div data-report-section="overview"><RegularSubjectOverview report={report} /></div>}
     <div data-report-section="diagnosis"><RegularLearningSummary report={report} /></div>
     {history && <section data-report-section="trend" className="admin-section"><h2 className="admin-section-title">최근 6개월 개인 성적</h2>
       <p className="admin-help">선택한 시험일 기준 {history.from} ~ {history.to} · {history.coveredMonths}/6개월 기록 · {history.rows.length}회 응시</p>
@@ -36,13 +41,13 @@ export function RegularStudentReport({ report, mode, section, records }: { repor
       
     </section>}
     {report.myScore.isPartial && <p data-report-section="overview" className="admin-notice admin-notice-warning">일부 과목 미응시 결과입니다. 응시한 과목의 점수만 포함합니다.</p>}
-    <div data-report-section="overview" className="admin-metric-strip">{[
+    <ReportMetrics data-report-section="overview" title="성적 요약" entries={[
       ["총점", `${value(report.myScore.total)} / ${value(session.fullScore)}`],
       ["외부 석차", rank(ranks.external)], ["외부 상위", value(ranks.external.topPercent, "%")],
       ["지역 석차", rank(ranks.region)], ["반 석차", rank(ranks.internal)], ["외부 백분위", value(ranks.external.percentile)],
-    ].map(([label, score]) => <div className="admin-metric-box" key={label}><p className="admin-metric-box-label">{label}</p><p className={/\d/.test(String(score)) ? "admin-metric-box-value" : "admin-metric-box-value admin-metric-box-status"}>{score}</p></div>)}</div>
+    ]} />
     {ranks.internal.count < 10 && <p data-report-section="overview" className="admin-help">반 내 지표는 참고용입니다(응시 {ranks.internal.count}명)</p>}
-    {<section data-report-section="subjects" id="personal-subjects" className="admin-section"><h2 className="admin-section-title">과목별 비교</h2>
+    {<section data-report-section="subjects" className="admin-section"><h2 className="admin-section-title">과목별 비교</h2>
       <p className="admin-help">성취율은 과목 만점 대비 점수입니다. 상위%는 작을수록, 백분위는 클수록 상위입니다.</p>
       <div className="admin-table-frame"><table><thead><tr>{["과목", "내 점수", "만점", "외부 평균", "지역 평균", "반 평균", "상위 10% 평균", "상위 30% 평균", "성취율", "판정", "판정 기준"].map((label) => <th scope="col" key={label}>{label}</th>)}</tr></thead>
         <tbody>{stats.subjects.map((subject) => <tr key={subject.subjectId}><td className="admin-table-name">{subject.name}</td><td>{value(subject.my)}</td><td>{value(subject.fullScore)}</td><td>{value(subject.externalAvg)}</td><td>{value(subject.regionAvg)}</td><td>{value(subject.internalAvg)}</td><td>{value(subject.top10Avg)}</td><td>{value(subject.top30Avg)}</td><td>{value(subject.scoreRate, "%")}</td><td>{subject.grade ?? "집계 불가"}</td><td>{subject.gradeBasis === "scoreRate" ? "성취율" : subject.gradeBasis === "percentile" ? "외부 상위%" : "집계 불가"}</td></tr>)}</tbody>
@@ -52,13 +57,13 @@ export function RegularStudentReport({ report, mode, section, records }: { repor
     </section>}
     {<section data-report-section="subjects" className="admin-section"><h2 className="admin-section-title">과목 균형과 학습 조언</h2><div className="admin-notice"><p>{stats.balance.assessment} (표준편차 {value(stats.balance.stdDev)})</p>{stats.advice.length ? <ul>{stats.advice.map((advice, index) => <li key={index}>{advice}</li>)}</ul> : <p>추가 학습 조언이 없습니다.</p>}</div></section>}
     {<section data-report-section="subjects" className="admin-section"><h2 className="admin-section-title">외부 성적 분포</h2><DistributionBars distribution={report.distribution} /></section>}
-    {<div data-report-section="items" id="personal-items"><ItemAnalysisTable items={report.items} subjects={report.subjects} /></div>}
-    {<section data-report-section="trend" id="personal-trend" className="admin-section"><h2 className="admin-section-title">날짜별 추이</h2>{hasTrend ? <ExamScoreChart results={trend} /> : <p className="admin-empty-state">직전 시험이 없어 비교할 수 없습니다. 다음 시험부터 표시됩니다.</p>}</section>}
+    {<div data-report-section="items"><ItemAnalysisTable items={report.items} subjects={report.subjects} /></div>}
+    {<section data-report-section="trend" className="admin-section"><h2 className="admin-section-title">날짜별 추이</h2>{hasTrend ? <ExamScoreChart results={trend} /> : <p className="admin-empty-state">직전 시험이 없어 비교할 수 없습니다. 다음 시험부터 표시됩니다.</p>}</section>}
     {<section data-report-section="rank" className="admin-section"><h2 className="admin-section-title">목표 대비</h2>{report.target ? <p className="admin-notice">목표 {value(report.target.targetScore)}점 · 목표와 차이 {value(report.target.gap)}점 ({value(report.target.gapPercent)}%)</p> : <p className="admin-help">등록된 목표 점수가 없습니다.</p>}{report.flags.length > 0 && <ul className="admin-help">{report.flags.map((flag, index) => <li key={`${flag.kind}-${index}`}>{flag.detail}</li>)}</ul>}</section>}
     {<section data-report-section="rank" className="admin-section"><h2 className="admin-section-title">내 주변 석차</h2>
       {report.competitors.length === 0 ? <p className="admin-help">비교할 주변 응시자가 없습니다.</p> : <div className="admin-table-frame"><table><thead><tr><th scope="col">수험번호</th><th scope="col">반 석차</th><th scope="col">총점</th>{report.subjects.map((subject) => <th scope="col" key={subject.id}>{subject.name}</th>)}</tr></thead><tbody>{report.competitors.map((competitor, index) => <tr key={index}><td>{competitor.studentNumber.slice(0, 2)}***</td><td>{competitor.rank}등</td><td>{value(competitor.total)}</td>{report.subjects.map((subject) => <td key={subject.id}>{competitor.subjectScores[subject.id] != null ? value(competitor.subjectScores[subject.id]) : (subject.alternateGroup && report.subjects.some((other) => other.alternateGroup === subject.alternateGroup && competitor.subjectScores[other.id] != null) ? "선택 안 함" : "미응시")}</td>)}</tr>)}</tbody></table></div>}
     </section>}
     {records && <div data-report-section="records" className="admin-flat-page">{records}</div>}
     </PersonalReportTabs>
-  </div>;
+  </div></ReportDocumentProvider>;
 }

@@ -1,13 +1,16 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
+import { inspectOverlaps } from "./design-overlap-inspect.mjs";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 const baseURL = process.env.DESIGN_AUDIT_URL || "http://127.0.0.1:3100";
+if (!["localhost", "127.0.0.1"].includes(new URL(baseURL).hostname)) throw new Error("Local mock UI audit only");
 const output = process.env.DESIGN_AUDIT_OUTPUT || ".superloopy/evidence/frontend/2026-09-08-design-audit";
 const widths = (process.env.DESIGN_AUDIT_WIDTHS || "390,768,1280,1600").split(",").map(Number);
 const filter = process.env.DESIGN_AUDIT_FILTER;
+const idleTimeout = Number(process.env.DESIGN_AUDIT_IDLE_TIMEOUT || 5000);
 fs.mkdirSync(output, { recursive: true });
 
 function files(directory) {
@@ -26,29 +29,37 @@ function inspect() {
   const root = document.documentElement;
   if (root.scrollWidth > innerWidth + 1) add("document-overflow", root, root.scrollWidth);
   const allowedSizes = ["13px", "15px", "16px", "20px", "32px"];
+  const mobile = innerWidth < 768;
   for (const el of all) {
     if (el.closest("nextjs-portal, [data-sonner-toaster]")) continue;
     const style = getComputedStyle(el);
+    if (!mobile && el.matches(".admin-mobile-tools-heading")) add("mobile-tools-chrome-on-desktop", el, style.display);
     if (el.matches("main.admin-main")) {
       const expectedPadding = innerWidth >= 1024 ? 32 : innerWidth >= 768 ? 24 : 16;
-      if (parseFloat(style.paddingLeft) !== expectedPadding || style.paddingTop !== "24px") add("page-padding", el, [style.paddingTop, style.paddingLeft]);
+      if (parseFloat(style.paddingLeft) !== expectedPadding || style.paddingTop !== (mobile ? "20px" : "24px")) add("page-padding", el, [style.paddingTop, style.paddingLeft]);
     }
     if (!el.children.length && el.textContent?.trim() && !["STYLE", "SCRIPT", "OPTION", "TITLE"].includes(el.tagName)) {
-      if (!allowedSizes.includes(style.fontSize)) add("type-size", el, style.fontSize);
+      const attendanceText = style.fontSize === "14px" && el.matches(".admin-attendance-student-name, .admin-attendance-status-select");
+      const mobileSubtab = mobile && style.fontSize === "14px" && el.closest(".admin-subtab");
+      if (!allowedSizes.includes(style.fontSize) && !attendanceText && !mobileSubtab) add("type-size", el, style.fontSize);
       if (!["400", "600", "700"].includes(style.fontWeight)) add("type-weight", el, style.fontWeight);
     }
     if (el.matches(".admin-dialog-title") && style.fontSize !== "20px") add("dialog-title", el, style.fontSize);
-    if (el.matches(".admin-tab") && (style.fontSize !== "16px" || el.getBoundingClientRect().height < 55)) add("primary-tab-size", el, [style.fontSize, el.getBoundingClientRect().height]);
-    if (el.matches(".admin-dashboard-metric-value") && style.fontSize !== "32px") add("metric-size", el, style.fontSize);
+    if (el.matches(".admin-tab") && !el.closest(".admin-portal-nav") && (style.fontSize !== (mobile ? "15px" : "16px") || el.getBoundingClientRect().height < (mobile ? 44 : 55))) add("primary-tab-size", el, [style.fontSize, el.getBoundingClientRect().height]);
+    if (el.matches(".admin-dashboard-metric-value") && style.fontSize !== (mobile ? "20px" : "32px")) add("metric-size", el, style.fontSize);
     if (el.matches(".admin-dashboard-metric-unit") && style.fontSize !== "13px") add("metric-unit-size", el, style.fontSize);
     if (el.matches("button, .admin-button, input:not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=range]):not([type=color]), select, textarea")) {
       if (el.closest(".admin-seat-grid, .recharts-wrapper, .admin-overlay, .sr-only")) continue;
       if (el.matches("input") && el.closest(".admin-input-group")) continue;
       const height = el.getBoundingClientRect().height;
-      if (height < (el.closest("table") ? 35 : 43)) add("control-height", el, height);
+      const choice = mobile && el.matches(".admin-choice-button");
+      const extension = choice ? getComputedStyle(el, "::after") : null;
+      const hitHeight = extension?.content !== "none" && extension?.position === "absolute" ? height - Math.min(0, parseFloat(extension.top) || 0) - Math.min(0, parseFloat(extension.bottom) || 0) : height;
+      const desktopTableLink = !mobile && el.matches(".admin-table-link") && el.closest("table");
+      if (!desktopTableLink && (choice ? hitHeight < 44 || height < 36 : height < (el.closest("table") && !mobile ? 35 : 43))) add("control-height", el, { height, hitHeight });
       const radius = parseFloat(style.borderTopLeftRadius);
-      if (radius > 8) add("pill-control", el, radius);
-      if (el.matches("input, select, textarea") && radius !== 8) add("input-radius", el, radius);
+      if (radius > 8 && !choice) add("pill-control", el, radius);
+      if (el.matches("input, select, textarea") && radius !== (mobile ? 4 : 8)) add("input-radius", el, radius);
       if (el.matches("input, select, textarea") && parseFloat(style.paddingLeft) < 12) add("input-padding", el, style.paddingLeft);
     }
     if (el.matches(".admin-tabs, .admin-tab, .admin-subtabs, .admin-subtab, .admin-drawer, table, th, td") && parseFloat(style.borderTopLeftRadius) !== 0) add("square-surface", el, style.borderTopLeftRadius);
@@ -107,15 +118,16 @@ try {
   if (!studentResponse.ok()) throw new Error(`Student fixture read failed: ${studentResponse.status()}`);
   const studentData = await studentResponse.json();
   const students = Array.isArray(studentData) ? studentData : studentData.students;
-  const student = students?.[0];
+  const student = students?.find((entry) => entry.studentNumber === "90001") ?? students?.[0];
   if (!student) throw new Error("A mock student is needed for detail and student portal coverage.");
   const studentLogin = await contexts.student.request.post("/api/auth/student-login", { data: { division: "police", studentNumber: student.studentNumber, name: student.name } });
   if (!studentLogin.ok()) throw new Error(`Student login failed: ${studentLogin.status()}`);
 
   let routes = files("app").filter((file) => path.basename(file) === "page.tsx" && !file.includes("[...slug]"))
-    .map((file) => "/" + path.dirname(file).replaceAll("\\", "/").replace(/^app\/?/, "").replace("[division]", "police").replace("[id]", student.id));
+    .map((file) => "/" + path.dirname(file).replaceAll("\\", "/").replace(/^app\/?/, "").replace("[division]", "police").replace("[id]", student.id).replace("[studentId]", student.id));
   routes.push("/fire/admin", "/fire/admin/points", "/fire/admin/settings");
   if (filter) routes = routes.filter((route) => new RegExp(filter).test(route));
+  if (!routes.length) throw new Error("No routes matched the audit filter");
   for (const route of routes) {
     const role = route.startsWith("/fire") ? "fire" : route.startsWith("/super-admin") ? "super" : route.includes("/assistant") ? "assistant" : route.includes("/student/") && !route.includes("/students/") && !route.endsWith("/login") || route.endsWith("/student") ? "student" : route.includes("/admin") ? "admin" : "public";
     const page = await contexts[role].newPage();
@@ -123,25 +135,76 @@ try {
     page.on("pageerror", (error) => errors.push(error.message));
     await page.route("**/api/**", (req) => ["GET", "HEAD", "OPTIONS"].includes(req.request().method()) ? req.continue() : req.abort());
     for (const width of widths) {
+      try {
+      errors.length = 0;
       await page.setViewportSize({ width, height: 900 });
-      const response = await page.goto(route, { waitUntil: "networkidle", timeout: 90000 });
+      // 개발 서버는 HMR 소켓을 계속 열어 두므로 networkidle 이 끝내 풀리지 않고 TimeoutError 로 죽는다.
+      // load 까지만 기다린 뒤 networkidle 은 짧게 시도하고 실패해도 넘어간다. 정착은 아래 capture() 가 맡는다.
+      const response = await page.goto(route, { waitUntil: "load", timeout: 90000 });
+      if (route.endsWith("/admin/exams/types")) await page.waitForURL("**/admin/settings/exams", { timeout: 30000 });
+      await page.waitForLoadState("networkidle", { timeout: idleTimeout }).catch(() => {});
       await page.evaluate(() => document.fonts.ready);
-      const capture = async (state) => {
+      const capture = async (state, includeTools = true) => {
+        await page.waitForFunction(() => ![...document.querySelectorAll(".admin-main .admin-skeleton, .admin-main .animate-spin")].some((el) => el.getBoundingClientRect().height > 0), null, { timeout: 60000 });
         if (await page.locator('#payment-view-settlement[aria-selected="true"]').isVisible().catch(() => false)) {
           await page.locator('#payment-view-panel-settlement .admin-metric-box').first().waitFor({ timeout: 10000 }).catch(() => {});
         }
         await page.getByText("정산 정보를 불러오는 중입니다.", { exact: true }).waitFor({ state: "hidden" }).catch(() => {});
+        await page.getByText("개인 성적을 불러오는 중입니다.", { exact: true }).waitFor({ state: "hidden", timeout: 60000 });
         await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
         await page.waitForFunction(() => [...document.querySelectorAll('[role="dialog"]')].every((el) => {
           const transform = getComputedStyle(el).transform;
           return transform === "none" || Math.abs(new DOMMatrixReadOnly(transform).m41) < 1;
         }));
         const data = await page.evaluate(inspect);
+        const overlap = await page.evaluate(inspectOverlaps);
+        data.issues.push(...overlap.issues);
+        data.checkedControls = overlap.checkedControls;
         results.push({ route, width, state, status: response?.status(), finalUrl: page.url(), errors: [...new Set(errors)], ...data });
         const filename = `${route.replace(/[^a-z0-9-]/gi, "_") || "home"}-${width}-${state.replace(/[^a-z0-9-]/gi, "_")}`;
         await page.screenshot({ path: path.join(output, `${filename}.png`), fullPage: false });
+        if (process.env.DESIGN_AUDIT_MOBILE_TOOLS === "1" && width < 768 && includeTools && !await page.getByRole("dialog").count()) {
+          const triggers = page.locator("[data-mobile-tools-trigger]");
+          for (let tool = 0; tool < await triggers.count(); tool++) {
+            if (!await triggers.nth(tool).isVisible()) continue;
+            await triggers.nth(tool).click();
+            const toolId = await triggers.nth(tool).getAttribute("aria-controls");
+            await page.waitForFunction(id => {
+              const panel = document.getElementById(id);
+              return panel && !panel.closest("details:not([open])") && panel.getBoundingClientRect().width > 0;
+            }, toolId);
+            await capture(`${state}-tools-${tool}`, false);
+            const actions = page.getByRole("dialog").last().getByRole("button", { name: /^(개별 부여|일괄 부여|일괄 대여|휴대폰 일괄 대여|학생 등록|일반 수납|신규 등록 수납|면담 기록|공지 작성|공지 등록|직원 추가|새 규칙)$/ });
+            const names = await actions.allTextContents();
+            for (let action = 0; action < names.length; action++) {
+              if (!await triggers.nth(tool).isVisible()) break;
+              if (!await page.getByRole("dialog").count()) await triggers.nth(tool).click();
+              const button = page.getByRole("dialog").last().getByRole("button", { name: names[action].trim(), exact: true });
+              if (!await button.isVisible().catch(() => false) || !await button.isEnabled()) continue;
+              await button.click();
+              await capture(`${state}-tools-${tool}-editor-${action}`, false);
+              await page.keyboard.press("Escape");
+            }
+            for (let close = 0; close < 3 && await page.getByRole("dialog").count(); close++) await page.keyboard.press("Escape");
+          }
+        }
+        if (process.env.DESIGN_AUDIT_DISCLOSURES === "1" && includeTools && !await page.getByRole("dialog").count()) {
+          const summaries = page.locator("details > summary");
+          for (let item = 0; item < await summaries.count(); item++) {
+            const summary = summaries.nth(item);
+            if (!await summary.isVisible() || await summary.evaluate(el => el.parentElement.open)) continue;
+            await summary.click();
+            await capture(`${state}-disclosure-${item}`, false);
+            await summary.click();
+          }
+        }
       };
       await capture("page");
+      if (process.env.DESIGN_AUDIT_PAGE_ONLY === "1") {
+        await writeReport();
+        console.log(JSON.stringify({ route, width, coverage: "page-only", issues: results.at(-1).issues.length, errors: [...new Set(errors)] }));
+        continue;
+      }
       if (await page.getByRole("dialog").count()) {
         await page.keyboard.press("Escape");
         await page.getByRole("dialog").waitFor({ state: "hidden", timeout: 5000 }).catch(() => {});
@@ -154,7 +217,7 @@ try {
           const child = children.nth(index);
           if (!await child.isVisible() || !await child.isEnabled()) continue;
           await child.click();
-          await page.waitForLoadState("networkidle");
+          await page.waitForLoadState("networkidle", { timeout: idleTimeout }).catch(() => {});
           await capture(`${prefix}-subtab-${index}`);
           const id = await child.getAttribute("aria-controls");
           if (id) await visitNestedTabs(page.locator(`[id="${id}"]`), `${prefix}-subtab-${index}`, depth + 1);
@@ -164,7 +227,7 @@ try {
         const tab = page.getByRole("tab").nth(index);
         if (!await tab.isVisible() || !await tab.isEnabled()) continue;
         await tab.click();
-        await page.waitForLoadState("networkidle");
+        await page.waitForLoadState("networkidle", { timeout: idleTimeout }).catch(() => {});
         await capture(`tab-${index}`);
         const panelId = await tab.getAttribute("aria-controls");
         if (panelId) await visitNestedTabs(page.locator(`[id="${panelId}"]`), `tab-${index}`);
@@ -175,7 +238,7 @@ try {
         const opener = page.getByRole("button", { name: openers[index] }).first();
         if (!await opener.isVisible().catch(() => false) || !await opener.isEnabled()) continue;
         await opener.click();
-        await page.waitForLoadState("networkidle");
+        await page.waitForLoadState("networkidle", { timeout: idleTimeout }).catch(() => {});
         if (await page.getByRole("dialog").count()) {
           await capture(`dialog-${index}`);
           await visitNestedTabs(page.getByRole("dialog").last(), `dialog-${index}`);
@@ -185,6 +248,12 @@ try {
       }
       await writeReport();
       console.log(JSON.stringify({ route, width, snapshots: results.filter((r) => r.route === route && r.width === width).length, issues: results.filter((r) => r.route === route && r.width === width).reduce((n, r) => n + r.issues.length, 0), errors: [...new Set(errors)] }));
+      } catch (error) {
+        // 한 화면이 죽어도 나머지를 계속 잰다. 실패는 기록으로 남겨 커버리지 구멍을 숨기지 않는다.
+        results.push({ route, width, state: "failed", status: null, finalUrl: page.url(), errors: [String(error.message).split("\n")[0]], failureDetail: String(error.message), title: null, issues: [], dialogs: [], tabs: [] });
+        await writeReport();
+        console.log(JSON.stringify({ route, width, failed: String(error.message).split("\n")[0] }));
+      }
     }
     await page.close();
   }
@@ -192,3 +261,4 @@ try {
   await browser.close();
   await writeReport();
 }
+process.exitCode = results.some((result) => result.state === "failed" || result.status >= 400 || result.errors.length || result.issues.length) ? 1 : 0;

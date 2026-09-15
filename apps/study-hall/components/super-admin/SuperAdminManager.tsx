@@ -529,7 +529,7 @@ export function SuperAdminManager({
                     </option>
                   ))}
                 </select>
-                <p className="admin-help mt-1.5">
+                <p className="admin-help mt-2">
                   선택 시 해당 지점의 교시, 상벌점 규칙, 운영 설정이 새 지점으로 복사됩니다.
                 </p>
               </label>
@@ -557,11 +557,11 @@ export function SuperAdminManager({
                     <div className="flex flex-wrap items-center gap-3">
                       <span className="h-3 w-3 rounded-full" style={{ backgroundColor: division.color }} />
                       <h2 className="admin-section-title">{division.name}</h2>
-                      <span className="rounded-lg bg-admin-accent px-2.5 py-1 text-xs font-semibold text-white">
+                      <span className="rounded-lg bg-admin-accent px-3 py-1 text-xs font-semibold text-white">
                         /{division.slug}
                       </span>
                       {!division.isActive ? (
-                        <span className="rounded-lg bg-white border border-slate-200 px-2.5 py-1 text-xs font-semibold text-red-700">
+                        <span className="rounded-lg bg-white border border-slate-200 px-3 py-1 text-xs font-semibold text-admin-danger">
                           비활성
                         </span>
                       ) : null}
@@ -737,7 +737,7 @@ export function SuperAdminManager({
                   placeholder="새 비밀번호 (8자 이상)"
                   value={resetPasswordValue}
                   onChange={(event) => setResetPasswordValue(event.target.value)}
-                  className="flex-1 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm transition"
+                  className="flex-1 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition"
                 />
                 <button
                   type="button"
@@ -759,11 +759,11 @@ export function SuperAdminManager({
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <h2 className="admin-section-title">{admin.name}</h2>
-                      <span className="rounded-lg bg-admin-accent px-2.5 py-1 text-xs font-semibold text-white">
+                      <span className="rounded-lg bg-admin-accent px-3 py-1 text-xs font-semibold text-white">
                         {getRoleLabel(admin.role)}
                       </span>
                       {!admin.isActive ? (
-                        <span className="rounded-lg bg-white border border-slate-200 px-2.5 py-1 text-xs font-semibold text-red-700">
+                        <span className="rounded-lg bg-white border border-slate-200 px-3 py-1 text-xs font-semibold text-admin-danger">
                           비활성
                         </span>
                       ) : null}

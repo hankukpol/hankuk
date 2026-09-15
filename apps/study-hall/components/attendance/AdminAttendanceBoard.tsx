@@ -125,12 +125,12 @@ const STUDENT_WHOLE_DAY_ACTIONS = [
   {
     status: "PRESENT" as const,
     label: "전체출석",
-    classes: "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100",
+    classes: "border-admin-success-line bg-admin-success-soft text-admin-success hover:bg-admin-success-soft",
   },
   {
     status: "ABSENT" as const,
     label: "전체결석",
-    classes: "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100",
+    classes: "border-admin-danger-line bg-admin-danger-soft text-admin-danger hover:bg-admin-danger-soft",
   },
   {
     status: "NOT_APPLICABLE" as const,
@@ -874,6 +874,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
           onChange={setViewMode}
           label="출석부 보기"
           idPrefix="attendance-view"
+          panelId={`attendance-view-panel-${viewMode}`}
         />
       ) : null}
 
@@ -924,7 +925,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="이름, 수험번호, 연락처, 좌석, 강의실로 검색"
-              className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-10 pr-10 text-sm text-slate-900 transition"
+              className="w-full rounded-lg border border-slate-200 bg-white py-3 pl-10 pr-10 text-sm text-slate-900 transition"
             />
             {hasSearchQuery ? (
               <button
@@ -951,6 +952,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
             onChange={(id) => setSeatPeriodId(id)}
             label="좌석 출결 교시"
             idPrefix="attendance-seat-period"
+            panelId="attendance-seat-period-panel"
             variant="secondary"
             scrollable
           />
@@ -960,8 +962,8 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
               검색 조건에 맞는 학생만 좌석도에 표시됩니다.
             </div>
           ) : null}
+          <div role="tabpanel" id="attendance-seat-period-panel" aria-labelledby={seatPeriod ? `attendance-seat-period-${seatPeriod.id}` : undefined}>
           {filteredStudents.length > 0 ? (
-            <div role="tabpanel" id={`attendance-seat-period-panel-${seatPeriod?.id ?? "none"}`} aria-labelledby={seatPeriod ? `attendance-seat-period-${seatPeriod.id}` : undefined}>
             <AttendanceSeatView
               key={`${selectedDate}:${seatPeriod?.id ?? "none"}`}
               divisionSlug={divisionSlug}
@@ -974,12 +976,12 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
               onUpdateCell={(studentId, periodId, value) => updateCell(studentId, periodId, value)}
               onSaveStudent={(studentId) => handleSaveStudent(studentId, seatPeriod?.id ?? "")}
             />
-            </div>
           ) : (
             <div className="admin-help py-16 text-center">
               검색 조건에 맞는 학생이 없습니다.
             </div>
           )}
+          </div>
         </section>
       ) : null}
 
@@ -987,12 +989,12 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <p className="text-sm font-medium text-slate-700">학생 x 교시 매트릭스</p>
           {isLoading ? (
-            <span className="inline-flex items-center gap-2 text-sm text-slate-500">
+            <span className="inline-flex items-center gap-2 admin-help">
               <LoaderCircle className="h-4 w-4 animate-spin" />
               새로고침 중
             </span>
           ) : (
-            <span className="inline-flex items-center gap-2 text-sm text-slate-500">
+            <span className="inline-flex items-center gap-2 admin-help">
               <RefreshCcw className="h-4 w-4" />
               최신 상태
             </span>
@@ -1047,7 +1049,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
                     >
                       {student.name}
                     </button>
-                    <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-slate-500">
+                    <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 admin-help">
                       <span>{getCompactStudentNumber(student.studentNumber)}</span>
                       <span>{student.studyTrack || "직렬 미지정"}</span>
                       {student.seatDisplay ? (
@@ -1071,7 +1073,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
                             onChange={(event) =>
                               updateCell(student.id, period.id, buildAttendanceInput(event.target.value as AttendanceInputValue, cell))
                             }
-                            className="admin-attendance-status-select block w-full min-w-0 rounded-lg border px-3 py-2.5"
+                            className="admin-attendance-status-select block w-full min-w-0 rounded-lg border px-3 py-3"
                           >
                             {ATTENDANCE_INPUT_OPTIONS.map((option) => (
                               <option key={option.value || "empty"} value={option.value} disabled={isLeaveAttendanceStatus(option.value)}>
@@ -1084,7 +1086,8 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
                               value={getAttendanceReasonDetail(cell.status, cell.reason)}
                               onChange={(event) => updateCell(student.id, period.id, { reason: setAttendanceReasonDetail(cell.status, cell.reason, event.target.value) })}
                               placeholder={isClassAttendance(cell.status, cell.reason) ? "수업명 (선택)" : "사유"}
-                              className="block h-7 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900"
+                              aria-label={`${student.name} ${period.name} 사유`}
+                              className="admin-input block w-full min-w-0"
                             />
                           )}
                         </div>
@@ -1133,7 +1136,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
                       key={status}
                       type="button"
                       onClick={() => applyWholeDayStatusFromModal(bulkApplyStudent.id, status)}
-                      className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${classes}`}
+                      className={`rounded-lg border px-3 py-2 text-xs font-semibold transition ${classes}`}
                     >
                       {label}
                     </button>
@@ -1148,7 +1151,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="admin-label">
                       적용 대상 학생
-                      <span className="ml-1.5 font-semibold text-[var(--division-color)]">
+                      <span className="ml-2 font-semibold text-[var(--division-color)]">
                         {activeRecurringStudentCount}명 선택
                       </span>
                     </p>
@@ -1206,7 +1209,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
                                   className="h-4 w-4 rounded border-slate-300"
                                 />
                                 <span className="font-medium text-slate-900">{student.name}</span>
-                                <span className="ml-auto text-xs text-slate-500">
+                                <span className="ml-auto admin-help">
                                   {getCompactStudentNumber(student.studentNumber)}
                                   {student.seatDisplay ? ` · ${student.seatDisplay}` : ""}
                                 </span>
@@ -1235,7 +1238,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
                             : activeBulkApplyDraft.weekdays,
                         })
                       }
-                      className="mt-1.5 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
+                      className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
                     />
                   </label>
                   <label className="admin-label">
@@ -1248,7 +1251,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
                           dateTo: event.target.value,
                         })
                       }
-                      className="mt-1.5 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
+                      className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
                     />
                   </label>
                 </div>
@@ -1266,7 +1269,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
                             : [...activeBulkApplyDraft.weekdays, weekday.value];
                           updateBulkApplyDraft(bulkApplyStudent.id, { weekdays: nextWeekdays });
                         }}
-                        className={`min-w-10 rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${ isSelected ? "border-[var(--division-color)] bg-[color-mix(in_srgb,var(--division-color)_10%,white)] text-[var(--division-color)]" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50" }`}
+                        className={`min-w-10 rounded-lg border px-3 py-2 text-xs font-semibold transition ${ isSelected ? "border-[var(--division-color)] bg-[color-mix(in_srgb,var(--division-color)_10%,white)] text-[var(--division-color)]" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50" }`}
                       >
                         {weekday.label}
                       </button>
@@ -1311,7 +1314,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
                       startPeriodId: event.target.value,
                     })
                   }
-                  className="mt-1.5 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
+                  className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
                 >
                   {periods.map((period) => (
                     <option key={period.id} value={period.id}>
@@ -1329,7 +1332,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
                       endPeriodId: event.target.value,
                     })
                   }
-                  className="mt-1.5 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
+                  className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
                 >
                   {periods.map((period) => (
                     <option key={period.id} value={period.id}>
@@ -1349,7 +1352,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
                     updateBulkApplyDraft(bulkApplyStudent.id, buildAttendanceInput(event.target.value as AttendanceInputValue, activeBulkApplyDraft))
                   }
                   data-attendance-status={getAttendanceInputValue(activeBulkApplyDraft.status, activeBulkApplyDraft.reason)}
-                  className="admin-attendance-status-select mt-1.5 h-11 w-full rounded-lg border px-3"
+                  className="admin-attendance-status-select mt-2 h-11 w-full rounded-lg border px-3"
                 >
                   {ATTENDANCE_INPUT_OPTIONS.filter((option) => !isLeaveAttendanceStatus(option.value)).map((option) => (
                     <option key={option.value || "active-bulk-empty"} value={option.value}>
@@ -1366,7 +1369,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
                     updateBulkApplyDraft(bulkApplyStudent.id, { reason: setAttendanceReasonDetail(activeBulkApplyDraft.status, activeBulkApplyDraft.reason, event.target.value) })
                   }
                   placeholder={isClassAttendance(activeBulkApplyDraft.status, activeBulkApplyDraft.reason) ? "수업명" : activeBulkNeedsReason ? "사유를 입력해 주세요." : "선택 사항"}
-                  className="mt-1.5 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 disabled:bg-slate-50 disabled:text-slate-400"
+                  className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 disabled:bg-slate-50 disabled:text-slate-400"
                   disabled={!activeBulkNeedsReason}
                 />
               </label>

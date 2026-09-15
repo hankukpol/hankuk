@@ -67,6 +67,16 @@ const types = [
   { id: "imported", name: "가져온 시험", subjects: [{ id: "first-subject", isActive: true }, { id: "imported-subject", isActive: true }] },
 ];
 
+test("morning empty state keeps both promoted tab panels connected", () => {
+  for (const viewTab of ["daily", "weekly"]) {
+    const input = mount("MorningExamScoreManager", { divisionSlug: "test", morningExamTypes: [], viewTab, idPrefix: "morning" });
+    const panels = input.nodes("AdminTabPanel");
+    assert.deepEqual(panels.map(panel => panel.props.id), ["input", "weekly"]);
+    assert.ok(panels.every(panel => panel.props.idPrefix === "morning"));
+    assert.ok(panels.every(panel => panel.props.activeId === (viewTab === "daily" ? "input" : "weekly")));
+  }
+});
+
 for (const category of ["REGULAR", "MORNING"]) {
   test(`import selection: ${category} result reaches remounted manager and its first request`, () => {
     const wrapper = mount("ExamSecondaryTabs", { divisionSlug: "test", category, examTypes: types });

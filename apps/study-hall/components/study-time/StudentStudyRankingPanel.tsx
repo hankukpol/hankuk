@@ -1,4 +1,5 @@
 "use client";
+import { MobileWorkspaceTools } from "@/components/ui/MobileWorkspaceTools";
 
 import { LoaderCircle, Trophy } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -64,13 +65,14 @@ export function StudentStudyRankingPanel({
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 max-md:space-y-0">
       {/* DESIGN.md 1절 — 장식용 영문 소제목을 제목 위에 얹지 않는다.
           5.7절 — 라벨은 .admin-label, 입력 규격은 전역 기본값이 담당한다. */}
+      <MobileWorkspaceTools title="학습 랭킹 조회 조건">
       <section className="admin-section flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="min-w-0">
           <h2 className="admin-section-title">월간 학습 랭킹</h2>
-          <p className="admin-help mt-1.5">
+          <p className="admin-help mt-2">
             모두 익명으로 표시되며, 전체 순위에서 내 위치와 월 누적 학습시간을 함께
             확인할 수 있습니다.
           </p>
@@ -87,6 +89,7 @@ export function StudentStudyRankingPanel({
           />
         </label>
       </section>
+      </MobileWorkspaceTools>
 
       <section className={portalMetricGrid3Class}>
         <PortalMetricCard

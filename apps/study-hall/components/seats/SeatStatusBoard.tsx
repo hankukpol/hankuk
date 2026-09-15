@@ -57,8 +57,8 @@ function getAssignedSeatStyle(
   }
 
   return {
-    backgroundColor: "rgb(var(--division-color-rgb) / 0.8)",
-    borderColor: "rgb(var(--division-color-rgb) / 0.95)",
+    backgroundColor: "var(--admin-seat-assigned-surface)",
+    borderColor: "var(--admin-seat-assigned-line)",
   };
 }
 
@@ -538,7 +538,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
       <div className="admin-portal-summary admin-portal-summary-3">
         {[
           { label: "전체 좌석", value: stats.totalSeats, unit: "석", color: "text-slate-700" },
-          { label: "배정 학생", value: stats.assignedCount, unit: "명", color: "text-emerald-700" },
+          { label: "배정 학생", value: stats.assignedCount, unit: "명", color: "text-admin-success" },
           { label: "공석", value: stats.emptyCount, unit: "석", color: "text-slate-500" },
         ].map((card) => (
           <div
@@ -705,7 +705,9 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                         setDraggingFromSeatId(null);
                         suppressSeatClick();
                       }}
-                      className={`relative flex min-h-[108px] w-full flex-col justify-between rounded-lg border p-3 text-left transition hover:opacity-80 ${tone} ${ isSelected ? "ring-2 ring-slate-900 ring-offset-1" : "" } ${isDragging ? "cursor-grabbing opacity-40" : canDrag ? "cursor-grab" : ""} ${ isDropTarget ? "border-slate-200 bg-white ring-2 ring-blue-400 ring-offset-1" : "" } ${isDimmed ? "opacity-25" : ""}`}
+                      data-selected={isSelected}
+                      data-drop-target={isDropTarget}
+                      className={`admin-seat-card relative flex min-h-[108px] w-full flex-col justify-between rounded-lg border p-3 text-left transition ${tone} ${isDragging ? "cursor-grabbing opacity-40" : canDrag ? "cursor-grab" : ""} ${isDimmed ? "opacity-25" : ""}`}
                       style={assignedSeatStyle}
                     >
                       {/* 이동 중 로딩 오버레이 */}
@@ -723,7 +725,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                       </div>
 
                       {/* 하단: 학생 정보 */}
-                      <div className="space-y-0.5">
+                      <div className="space-y-1">
                         <p className="text-sm font-semibold">
                           {student?.name ??
                             (seat.isActive ? (isDropTarget ? "여기에 놓기" : "공석") : "비활성")}
@@ -805,7 +807,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="text-sm font-semibold text-slate-900">{student.name}</p>
                         <span
-                          className={`rounded-lg border px-2 py-0.5 text-[13px] font-semibold ${getStudyTrackBadgeClasses(student.studyTrack)}`}
+                          className={`rounded-lg border px-2 py-1 text-[13px] font-semibold ${getStudyTrackBadgeClasses(student.studyTrack)}`}
                         >
                           {getStudyTrackShortLabel(student.studyTrack)}
                         </span>
@@ -815,7 +817,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                         {student.seatDisplay ? `현재 좌석 ${student.seatDisplay}` : "현재 좌석 미배정"}
                       </p>
                     </div>
-                    <span className="inline-flex items-center gap-2 rounded-lg bg-admin-accent px-3 py-1.5 text-xs font-medium text-white">
+                    <span className="inline-flex items-center gap-2 rounded-lg bg-admin-accent px-3 py-2 text-xs font-medium text-white">
                       {assigningStudentId === student.id ? (
                         <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
                       ) : (
@@ -885,7 +887,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="admin-help">수험번호</p>
-                      <p className="mt-0.5 font-semibold text-slate-800">
+                      <p className="mt-1 font-semibold text-slate-800">
                         {panelInfo.seat.assignedStudent.studentNumber}
                       </p>
                     </div>
@@ -924,7 +926,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                     {targetRoomId && (
                       <div className="mt-3">
                         {isLoadingTarget ? (
-                          <div className="flex items-center gap-2 text-xs text-slate-500">
+                          <div className="flex items-center gap-2 admin-help">
                             <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
                             빈 좌석 불러오는 중...
                           </div>
@@ -944,7 +946,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                                       type="button"
                                       disabled={isMovingToRoom}
                                       onClick={() => void handleMoveToRoom(s.id)}
-                                      className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-emerald-700 transition hover:bg-slate-50 disabled:opacity-50"
+                                      className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-admin-success transition hover:bg-slate-50 disabled:opacity-50"
                                     >
                                       {isMovingToRoom ? (
                                         <LoaderCircle className="h-3 w-3 animate-spin" />
@@ -992,18 +994,18 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                     수납 내역
                   </p>
                   {isLoadingPayments ? (
-                    <div className="flex items-center gap-2 py-4 text-xs text-slate-400">
+                    <div className="flex items-center gap-2 py-4 admin-help">
                       <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
                       불러오는 중...
                     </div>
                   ) : fetchedPayments.length === 0 ? (
-                    <p className="py-4 text-sm text-slate-400">수납 내역이 없습니다.</p>
+                    <p className="py-4 admin-help">수납 내역이 없습니다.</p>
                   ) : (
                     <div className="max-h-64 space-y-2 overflow-y-auto">
                       {fetchedPayments.map((p) => (
                         <div
                           key={p.id}
-                          className="rounded-lg border border-slate-100 bg-white px-3 py-2.5"
+                          className="rounded-lg border border-slate-100 bg-white px-3 py-3"
                         >
                           <div className="flex items-center justify-between gap-2">
                             <span className="text-sm font-semibold text-slate-800">
@@ -1011,7 +1013,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                             </span>
                             <span className="admin-help">{p.paymentDate ? new Date(p.paymentDate).toLocaleDateString("ko-KR") : "-"}</span>
                           </div>
-                          <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500">
+                          <div className="mt-1 flex items-center gap-2 admin-help">
                             <span>{p.paymentTypeName}</span>
                             {p.method && <span>· {p.method}</span>}
                             {p.notes && <span>· {p.notes}</span>}
@@ -1031,7 +1033,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                   {/* 등록 플랜 카드 */}
                   {tuitionPlans.length > 0 && (
                     <div>
-                      <p className="admin-help mb-1.5">등록 플랜 선택</p>
+                      <p className="admin-help mb-2">등록 플랜 선택</p>
                       <div className="grid grid-cols-2 gap-2">
                         {tuitionPlans.map((plan) => (
                           <button
@@ -1045,7 +1047,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                             className={`rounded-lg border p-3 text-left transition ${ selectedPlanId === plan.id ? "border-slate-800 bg-slate-800 text-white" : "border-slate-200 bg-white text-slate-700 hover:border-slate-400" }`}
                           >
                             <p className="text-sm font-semibold">{plan.name}</p>
-                            <p className={`mt-0.5 text-xs ${selectedPlanId === plan.id ? "text-white/70" : "text-slate-500"}`}>
+                            <p className={`mt-1 text-xs ${selectedPlanId === plan.id ? "text-white/70" : "text-slate-500"}`}>
                               {new Intl.NumberFormat("ko-KR").format(plan.amount)}원
                               {plan.durationDays ? ` · ${plan.durationDays}일` : ""}
                             </p>
@@ -1062,7 +1064,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
 
                   <div className="space-y-2">
                     <label className="admin-help block">
-                      수납 유형 <span className="text-rose-500">*</span>
+                      수납 유형 <span className="text-admin-danger">*</span>
                     </label>
                     <select
                       value={paymentTypeId}
@@ -1091,7 +1093,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                     </div>
                     <div className="space-y-1">
                       <label className="admin-help block">
-                        납부 금액 <span className="text-rose-500">*</span>
+                        납부 금액 <span className="text-admin-danger">*</span>
                       </label>
                       <input
                         type="number"
@@ -1147,7 +1149,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
             {/* ── 상벌점 탭 ── */}
             {panelTab === "points" && (
               <div className="space-y-3" role="tabpanel" id="seat-student-panel-points" aria-labelledby="seat-student-points">
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   <label className="admin-help block">규칙 선택</label>
                   <select
                     value={pointRuleId}
@@ -1156,7 +1158,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                       setPointsValue("");
                     }}
                     disabled={isLoadingPointRules}
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700"
                   >
                     <option value="">직접 점수 입력</option>
                     {pointRules.map((rule) => (
@@ -1170,19 +1172,19 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                 {pointRuleId && selectedRule ? (
                   <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                     <div className="flex items-center gap-2">
-                      <span className={`rounded-lg px-2.5 py-0.5 text-xs font-semibold ${ selectedRule.points > 0 ? "bg-white border border-slate-200 text-emerald-700" : "bg-white border border-slate-200 text-rose-700" }`}>
+                      <span className={`rounded-lg px-3 py-1 text-xs font-semibold ${ selectedRule.points > 0 ? "bg-white border border-slate-200 text-admin-success" : "bg-white border border-slate-200 text-admin-danger" }`}>
                         {selectedRule.points > 0 ? "+" : ""}{selectedRule.points}점
                       </span>
                       <span className="text-sm font-medium text-slate-800">{selectedRule.name}</span>
                     </div>
                     {selectedRule.description && (
-                      <p className="admin-help mt-1.5">{selectedRule.description}</p>
+                      <p className="admin-help mt-2">{selectedRule.description}</p>
                     )}
                   </div>
                 ) : (
                   <div className="space-y-1">
                     <label className="admin-help block">
-                      직접 점수 입력 <span className="text-rose-500">*</span>
+                      직접 점수 입력 <span className="text-admin-danger">*</span>
                     </label>
                     <input
                       type="number"

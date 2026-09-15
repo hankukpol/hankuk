@@ -1,4 +1,5 @@
 "use client";
+import { MobileWorkspaceTools } from "@/components/ui/MobileWorkspaceTools";
 
 import { AlertTriangle, Calculator, LoaderCircle, RefreshCcw, Save } from "lucide-react";
 import { useState } from "react";
@@ -6,6 +7,7 @@ import { normalizeExamAnalysisSettings, type ExamAnalysisSettings } from "@/lib/
 import { toast } from "@/lib/sonner";
 
 import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
+import { AdminTabPanel, AdminTabs } from "@/components/ui/AdminTabs";
 import { SettingsHistoryList } from "@/components/settings/SettingsHistoryList";
 import { ExamPointAutomationSettings } from "@/components/settings/ExamPointAutomationSettings";
 import type { PointRuleItem, WarningStageDistribution } from "@/lib/services/point.service";
@@ -101,6 +103,9 @@ export function RulesSettingsManager({
   const [isSaving, setIsSaving] = useState(false);
   const [preview, setPreview] = useState<WarningStageDistribution | null>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
+  const [activeTab, setActiveTab] = useState<
+    "overview" | "attendance" | "leave" | "messages" | "analysis" | "automation" | "history"
+  >("overview");
   const { showActionComplete, actionCompleteModal } = useActionCompleteModal();
 
   async function refreshHistory() {
@@ -242,6 +247,25 @@ export function RulesSettingsManager({
 
   return (
     <>
+      <AdminTabs
+        items={[
+          { id: "overview", label: "운영 요약" },
+          { id: "attendance", label: "출결·경고" },
+          { id: "leave", label: "휴가·개근" },
+          { id: "messages", label: "문자·알림" },
+          { id: "analysis", label: "성적 분석" },
+          { id: "automation", label: "자동 상벌점" },
+          { id: "history", label: "변경 이력" },
+        ]}
+        activeId={activeTab}
+        onChange={setActiveTab}
+        label="운영 규칙 설정 구분"
+        idPrefix="rule-settings"
+        variant="secondary"
+        scrollable
+      />
+      <AdminTabPanel id="overview" activeId={activeTab} idPrefix="rule-settings" className="mt-6">
+      <MobileWorkspaceTools title="운영 규칙 적용 기준" active={activeTab === "overview"}>
       <section className="admin-section">
         <h2 className="admin-section-title">벌점 집계 기준</h2>
         <p className="mt-2 text-sm text-slate-700">
@@ -250,11 +274,11 @@ export function RulesSettingsManager({
         <p className="admin-help mt-1">{aggregationDescription}</p>
       </section>
       {policy && <section className="admin-section"><h2 className="admin-section-title">{policy.version} 적용 중</h2><p>월 상점·벌점은 상계하지 않습니다. 지각은 교시 시작 후부터 기록하고, 출결 벌점은 관리자 확인 후 확정합니다. 일일 일반 개근 상점은 적용하지 않습니다. 건강 인정사유는 확인 내용을 기록하여 승인하며 횟수 제한으로 차단하지 않습니다.</p><Link className="admin-button" href={`/${divisionSlug}/admin/settings/periods#optional-study`}>교시 설정·선택자습 신청</Link></section>}
-      <div className="grid gap-6 xl:grid-cols-[0.94fr_1.06fr]">
+      </MobileWorkspaceTools>
         <section className="space-y-4">
         <article className="admin-section">
-          <h2 className="admin-section-title">현재 운영 규칙 요약</h2>
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <h2 className="admin-section-title max-md:sr-only">현재 운영 규칙 요약</h2>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 max-md:mt-0">
             <div className="admin-dashboard-metric" data-tone="accent">
               <p className="admin-dashboard-metric-label">지각</p>
               <p className="admin-dashboard-metric-value">{form.tardyMinutes}분</p>
@@ -267,8 +291,8 @@ export function RulesSettingsManager({
             </div>
           </div>
 
-          <div className="mt-4 space-y-3">
-            <article className="admin-section">
+          <div className="admin-panel mt-4">
+            <article className="admin-panel-row flex-col items-start">
               <p className="text-sm font-semibold text-slate-900">{policy ? "관리자 확정 출결 벌점" : "출결 자동 상벌점 규칙"}</p>
               <div className="mt-3 space-y-2 text-sm text-slate-600">
                 <p>
@@ -280,7 +304,7 @@ export function RulesSettingsManager({
                 {policy && <p>종일 결석: {selectedFullDayRule ? `${selectedFullDayRule.name} (${selectedFullDayRule.points}점)` : "연동 안 함"}</p>}
               </div>
             </article>
-            <article className="admin-section">
+            <article className="admin-panel-row flex-col items-start">
               <p className="text-sm font-semibold text-slate-900">조교 출석 수정 범위</p>
               <p className="admin-help mt-2">
                 {form.assistantPastEditAllowed
@@ -289,7 +313,7 @@ export function RulesSettingsManager({
               </p>
             </article>
 
-            <article className="admin-section">
+            <article className="admin-panel-row flex-col items-start">
               <p className="text-sm font-semibold text-slate-900">휴가/외출 한도</p>
               <div className="mt-3 grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
                 <span>휴무권 {form.holidayLimit}회</span>
@@ -299,7 +323,7 @@ export function RulesSettingsManager({
               </div>
             </article>
 
-            <article className="admin-section">
+            <article className="admin-panel-row flex-col items-start">
               <p className="text-sm font-semibold text-slate-900">개근 상점</p>
               <p className="admin-help mt-2">
                 {policy ? `주간 ${asNumber(form.perfectAttendanceWeeklyPts) > 0 ? `+${form.perfectAttendanceWeeklyPts}점` : "꺼짐"} · 월 ${asNumber(form.perfectAttendanceMonthlyPts) > 0 ? `+${form.perfectAttendanceMonthlyPts}점` : "꺼짐"} · 일일 꺼짐` : form.perfectAttendancePtsEnabled
@@ -308,21 +332,21 @@ export function RulesSettingsManager({
               </p>
             </article>
 
-            <article className="admin-section">
+            <article className="admin-panel-row flex-col items-start">
               <p className="text-sm font-semibold text-slate-900">수강 만료 알림</p>
               <p className="admin-help mt-2">
                 수강 종료 {form.expirationWarningDays}일 전부터 만료 임박 표시
               </p>
             </article>
 
-            <article className="admin-section">
+            <article className="admin-panel-row flex-col items-start">
               <p className="text-sm font-semibold text-slate-900">최근 저장</p>
               <p className="admin-help mt-2">
                 {formatKstDateTime(settings.updatedAt)}
               </p>
             </article>
 
-            <article className="admin-section">
+            <article className="admin-panel-row flex-col items-start">
               <p className="text-sm font-semibold text-slate-900">경고 문자 템플릿</p>
               <p className="admin-help mt-2">
                 변수: {"{학원명}"} {"{직렬명}"} {"{학생이름}"} {"{벌점}"} {"{경고단계}"}
@@ -333,10 +357,10 @@ export function RulesSettingsManager({
 
         <article className="admin-section">
           <div className="flex items-start gap-3">
-            <AlertTriangle className="mt-0.5 h-5 w-5 text-amber-700" />
+            <AlertTriangle className="mt-1 h-5 w-5 text-admin-warning" />
             <div>
-              <p className="text-sm font-semibold text-amber-900">주의</p>
-              <p className="mt-2 text-sm leading-6 text-amber-900/85">
+              <p className="text-sm font-semibold text-admin-warning">주의</p>
+              <p className="mt-2 text-sm leading-6 text-admin-warning/85">
                 경고 기준을 낮추면 기존 누적 벌점 학생이 즉시 경고 대상자로 올라갈 수 있습니다.
                 저장 전에 경고 대상자 페이지에서 영향 범위를 다시 확인하는 편이 안전합니다.
               </p>
@@ -344,8 +368,12 @@ export function RulesSettingsManager({
           </div>
         </article>
         </section>
+      </AdminTabPanel>
 
-        <section className="admin-section">
+        <section
+          className="admin-section"
+          hidden={activeTab === "overview" || activeTab === "automation" || activeTab === "history"}
+        >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="admin-section-title">지각 기준 / 경고 임계값 / 허가 한도</h2>
@@ -367,6 +395,12 @@ export function RulesSettingsManager({
         </div>
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+          <AdminTabPanel
+            id="attendance"
+            activeId={activeTab}
+            idPrefix="rule-settings"
+            className="space-y-5"
+          >
           <div className="admin-section">
             <h3 className="text-sm font-semibold text-slate-900">출석 기준</h3>
             <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -566,7 +600,7 @@ export function RulesSettingsManager({
                             <td className="tabular-nums">{stage.current}명</td>
                             <td className="tabular-nums font-semibold">{stage.next}명</td>
                             <td
-                              className={`tabular-nums ${delta === 0 ? "text-slate-500" : delta > 0 ? "text-admin-danger" : "text-emerald-600"}`}
+                              className={`tabular-nums ${delta === 0 ? "text-slate-500" : delta > 0 ? "text-admin-danger" : "text-admin-success"}`}
                             >
                               {delta === 0 ? "변화 없음" : delta > 0 ? `+${delta}명` : `${delta}명`}
                             </td>
@@ -585,7 +619,14 @@ export function RulesSettingsManager({
               ) : null}
             </div>
           </div>
+          </AdminTabPanel>
 
+          <AdminTabPanel
+            id="leave"
+            activeId={activeTab}
+            idPrefix="rule-settings"
+            className="space-y-5"
+          >
           <div className="admin-section">
             <h3 className="text-sm font-semibold text-slate-900">외출/휴가 한도</h3>
             <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -717,7 +758,14 @@ export function RulesSettingsManager({
               </label>
             </div>
           </div>
+          </AdminTabPanel>
 
+          <AdminTabPanel
+            id="messages"
+            activeId={activeTab}
+            idPrefix="rule-settings"
+            className="space-y-5"
+          >
           <div className="admin-section">
             <h3 className="text-sm font-semibold text-slate-900">수강 만료 알림</h3>
             <p className="admin-help mt-2">
@@ -737,7 +785,7 @@ export function RulesSettingsManager({
                   className="w-full"
                   required
                 />
-                <span className="admin-help mt-1.5 block">
+                <span className="admin-help mt-2 block">
                   예: 14일로 설정하면, 수강 종료 14일 전부터 대시보드에 만료 임박으로 표시됩니다.
                 </span>
               </label>
@@ -796,7 +844,13 @@ export function RulesSettingsManager({
               </label>
             </div>
           </div>
+          </AdminTabPanel>
 
+          <AdminTabPanel
+            id="analysis"
+            activeId={activeTab}
+            idPrefix="rule-settings"
+          >
           <section className="admin-section">
             <h3 className="admin-section-title">성적 분석 기준</h3>
             <p className="admin-help mt-2">점수 차이는 만점 대비 비율입니다. 분석 기능에서 사용할 기준을 저장합니다.</p>
@@ -927,6 +981,7 @@ export function RulesSettingsManager({
               </label>
             </div>
           </section>
+          </AdminTabPanel>
 
           <button
             type="submit"
@@ -938,9 +993,12 @@ export function RulesSettingsManager({
           </button>
         </form>
         </section>
-      </div>
-      <ExamPointAutomationSettings divisionSlug={divisionSlug} />
-      <SettingsHistoryList history={history} />
+      <AdminTabPanel id="automation" activeId={activeTab} idPrefix="rule-settings" className="mt-6">
+        <ExamPointAutomationSettings divisionSlug={divisionSlug} />
+      </AdminTabPanel>
+      <AdminTabPanel id="history" activeId={activeTab} idPrefix="rule-settings" className="mt-6">
+        <SettingsHistoryList history={history} />
+      </AdminTabPanel>
       {actionCompleteModal}
     </>
   );

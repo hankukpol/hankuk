@@ -235,7 +235,7 @@ export function PhoneSubmissionManager({
             type="date"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
-            className="mt-1 block rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm transition"
+            className="mt-1 block rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition"
           />
         </div>
         <div>
@@ -244,7 +244,7 @@ export function PhoneSubmissionManager({
             type="date"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
-            className="mt-1 block rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm transition"
+            className="mt-1 block rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition"
           />
         </div>
         <button
@@ -260,13 +260,13 @@ export function PhoneSubmissionManager({
 
       {/* 요약 통계 */}
       <div className="flex flex-wrap gap-2">
-        <span className="inline-flex items-center rounded-lg bg-green-50 px-3 py-1.5 text-sm font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
+        <span className="inline-flex items-center rounded-lg bg-admin-success-soft px-3 py-2 text-sm font-medium text-admin-success border border-admin-success-line">
           반납 {submittedCount}건
         </span>
-        <span className="inline-flex items-center rounded-lg bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 ring-1 ring-inset ring-red-600/20">
+        <span className="inline-flex items-center rounded-lg bg-admin-danger-soft px-3 py-2 text-sm font-medium text-admin-danger border border-admin-danger-line">
           미반납 {notSubmittedCount}건
         </span>
-        <span className="inline-flex items-center rounded-lg bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-700 ring-1 ring-inset ring-sky-700/20">
+        <span className="inline-flex items-center rounded-lg bg-sky-50 px-3 py-2 text-sm font-medium text-sky-700 border border-admin-accent-line">
           대여 {rentedCount}건
         </span>
       </div>
@@ -275,10 +275,10 @@ export function PhoneSubmissionManager({
       {notSubmittedCount > 0 && pointsEnabled && (
         <div className="admin-notice admin-notice-danger">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-rose-500" />
-            <p className="text-sm font-semibold text-rose-700">미반납자 벌점 부여</p>
+            <AlertTriangle className="h-4 w-4 text-admin-danger" />
+            <p className="text-sm font-semibold text-admin-danger">미반납자 벌점 부여</p>
           </div>
-          <p className="mt-2 text-xs text-rose-600">
+          <p className="mt-2 text-xs text-admin-danger">
             {phonePointRule
               ? `규칙: "${phonePointRule.name}" (${phonePointRule.points}점) · 선택 후 일괄 부여`
               : "휴대폰 미반납 벌점 규칙이 설정되지 않았습니다. 벌점 -1점이 직접 부여됩니다."}
@@ -317,10 +317,10 @@ export function PhoneSubmissionManager({
       {notSubmittedCount > 0 && !pointsEnabled && (
         <div className="admin-notice admin-notice-warning">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-amber-600" />
-            <p className="text-sm font-semibold text-amber-800">상벌점 기능이 비활성화되었습니다.</p>
+            <AlertTriangle className="h-4 w-4 text-admin-warning" />
+            <p className="text-sm font-semibold text-admin-warning">상벌점 기능이 비활성화되었습니다.</p>
           </div>
-          <p className="mt-2 text-xs text-amber-700">
+          <p className="mt-2 text-xs text-admin-warning">
             휴대폰 미반납 체크는 유지되지만 상벌점 기능이 꺼져 있어 별도 벌점 일괄 부여는 사용할 수 없습니다.
           </p>
         </div>
@@ -355,7 +355,7 @@ export function PhoneSubmissionManager({
                   key={item.id}
                   className={
                     item.status === "NOT_SUBMITTED" && selectedIds.has(item.studentId)
-                      ? "bg-rose-50"
+                      ? "bg-admin-danger-soft"
                       : ""
                   }
                 >
@@ -375,7 +375,7 @@ export function PhoneSubmissionManager({
                   <td>{item.studentNumber}</td>
                   <td>
                     <span
-                      className={`inline-flex rounded-lg border px-2.5 py-0.5 text-xs font-medium ${getAttendanceBadgeClassName(item)}`}
+                      className={`inline-flex rounded-lg border px-3 py-1 text-xs font-medium ${getAttendanceBadgeClassName(item)}`}
                     >
                       {item.attendanceStatus === null && item.attendanceCheckable
                         ? "출결 연동 없음"
@@ -384,7 +384,7 @@ export function PhoneSubmissionManager({
                   </td>
                   <td>
                     <span
-                      className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${ item.status === "SUBMITTED" ? "bg-green-50 text-green-700 ring-green-600/20" : item.status === "NOT_SUBMITTED" ? "bg-red-50 text-red-700 ring-red-600/20" : "bg-sky-50 text-sky-700 ring-sky-700/20" }`}
+                      className={`inline-flex items-center gap-1 rounded-lg px-3 py-1 text-xs font-medium border ${ item.status === "SUBMITTED" ? "bg-admin-success-soft text-admin-success border-admin-success-line" : item.status === "NOT_SUBMITTED" ? "bg-admin-danger-soft text-admin-danger border-admin-danger-line" : "bg-sky-50 text-sky-700 border-admin-accent-line" }`}
                     >
                       {item.status === "SUBMITTED" ? (
                         <>

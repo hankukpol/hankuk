@@ -1,7 +1,8 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, Download, LoaderCircle, Save, Upload } from "lucide-react";
-import { AdminTabs, AdminTabPanel } from "@/components/ui/AdminTabs";
+import { ChevronLeft, ChevronRight, Download, LoaderCircle, Save, Search, Upload } from "lucide-react";
+import { AdminTabPanel } from "@/components/ui/AdminTabs";
+import { MobileWorkspaceTools } from "@/components/ui/MobileWorkspaceTools";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatWeekLabel } from "@/lib/exam-week-label";
@@ -26,6 +27,8 @@ type MorningExamScoreManagerProps = {
   divisionSlug: string;
   morningExamTypes: ExamTypeItem[];
   initialSelection?: { examTypeId: string; subjectId?: string; examDate: string };
+  viewTab: "daily" | "weekly";
+  idPrefix: string;
 };
 
 type EditableRow = {
@@ -86,8 +89,9 @@ export function MorningExamScoreManager({
   divisionSlug,
   morningExamTypes,
   initialSelection,
+  viewTab,
+  idPrefix,
 }: MorningExamScoreManagerProps) {
-  const [viewTab, setViewTab] = useState<"daily" | "weekly">("daily");
   const [selectedExamTypeId, setSelectedExamTypeId] = useState(initialSelection?.examTypeId ?? morningExamTypes[0]?.id ?? "");
   const [selectedSubjectId, setSelectedSubjectId] = useState(initialSelection?.subjectId ?? "");
   const [examDate, setExamDate] = useState(initialSelection?.examDate ?? getKstToday());
@@ -340,22 +344,21 @@ export function MorningExamScoreManager({
 
   if (morningExamTypes.length === 0) {
     return (
-      <div className="admin-help py-6 text-center">
-        등록된 아침모의고사 템플릿이 없습니다. 설정 &gt; 시험 템플릿에서 아침모의고사 템플릿을 먼저 추가해주세요.
-      </div>
+      <>
+        {(["input", "weekly"] as const).map(id => (
+          <AdminTabPanel key={id} id={id} activeId={viewTab === "daily" ? "input" : "weekly"} idPrefix={idPrefix}>
+            <p className="admin-empty-state">
+              등록된 아침모의고사 템플릿이 없습니다. 설정 &gt; 시험 템플릿에서 아침모의고사 템플릿을 먼저 추가해주세요.
+            </p>
+          </AdminTabPanel>
+        ))}
+      </>
     );
   }
 
   return (
-    <div className="admin-flat-page">
-      <AdminTabs
-        items={[{ id: "daily", label: "일일 성적 입력" }, { id: "weekly", label: "주간 성적 현황" }]}
-        activeId={viewTab}
-        onChange={setViewTab}
-        label="아침 모의고사 업무"
-        idPrefix="morning-view"
-        variant="secondary"
-      />
+    <div className="admin-flat-page admin-compact-workspace">
+      <MobileWorkspaceTools title="아침 모의고사 조회 조건">
         <div className="admin-filter-bar">
           <label className="block">
             <span className="admin-label mb-2 block">시험 템플릿</span>
@@ -405,9 +408,11 @@ export function MorningExamScoreManager({
         </div>
 
 
-      <AdminTabPanel id="daily" activeId={viewTab} idPrefix="morning-view" className="space-y-4">
-        <h2 className="admin-section-title">일일 성적 입력</h2>
+      </MobileWorkspaceTools>
+      <AdminTabPanel id="input" activeId={viewTab === "daily" ? "input" : "weekly"} idPrefix={idPrefix} className="space-y-4 max-md:space-y-0">
+        <h2 className="admin-section-title max-md:sr-only">일일 성적 입력</h2>
 
+        <MobileWorkspaceTools title="성적 붙여넣기·업로드" icon={Upload} active={viewTab === "daily"}>
         <div className="mt-4">
           <details className="admin-disclosure">
             <summary>엑셀에서 붙여넣기 / CSV 업로드</summary>
@@ -486,12 +491,14 @@ export function MorningExamScoreManager({
           </details>
         </div>
 
+        </MobileWorkspaceTools>
         {isLoadingSheet ? (
           <div className="mt-6 flex items-center justify-center py-12">
             <LoaderCircle className="h-6 w-6 animate-spin text-admin-text-muted" />
           </div>
         ) : (
           <>
+            <MobileWorkspaceTools title="성적 입력 학생 검색" icon={Search} active={viewTab === "daily"}>
             <div className="admin-filter-bar mt-4">
               <StudentSearchField
                 label="일일 성적 입력 학생 검색"
@@ -501,7 +508,8 @@ export function MorningExamScoreManager({
               />
             </div>
 
-            <div className="admin-table-frame mt-4 overflow-x-auto">
+            </MobileWorkspaceTools>
+            <div className="admin-table-frame mt-4 overflow-x-auto max-md:mt-0">
               <table className="min-w-[600px]">
                 <thead>
                   <tr>
@@ -568,7 +576,7 @@ export function MorningExamScoreManager({
         )}
       </AdminTabPanel>
 
-      <AdminTabPanel id="weekly" activeId={viewTab} idPrefix="morning-view" className="space-y-4">
+      <AdminTabPanel id="weekly" activeId={viewTab === "daily" ? "input" : "weekly"} idPrefix={idPrefix} className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="admin-section-title">주간 성적 현황</h2>

@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { toast } from "@/lib/sonner";
 
 import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
+import { AdminTabPanel, AdminTabs } from "@/components/ui/AdminTabs";
+import { formatKstDateTime } from "@/lib/date-utils";
 import {
   DIVISION_FEATURES,
   type DivisionFeatureFlags,
@@ -30,6 +32,7 @@ export function FeatureSettingsManager({
   const [featureFlags, setFeatureFlags] = useState(initialSettings.featureFlags);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState<"summary" | "features">("summary");
   const { showActionComplete, actionCompleteModal } = useActionCompleteModal();
 
   const enabledCount = countEnabledFlags(featureFlags);
@@ -103,8 +106,16 @@ export function FeatureSettingsManager({
 
   return (
     <>
-      <div className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
-        <section className="admin-section">
+      <AdminTabs
+        items={[{ id: "summary", label: "사용 현황" }, { id: "features", label: "기능 선택" }]}
+        activeId={activeTab}
+        onChange={setActiveTab}
+        label="지점 기능 설정 구분"
+        idPrefix="feature-settings"
+        variant="secondary"
+      />
+      <AdminTabPanel id="summary" activeId={activeTab} idPrefix="feature-settings" className="mt-6">
+        <div>
         {/* DESIGN.md 5.3 — 색면 카드 대신 선으로 구분한 요약 박스 */}
         <div className="admin-metric-box">
           <p className="admin-metric-box-label">기능 요약</p>
@@ -119,25 +130,23 @@ export function FeatureSettingsManager({
           </div>
         </div>
 
-        <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
-          <p className="text-sm font-semibold text-slate-900">적용 방식</p>
-          <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
-            <li>비활성 기능은 관리자 사이드바와 설정 허브에서 함께 숨겨집니다.</li>
-            <li>주요 관리자 페이지에 직접 접근해도 기능 설정 페이지로 이동합니다.</li>
-            <li>설정은 현재 지점에만 적용되고 다른 지점에는 영향을 주지 않습니다.</li>
-          </ul>
+        <div className="admin-panel mt-5">
+          <div className="admin-panel-header">
+            <h2 className="admin-section-title">적용 방식</h2>
+          </div>
+          <div className="admin-panel-row"><span className="admin-help">비활성 기능은 관리자 사이드바와 주요 진입 경로에서 숨겨집니다.</span></div>
+          <div className="admin-panel-row"><span className="admin-help">직접 주소로 접근해도 기능 설정 페이지로 이동합니다.</span></div>
+          <div className="admin-panel-row"><span className="admin-help">변경 내용은 현재 지점에만 적용됩니다.</span></div>
+          <div className="admin-panel-row justify-between">
+            <span className="admin-label">최종 저장</span>
+            <span className="admin-help">
+              {formatKstDateTime(settings.updatedAt)}
+            </span>
+          </div>
         </div>
-
-        <article className="mt-5 rounded-lg border border-slate-200 bg-white p-4">
-          <p className="text-sm font-semibold text-slate-900">최종 저장</p>
-          <p className="admin-help mt-2">
-            {new Date(settings.updatedAt).toLocaleString("ko-KR", {
-              timeZone: "Asia/Seoul",
-            })}
-          </p>
-        </article>
-        </section>
-
+        </div>
+      </AdminTabPanel>
+      <AdminTabPanel id="features" activeId={activeTab} idPrefix="feature-settings" className="mt-6">
         <section className="admin-section">
         <div className="flex flex-wrap items-center justify-end gap-3">
           <button
@@ -156,14 +165,14 @@ export function FeatureSettingsManager({
         </div>
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-5">
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="admin-panel">
             {DIVISION_FEATURES.map((feature) => {
               const enabled = featureFlags[feature.key];
 
               return (
                 <label
                   key={feature.key}
-                  className={`flex items-start justify-between gap-4 rounded-lg border px-4 py-4 transition ${ enabled ? "border-slate-200 bg-white" : "border-slate-200 bg-slate-50" }`}
+                  className="admin-panel-row flex items-start justify-between gap-4"
                 >
                   <span className="min-w-0">
                     <span className="block text-sm font-semibold text-slate-900">
@@ -210,7 +219,7 @@ export function FeatureSettingsManager({
           </div>
         </form>
         </section>
-      </div>
+      </AdminTabPanel>
       {actionCompleteModal}
     </>
   );

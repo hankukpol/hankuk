@@ -4,7 +4,8 @@ import { DialogActions } from "@/components/ui/DialogActions";
 
 import dynamic from "next/dynamic";
 
-import { ChevronDown, ChevronUp, Phone, RefreshCcw, Save, Search, X } from "lucide-react";
+import { Phone, RefreshCcw, Save, Search, X } from "lucide-react";
+import { MobileWorkspaceTools } from "@/components/ui/MobileWorkspaceTools";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/lib/sonner";
 
@@ -160,11 +161,11 @@ function getBulkRentalRangeBadgeClassName(
   if (!enabled) return "border-slate-200 bg-slate-50 text-slate-500";
   if (totalCount === 0 || checkableCount === 0) return "border-slate-200 bg-slate-100 text-slate-400";
   if (rentedCount > 0 && rentedCount === checkableCount) {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    return "border-admin-success-line bg-admin-success-soft text-admin-success";
   }
   if (rentedCount > 0) return "border-sky-200 bg-sky-50 text-sky-700";
-  if (checkableCount === totalCount) return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  return "border-amber-200 bg-amber-50 text-amber-700";
+  if (checkableCount === totalCount) return "border-admin-success-line bg-admin-success-soft text-admin-success";
+  return "border-admin-warning-line bg-admin-warning-soft text-admin-warning";
 }
 
 function buildInitialState(snapshot: PhoneDaySnapshot): AllPeriodsState {
@@ -238,7 +239,6 @@ type PhoneCheckFormProps = {
   initialActivePeriodId?: string;
   seatRooms?: StudyRoomItem[];
   initialSeatLayout?: SeatLayout;
-  viewTabsVariant?: "primary" | "secondary";
 };
 
 const PHONE_VIEW_TABS = [
@@ -253,7 +253,6 @@ export function PhoneCheckForm({
   initialActivePeriodId,
   seatRooms,
   initialSeatLayout,
-  viewTabsVariant = "primary",
 }: PhoneCheckFormProps) {
   const [date, setDate] = useState(initialDate);
   const [snapshot, setSnapshot] = useState(initialSnapshot);
@@ -286,7 +285,6 @@ export function PhoneCheckForm({
   const [viewMode, setViewMode] = useState<"seat" | "table">("table");
   const [searchQuery, setSearchQuery] = useState("");
   // 좁은 화면에서는 날짜·검색·필터를 접어 둔다. 조교가 늘 보는 것은 교시와 명단이다.
-  const [isQueryOpen, setIsQueryOpen] = useState(false);
   const [studentFilterMode, setStudentFilterMode] = useState<StudentFilterMode>("all");
   const [isLoading, setIsLoading] = useState(false);
   const [savingPeriodId, setSavingPeriodId] = useState<string | null>(null);
@@ -1034,6 +1032,12 @@ export function PhoneCheckForm({
           }`;
 
   return (
+    <>
+      {activePeriod && <div className="admin-portal-summary admin-portal-summary-3 md:hidden" aria-label={`${date} ${activePeriod.periodName} 휴대폰 집계`}>
+        <div><p className="admin-portal-summary-label">{activePeriod.periodName} 반납</p><p className="admin-portal-summary-value">{activePeriodStats.submittedCount}명</p></div>
+        <div><p className="admin-portal-summary-label">미반납</p><p className="admin-portal-summary-value">{activePeriodStats.notSubmittedCount}명</p></div>
+        <div><p className="admin-portal-summary-label">대여</p><p className="admin-portal-summary-value">{activePeriodStats.rentedCount}명</p></div>
+      </div>}
     <div className="admin-check-workspace space-y-4">
       <CheckDraftSafety key={date} scope={`phones:${divisionSlug}:${date}`} values={phoneDraftCells(periodsState)}
         baseline={phoneDraftCells(savedPeriodsState)} busy={pendingSaves > 0 || isSavingBulkRental}
@@ -1050,42 +1054,17 @@ export function PhoneCheckForm({
           });
           Object.keys(patch).forEach((key) => { const [periodId, studentId] = JSON.parse(key) as [string, string]; markDirty(periodId, studentId); });
         }} />
-      {/* 좁은 화면에서 조회 조건을 여는 버튼. 768px 이상은 아래 블록이 늘 펼쳐져 있다. */}
-      <button
-        type="button"
-        onClick={() => setIsQueryOpen((open) => !open)}
-        aria-expanded={isQueryOpen}
-        aria-controls="phone-query-panel"
-        className="admin-button w-full justify-between md:hidden"
-      >
-        <span>
-          조회 조건 · {date}
-          {searchQuery ? ` · 검색 "${searchQuery}"` : ""}
-          {studentFilterMode === "unchecked" ? " · 미체크만" : ""}
-        </span>
-        {isQueryOpen ? (
-          <ChevronUp className="h-4 w-4" />
-        ) : (
-          <ChevronDown className="h-4 w-4" />
-        )}
-      </button>
 
-      {/* DESIGN.md 5.4 — 보기 전체가 바뀌므로 1차 폴더 탭 */}
       {hasSeatLayout ? (
-        <AdminTabs
-          items={PHONE_VIEW_TABS}
-          activeId={viewMode}
-          onChange={setViewMode}
-          label="휴대폰 체크 보기"
-          idPrefix="phone-view"
-          variant={viewTabsVariant}
-        />
+        <div className="admin-choice-group" role="group" aria-label="휴대폰 체크 보기">
+          {PHONE_VIEW_TABS.map(item => <button key={item.id} type="button" className="admin-choice-button"
+            aria-pressed={viewMode === item.id} data-active={viewMode === item.id}
+            onClick={() => setViewMode(item.id)}>{item.label}</button>)}
+        </div>
       ) : null}
 
-      <div
-        id="phone-query-panel"
-        className={`${isQueryOpen ? "flex" : "hidden"} flex-col gap-4 md:!flex`}
-      >
+      <MobileWorkspaceTools title="휴대폰 조회 조건">
+      <div id="phone-query-panel" className="flex flex-col gap-4">
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:flex sm:flex-wrap sm:gap-3">
           <input
             type="date"
@@ -1157,6 +1136,7 @@ export function PhoneCheckForm({
         </div>
       </div>
       </div>
+      </MobileWorkspaceTools>
 
       {periods.length === 0 ? (
         <div className="admin-help py-16 text-center">
@@ -1175,20 +1155,21 @@ export function PhoneCheckForm({
             onChange={(id: string) => { if (id !== activePeriodId) requestCheckNavigation(() => { setPeriodPickedByHand(true); setActivePeriodId(id); }); }}
             label="휴대폰 확인 교시"
             idPrefix="phone-period"
+            panelId="phone-period-panel"
             variant="secondary"
             scrollable
           />
 
           {/* 선택된 교시 내용 */}
           {activePeriod && (
-            <div className="space-y-4" role="tabpanel" id={`phone-view-panel-${viewMode}`} aria-labelledby={hasSeatLayout ? `phone-view-${viewMode}` : undefined} aria-label={hasSeatLayout ? undefined : "휴대폰 체크"}>
+            <div className="space-y-4" role="tabpanel" id="phone-period-panel" aria-labelledby={`phone-period-${activePeriodId}`}>
               {/* 교시 정보 + 통계 */}
               <div className="admin-workspace-toolbar">
                 <div className="min-w-0">
                 <h3 className="admin-section-title">
                   {activePeriod.periodName}
                   {activePeriod.periodLabel && (
-                    <span className="admin-help ml-1.5">({activePeriod.periodLabel})</span>
+                    <span className="admin-help ml-2">({activePeriod.periodLabel})</span>
                   )}
                   <span className="admin-help ml-2">
                     {activePeriod.startTime}–{activePeriod.endTime}
@@ -1199,13 +1180,13 @@ export function PhoneCheckForm({
                 <p className="admin-help flex flex-wrap items-baseline gap-x-3 gap-y-1">
                   <span>
                     반납{" "}
-                    <strong className="tabular-nums text-emerald-700">
+                    <strong className="tabular-nums text-admin-success">
                       {activePeriodStats.submittedCount}
                     </strong>
                   </span>
                   <span>
                     미반납{" "}
-                    <strong className="tabular-nums text-rose-700">
+                    <strong className="tabular-nums text-admin-danger">
                       {activePeriodStats.notSubmittedCount}
                     </strong>
                   </span>
@@ -1224,7 +1205,7 @@ export function PhoneCheckForm({
                   {activePeriodStats.uncheckedCount > 0 && (
                     <span>
                       미체크{" "}
-                      <strong className="tabular-nums text-amber-700">
+                      <strong className="tabular-nums text-admin-warning">
                         {activePeriodStats.uncheckedCount}
                       </strong>
                     </span>
@@ -1232,7 +1213,7 @@ export function PhoneCheckForm({
                   {snapshot.attendanceIntegrationEnabled && activePeriodStats.attendanceUnprocessedCount > 0 && (
                     <span>
                       출결 미확인{" "}
-                      <strong className="tabular-nums text-amber-700">
+                      <strong className="tabular-nums text-admin-warning">
                         {activePeriodStats.attendanceUnprocessedCount}
                       </strong>
                     </span>
@@ -1350,9 +1331,9 @@ export function PhoneCheckForm({
                       !isCheckable
                         ? "border-slate-100 bg-slate-50/80 opacity-75"
                         : status === "SUBMITTED"
-                        ? "border-green-100 bg-green-50/30"
+                        ? "border-admin-success-line bg-admin-success-soft/30"
                         : status === "NOT_SUBMITTED"
-                          ? "border-red-100 bg-red-50/30"
+                          ? "border-admin-danger-line bg-admin-danger-soft/30"
                           : status === "RENTED"
                             ? "border-sky-100 bg-sky-50/30"
                             : "border-slate-100 bg-white";
@@ -1376,7 +1357,7 @@ export function PhoneCheckForm({
                               {student.studyTrack && ` · ${student.studyTrack}`}
                             </p>
                             <span
-                              className={`mt-1 inline-flex rounded-lg border px-2 py-0.5 text-[13px] font-semibold ${getAttendanceBadgeClassName( attendanceCell, snapshot.attendanceIntegrationEnabled, )}`}
+                              className={`mt-1 inline-flex rounded-lg border px-2 py-1 text-[13px] font-semibold ${getAttendanceBadgeClassName( attendanceCell, snapshot.attendanceIntegrationEnabled, )}`}
                             >
                               {snapshot.attendanceIntegrationEnabled
                                 ? getAttendanceStatusLabel(attendanceCell?.status, attendanceCell?.reason)
@@ -1384,7 +1365,7 @@ export function PhoneCheckForm({
                             </span>
                             {saveState ? (
                               <span
-                                className={`ml-1 mt-1 inline-flex rounded-lg px-2 py-0.5 text-[13px] font-semibold ${ saveState === "saving" ? "bg-amber-50 text-amber-700" : saveState === "saved" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700" }`}
+                                className={`ml-1 mt-1 inline-flex rounded-lg px-2 py-1 text-[13px] font-semibold ${ saveState === "saving" ? "bg-admin-warning-soft text-admin-warning" : saveState === "saved" ? "bg-admin-success-soft text-admin-success" : "bg-admin-danger-soft text-admin-danger" }`}
                               >
                                 {saveState === "saving"
                                   ? "저장 중"
@@ -1465,7 +1446,7 @@ export function PhoneCheckForm({
                   onChange={(event) =>
                     updateBulkRentalPeriodRange({ startPeriodId: event.target.value })
                   }
-                  className="mt-1.5 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
+                  className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
                 >
                   {periods.map((period) => (
                     <option key={period.periodId} value={period.periodId}>
@@ -1481,7 +1462,7 @@ export function PhoneCheckForm({
                   onChange={(event) =>
                     updateBulkRentalPeriodRange({ endPeriodId: event.target.value })
                   }
-                  className="mt-1.5 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
+                  className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
                 >
                   {periods.map((period) => (
                     <option key={period.periodId} value={period.periodId}>
@@ -1500,7 +1481,7 @@ export function PhoneCheckForm({
                 onChange={(event) => updateBulkRentalDraft({ rentalNote: event.target.value })}
                 placeholder="예: 인강 수강"
                 maxLength={200}
-                className="mt-1.5 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400"
+                className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400"
               />
             </label>
 
@@ -1511,7 +1492,7 @@ export function PhoneCheckForm({
                   overwriteExisting: !bulkRentalDraft.overwriteExisting,
                 })
               }
-              className={`w-full rounded-lg border px-3 py-2.5 text-left text-xs font-semibold transition ${ bulkRentalDraft.overwriteExisting ? "border-sky-200 bg-sky-50 text-sky-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50" }`}
+              className={`w-full rounded-lg border px-3 py-3 text-left text-xs font-semibold transition ${ bulkRentalDraft.overwriteExisting ? "border-sky-200 bg-sky-50 text-sky-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50" }`}
             >
               기존 반납/미반납 기록도 대여로 덮어쓰기
             </button>
@@ -1522,7 +1503,7 @@ export function PhoneCheckForm({
                   <p className="admin-label">
                     학생 선택 {bulkRentalSelectedCount}명 · 적용 {bulkRentalSelectedTargetCellCount}칸
                   </p>
-                  <p className="mt-0.5 text-[13px] font-medium text-slate-400">
+                  <p className="mt-1 text-[13px] font-medium text-slate-400">
                     범위 {bulkRentalRangeLabel}
                   </p>
                 </div>
@@ -1593,7 +1574,7 @@ export function PhoneCheckForm({
                         </span>
                       </span>
                       <span
-                        className={`shrink-0 rounded-lg border px-2 py-0.5 text-[13px] font-semibold ${getBulkRentalRangeBadgeClassName( checkablePeriodCount, bulkRentalTargetPeriods.length, snapshot.attendanceIntegrationEnabled, rentedPeriodCount, )}`}
+                        className={`shrink-0 rounded-lg border px-2 py-1 text-[13px] font-semibold ${getBulkRentalRangeBadgeClassName( checkablePeriodCount, bulkRentalTargetPeriods.length, snapshot.attendanceIntegrationEnabled, rentedPeriodCount, )}`}
                       >
                         {rangeStatusText}
                       </span>
@@ -1622,5 +1603,6 @@ export function PhoneCheckForm({
         ) : null}
       </SlideOver>
     </div>
+    </>
   );
 }

@@ -39,6 +39,7 @@ type StudentFormProps = {
   redirectOnCreate?: boolean;
   onCancel?: () => void;
   onSuccess?: (studentId: string) => void;
+  onStateChange?: (state: { isDirty: boolean; isSaving: boolean }) => void;
 };
 
 const editableStatusOptions = [
@@ -77,6 +78,7 @@ export function StudentForm({
   redirectOnCreate = true,
   onCancel,
   onSuccess,
+  onStateChange,
 }: StudentFormProps) {
   const dialogFormId = useId();
   const router = useRouter();
@@ -110,6 +112,10 @@ export function StudentForm({
   const [isSeatLayoutLoading, setIsSeatLayoutLoading] = useState(false);
   const [isSeatBrowserOpen, setIsSeatBrowserOpen] = useState(showSeatSectionOnly);
   const [hasLoadedSeatBrowser, setHasLoadedSeatBrowser] = useState(false);
+
+  const isDirty = JSON.stringify([name, studentNumber, studyTrack, phone, seatId, courseStartDate, courseEndDate, tuitionPlanId, Number(tuitionAmount) || 0, tuitionExempt, tuitionExemptReason, status, memo])
+    !== JSON.stringify([initialStudent?.name ?? "", initialStudent?.studentNumber ?? "", initialStudent?.studyTrack ?? "", initialStudent?.phone ?? "", initialStudent?.seatId ?? "", initialStudent?.courseStartDate ?? "", initialStudent?.courseEndDate ?? "", initialStudent?.tuitionPlanId ?? "", initialStudent?.tuitionAmount ?? 0, initialStudent?.tuitionExempt ?? false, initialStudent?.tuitionExemptReason ?? "", getInitialStatus(initialStudent), initialStudent?.memo ?? ""]);
+  useEffect(() => { onStateChange?.({ isDirty, isSaving }); }, [isDirty, isSaving, onStateChange]);
 
   useEffect(() => {
     if (mode !== "edit" || !initialStudent) {
@@ -509,7 +515,7 @@ export function StudentForm({
                       </p>
                     </div>
                     <span
-                      className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${ selected ? "bg-white/15 text-white" : "bg-white text-slate-600" }`}
+                      className={`rounded-lg px-3 py-1 text-xs font-semibold ${ selected ? "bg-white/15 text-white" : "bg-white text-slate-600" }`}
                     >
                       {formatCurrency(plan.amount)}
                     </span>
@@ -667,7 +673,7 @@ export function StudentForm({
                     빈 좌석을 클릭하면 바로 선택됩니다. 사용 중인 좌석은 선택되지 않습니다.
                   </p>
                 </div>
-                <div className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-500">
+                <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-500">
                   빈 좌석 {availableSeatCount}석 / 운영 좌석 {activeRoomSeatCount}석
                 </div>
               </div>
@@ -702,7 +708,7 @@ export function StudentForm({
               )}
 
               <div className="flex flex-wrap gap-2 text-xs">
-                <span className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-emerald-700">
+                <span className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-admin-success">
                   사용 중 {occupiedSeatCount}석
                 </span>
                 <span className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-slate-600">
@@ -739,7 +745,7 @@ export function StudentForm({
           {showAdvancedFields ? (
             <>
               {isWithdrawn ? (
-                <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-rose-700">
+                <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-admin-danger">
                   퇴실 처리된 학생은 상태를 다시 변경할 수 없습니다. 퇴실 사유와 이력은 상단 상세 정보에서 확인할 수 있습니다.
                 </div>
               ) : (

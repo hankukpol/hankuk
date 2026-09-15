@@ -1,4 +1,5 @@
 "use client";
+import { MobileWorkspaceTools } from "@/components/ui/MobileWorkspaceTools";
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -201,6 +202,7 @@ export function WarningStudentsManager({
   return (
     <div className="admin-flat-page">
       <section className="admin-section">
+        <MobileWorkspaceTools title="경고 대상자 조회·작업">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="admin-section-title">경고 대상자 현황</h2>
@@ -257,7 +259,7 @@ export function WarningStudentsManager({
             ))}
           </select>
 
-          <label className="flex items-center gap-2 text-sm text-slate-700">
+          <label className="flex items-center gap-2 text-sm text-slate-700 max-md:min-h-11">
             <input
               type="checkbox"
               checked={hideNotified}
@@ -272,8 +274,9 @@ export function WarningStudentsManager({
           </span>
         </div>
 
+        </MobileWorkspaceTools>
         {filteredStudents.length > 0 ? (
-          <div className="admin-table-frame mt-5 overflow-x-auto">
+          <div className="admin-table-frame mt-5 overflow-x-auto max-md:mt-0">
             <table className="min-w-full">
               <thead>
                 <tr className="text-left text-slate-500">
@@ -371,7 +374,7 @@ export function WarningStudentsManager({
             </table>
           </div>
         ) : (
-          <div className="admin-help mt-5 px-5 py-8 text-center">
+          <div className="admin-help mt-5 px-5 py-8 text-center max-md:mt-0" data-list-empty>
             <TriangleAlert className="mx-auto h-5 w-5 text-slate-400" />
             <p className="mt-3 text-sm font-medium text-slate-700">
               {notifiedCount > 0 && hideNotified

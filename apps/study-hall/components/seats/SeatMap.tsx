@@ -36,13 +36,13 @@ function getSeatTone(seat: SeatMapSeat | null) {
 
   switch (seat.assignedStudent.status) {
     case "WITHDRAWN":
-      return "border-slate-200 bg-white text-rose-800";
+      return "border-slate-200 bg-white text-admin-danger";
     case "GRADUATED":
-      return "border-slate-200 bg-white text-sky-700";
+      return "border-slate-200 bg-white text-admin-text-secondary";
     case "ON_LEAVE":
-      return "border-slate-200 bg-white text-amber-700";
+      return "border-slate-200 bg-white text-admin-warning";
     default:
-      return "border-slate-200 bg-white text-emerald-700";
+      return "border-slate-200 bg-white text-admin-success";
   }
 }
 
@@ -70,8 +70,8 @@ const EXPIRATION_COLORS: Record<
   "critical" | "warning",
   { bg: string; border: string }
 > = {
-  critical: { bg: "rgba(239, 68, 68, 0.50)", border: "rgba(239, 68, 68, 0.70)" },
-  warning: { bg: "rgba(245, 158, 11, 0.45)", border: "rgba(245, 158, 11, 0.65)" },
+  critical: { bg: "rgb(var(--admin-danger-rgb) / 0.50)", border: "rgb(var(--admin-danger-rgb) / 0.70)" },
+  warning: { bg: "rgb(var(--admin-warning-rgb) / 0.45)", border: "rgb(var(--admin-warning-rgb) / 0.65)" },
 };
 
 function getAssignedSeatStyle(
@@ -126,7 +126,7 @@ export const SeatMap = memo(function SeatMap({
       <div className="overflow-x-auto [-webkit-overflow-scrolling:touch]">
         <div className="rounded-lg border border-slate-200 bg-white p-3 sm:p-4">
           <div
-            className="grid gap-1.5 sm:gap-2"
+            className="grid gap-2 sm:gap-2"
             style={{
               gridTemplateColumns: `repeat(${columns}, minmax(80px, 1fr))`,
             }}
@@ -161,8 +161,8 @@ export const SeatMap = memo(function SeatMap({
 
                 const content = (
                   <div
-                    className={`flex aspect-square flex-col justify-between rounded-lg border p-2 text-left transition ${ isSelected ? "border-admin-accent bg-admin-accent text-white" : classes } ${isHighlighted && !isSelected ? "ring-2 ring-offset-1 ring-sky-500" : ""}`}
-                    style={assignedSeatStyle}
+                    className={`flex aspect-square flex-col justify-between rounded-lg border p-2 text-left transition ${ isSelected ? "border-admin-accent bg-admin-accent text-white" : classes }`}
+                    style={isHighlighted && !isSelected ? { ...assignedSeatStyle, borderColor: "var(--admin-accent)" } : assignedSeatStyle}
                   >
                     <div className="flex items-start justify-between gap-1">
                       <span className="text-[13px] font-bold leading-tight">
@@ -170,7 +170,7 @@ export const SeatMap = memo(function SeatMap({
                       </span>
                       {seat?.assignedStudent ? (
                         <span
-                          className={`inline-flex shrink-0 rounded-lg border px-1.5 py-0.5 text-[13px] font-semibold leading-tight ${getStudyTrackBadgeClasses( seat.assignedStudent.studyTrack, )}`}
+                          className={`inline-flex shrink-0 rounded-lg border px-2 py-1 text-[13px] font-semibold leading-tight ${getStudyTrackBadgeClasses( seat.assignedStudent.studyTrack, )}`}
                         >
                           {getStudyTrackShortLabel(seat.assignedStudent.studyTrack)}
                         </span>
@@ -182,13 +182,13 @@ export const SeatMap = memo(function SeatMap({
                         {seat?.assignedStudent?.name ?? (seat ? "공석" : "")}
                       </p>
                       {seat?.assignedStudent ? (
-                        <p className="mt-0.5 truncate text-[13px] opacity-80">{seat.assignedStudent.studentNumber}</p>
+                        <p className="mt-1 truncate text-[13px] opacity-80">{seat.assignedStudent.studentNumber}</p>
                       ) : seat ? (
-                        <p className="mt-0.5 text-[13px] opacity-70">
+                        <p className="mt-1 text-[13px] opacity-70">
                           {seat.isActive ? "배정 가능" : "비활성"}
                         </p>
                       ) : (
-                        <p className="mt-0.5 text-[13px] opacity-70">클릭 추가</p>
+                        <p className="mt-1 text-[13px] opacity-70">클릭 추가</p>
                       )}
                     </div>
                   </div>
@@ -242,7 +242,7 @@ export const SeatMap = memo(function SeatMap({
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-slate-100 pt-3 text-[13px] text-slate-500">
-            <span className="flex items-center gap-1.5">
+            <span className="flex items-center gap-2">
               <span
                 className="inline-block h-3 w-3 rounded-[3px]"
                 style={{
@@ -252,7 +252,7 @@ export const SeatMap = memo(function SeatMap({
               />
               배정 학생
             </span>
-            <span className="flex items-center gap-1.5">
+            <span className="flex items-center gap-2">
               <span
                 className="inline-block h-3 w-3 rounded-[3px]"
                 style={{
@@ -262,7 +262,7 @@ export const SeatMap = memo(function SeatMap({
               />
               만료 임박
             </span>
-            <span className="flex items-center gap-1.5">
+            <span className="flex items-center gap-2">
               <span
                 className="inline-block h-3 w-3 rounded-[3px]"
                 style={{

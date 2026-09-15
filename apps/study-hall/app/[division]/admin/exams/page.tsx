@@ -19,7 +19,7 @@ export default async function AdminExamsPage({ params, searchParams = {} }: Admi
 
   return (
     <div className="admin-flat-page">
-      <section className="admin-section">
+      <section className="admin-section max-md:sr-only">
         <h1 className="admin-page-title">
           시험 성적 관리
         </h1>

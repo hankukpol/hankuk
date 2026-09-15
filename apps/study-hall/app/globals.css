@@ -71,6 +71,30 @@
   --admin-success-soft-rgb: 238 248 238;
   --admin-success-line: #c5e3c5;
   --admin-success-line-rgb: 197 227 197;
+  --admin-warn-1: #a16207;
+  --admin-warn-1-rgb: 161 98 7;
+  --admin-warn-1-soft: #fefce8;
+  --admin-warn-1-soft-rgb: 254 252 232;
+  --admin-warn-1-line: #fef08a;
+  --admin-warn-1-line-rgb: 254 240 138;
+  --admin-warn-2: #c2410c;
+  --admin-warn-2-rgb: 194 65 12;
+  --admin-warn-2-soft: #fff7ed;
+  --admin-warn-2-soft-rgb: 255 247 237;
+  --admin-warn-2-line: #fed7aa;
+  --admin-warn-2-line-rgb: 254 215 170;
+  --admin-warn-interview: #b91c1c;
+  --admin-warn-interview-rgb: 185 28 28;
+  --admin-warn-interview-soft: #fef2f2;
+  --admin-warn-interview-soft-rgb: 254 242 242;
+  --admin-warn-interview-line: #fecaca;
+  --admin-warn-interview-line-rgb: 254 202 202;
+  --admin-warn-withdraw: #881337;
+  --admin-warn-withdraw-rgb: 136 19 55;
+  --admin-warn-withdraw-soft: #ffe4e6;
+  --admin-warn-withdraw-soft-rgb: 255 228 230;
+  --admin-warn-withdraw-line: #fda4af;
+  --admin-warn-withdraw-line-rgb: 253 164 175;
   --admin-attendance-class: #0f766e;
   --admin-attendance-class-rgb: 15 118 110;
   --admin-attendance-class-soft: #edf8f7;
@@ -397,7 +421,7 @@ body {
   /* 열린 메뉴는 화면에 고정한다.
      흐름 안에 두면 문서가 [메뉴][제목 바][본문] 로 길어져, 아래로 밀면 메뉴 끝과
      본문 머리가 한 화면에 같이 보인다 — 메뉴를 연 채 스크롤하면 화면이 깨지는 것처럼
-     보였던 것이 이것이다. 배경 스크롤은 아래 .admin-shell-locked 가 막는다. */
+     보였던 것이 이것이다. 배경 스크롤은 메뉴의 body 스크롤 잠금으로 막는다. */
   .admin-mobile-panel {
     display: flex;
     position: fixed;
@@ -420,6 +444,23 @@ body {
   /* ------------------------------------------------------------------
      평면 페이지 · 제목
      ------------------------------------------------------------------ */
+
+  .admin-mobile-tools,
+  .admin-mobile-tools-panel,
+  .admin-mobile-tools-body {
+    display: contents;
+  }
+
+  .admin-responsive-disclosure,
+  .admin-responsive-disclosure-body {
+    display: contents;
+  }
+
+  .admin-mobile-tools-heading,
+  .admin-mobile-tools-overlay,
+  .admin-app-switch-icon {
+    display: none;
+  }
 
   .admin-flat-page {
     display: flex;
@@ -899,13 +940,6 @@ body {
   .admin-tab:is([aria-disabled="true"], :disabled) {
     color: var(--admin-text-disabled);
     cursor: not-allowed;
-  }
-
-  /* 탭 안 숫자 */
-  .admin-tab-count {
-    color: var(--admin-text-muted);
-    font-size: var(--admin-type-caption);
-    font-variant-numeric: tabular-nums;
   }
 
   .admin-subtabs {
@@ -1541,25 +1575,6 @@ body {
     border-bottom: 0;
   }
 
-  /* 이동만 하는 목록 행(설정 허브 등). 카드 격자 대신 평면 목록을 쓴다. */
-  .admin-panel-row-link {
-    justify-content: space-between;
-    color: var(--admin-text-muted);
-    transition: background-color 150ms ease-out;
-  }
-
-  .admin-panel-row-link:hover {
-    background: var(--admin-surface-soft);
-  }
-
-  .admin-panel-row-link-label {
-    display: block;
-    color: var(--admin-text);
-    font-size: var(--admin-type-body);
-    font-weight: 600;
-    line-height: 1.3;
-  }
-
   /* 표처럼 읽히는 폼 (DESIGN.md 5.7)
      항목이 서넛만 되어도 라벨 위·입력 아래로만 쌓으면 어디까지가 한 항목인지
      선이 없어 밋밋해진다. 라벨 열을 고정 폭으로 세워 항목을 세로로 맞추고,
@@ -2115,12 +2130,11 @@ body:has(.admin-shell) {
   color: var(--admin-text-disabled);
 }
 
-/* 오류 상태는 기존 rose/red 테두리를 유지한다. */
+/* 오류 상태는 위험 토큰 테두리를 유지한다. */
 .admin-shell
   :is(input, select, textarea):is(
     [aria-invalid="true"],
-    [class*="border-rose-"],
-    [class*="border-red-"]
+    [class*="border-admin-danger"]
   ) {
   border-color: var(--admin-danger);
 }
@@ -2140,8 +2154,7 @@ body:has(.admin-shell) {
 .admin-shell
   :is(input, select, textarea):focus:not(
     [aria-invalid="true"],
-    [class*="border-rose-"],
-    [class*="border-red-"]
+    [class*="border-admin-danger"]
   ) {
   border-color: var(--admin-accent);
 }
@@ -2168,6 +2181,28 @@ body:has(.admin-shell) {
 .admin-shell :where(label, form, fieldset, input, select, textarea) {
   min-width: 0;
   max-width: 100%;
+}
+
+/* Seat geometry and event ownership stay in each workspace; only interaction appearance is shared. */
+.admin-seat-card {
+  --admin-seat-assigned-surface: rgb(var(--admin-accent-rgb) / 0.8);
+  --admin-seat-assigned-line: rgb(var(--admin-accent-rgb) / 0.95);
+}
+
+.admin-shell .admin-seat-card:hover:not(:disabled) {
+  --admin-seat-assigned-surface: var(--admin-accent-hover);
+  background-color: var(--admin-surface-soft);
+}
+
+.admin-shell .admin-seat-card[data-selected="true"] {
+  --admin-seat-assigned-line: var(--admin-text);
+  border-color: var(--admin-text);
+}
+
+.admin-shell .admin-seat-card[data-drop-target="true"] {
+  --admin-seat-assigned-line: var(--admin-accent);
+  border-color: var(--admin-accent);
+  background-color: var(--admin-accent-soft);
 }
 
 /* --- 버튼 규격 --- */
@@ -2347,12 +2382,6 @@ body:has(.admin-shell) {
 
 /* 표 안에서 상세로 이동하는 이름·제목. 셀 안에 버튼 상자를 만들지 않는다.
    .admin-button 규격(테두리·44/36px·라운드)을 되돌려 글자만 남긴다. */
-/* 인쇄물에서만 쓰는 기입란. 화면에서는 밑줄만 남아 읽을 것이 없다.
-   인쇄 창은 자체 스타일시트를 쓰므로 이 규칙이 따라가지 않는다. */
-.admin-shell .admin-print-only {
-  display: none;
-}
-
 .admin-shell .admin-table-link {
   display: inline;
   min-height: 0;
@@ -2527,7 +2556,8 @@ body:has(.admin-shell) {
   text-decoration: underline;
 }
 
-[role="tabpanel"][hidden] {
+[role="tabpanel"][hidden],
+[data-report-panel][hidden] {
   display: none !important;
 }
 
@@ -2716,6 +2746,12 @@ body:has(.admin-shell) {
   border-radius: 0;
 }
 
+@media (min-width: 768px) {
+  .admin-mobile-tools .admin-mobile-tools-heading {
+    display: none;
+  }
+}
+
 /* ==========================================================================
    768px 미만 모바일 규격 — MOBILE_DESIGN.md §2
    데스크톱 규격을 줄여 놓는 것이 아니라 배치를 바꾼다. 토큰·색·13px 하한·
@@ -2728,6 +2764,8 @@ body:has(.admin-shell) {
   .admin-shell
     :is(
       .admin-button,
+      .admin-icon-button,
+      button.rounded-lg,
       input:not([type="checkbox"], [type="radio"]),
       select,
       textarea,
@@ -2796,15 +2834,6 @@ body:has(.admin-shell) {
     line-height: 1.3;
     text-align: center;
     word-break: keep-all;
-  }
-
-  .admin-mobile-topbar-action {
-    flex: 0 0 auto;
-    min-height: 44px;
-    padding: 0 8px;
-    color: var(--admin-text);
-    font-size: var(--admin-type-body);
-    font-weight: 600;
   }
 
   /* --- 1차 탭: 폴더 모양을 버리고 텍스트 탭이 된다 (§2.2) --- */
@@ -2907,9 +2936,99 @@ body:has(.admin-shell) {
   }
 
   .admin-check-summary,
-  .admin-student-detail-summary {
+  .admin-panel {
     border-width: 0;
     border-radius: 0;
+  }
+
+  .admin-shell .admin-seat-unassigned-row {
+    border-width: 0 0 1px;
+    border-radius: 0;
+    border-color: var(--admin-line-soft);
+    background: transparent;
+    padding: 16px 0;
+  }
+
+  .admin-shell .admin-seat-unassigned-row:last-child {
+    border-bottom-width: 0;
+  }
+
+  .admin-mobile-tools {
+    display: none;
+  }
+
+  .admin-mobile-tools[data-open="true"] {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+  }
+
+  .admin-mobile-tools-overlay {
+    display: block;
+  }
+
+  .admin-mobile-tools-panel {
+    position: absolute;
+    inset: 0 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    width: min(760px, 100%);
+    background: var(--admin-surface);
+  }
+
+  .admin-mobile-tools-heading {
+    display: flex;
+  }
+
+  .admin-mobile-tools-body {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 16px;
+    overflow: auto;
+    min-height: 0;
+  }
+
+  .admin-mobile-topbar:has([data-mobile-tools-trigger]) .admin-app-switch-label,
+  .admin-mobile-topbar:has([data-mobile-tools-trigger]) .admin-app-switch-chevron {
+    display: none;
+  }
+
+  .admin-mobile-topbar:has([data-mobile-tools-trigger]) .admin-app-switch-icon {
+    display: block;
+  }
+
+  .admin-mobile-topbar:has([data-mobile-tools-trigger]) .admin-action-menu-trigger {
+    width: var(--admin-control-height);
+    min-width: var(--admin-control-height);
+    padding-inline: 0;
+  }
+
+  .admin-shell .admin-table-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--admin-control-height);
+    min-height: var(--admin-control-height);
+  }
+
+  .admin-shell table .admin-button-compact {
+    min-height: var(--admin-control-height);
+  }
+
+  .admin-shell table .admin-icon-button {
+    width: var(--admin-control-height);
+    min-width: var(--admin-control-height);
+    height: var(--admin-control-height);
+  }
+
+  .admin-shell .admin-input-group {
+    padding-block: 0;
+  }
+
+  .admin-shell .admin-input-group input {
+    min-height: var(--admin-control-height);
   }
 
   .admin-check-savebar {
@@ -3082,6 +3201,51 @@ body:has(.admin-shell) {
 
   .admin-flat-page {
     gap: 20px;
+  }
+
+  .admin-flat-page.admin-compact-workspace {
+    gap: 0;
+  }
+
+  .admin-section.admin-compact-workspace {
+    gap: 0;
+  }
+
+  .admin-responsive-disclosure {
+    display: block;
+  }
+
+  .admin-responsive-disclosure-body {
+    display: block;
+    padding: 0 16px 16px;
+  }
+
+  .admin-shell .admin-compact-workspace > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+
+  .admin-settings-workspace > [role="tabpanel"] {
+    margin-top: 0;
+  }
+
+  .admin-portal [data-report-root] > [data-report-section-id="overview"] {
+    order: -1;
+  }
+
+  .admin-compact-workspace > .admin-subtabs {
+    position: relative;
+    margin-bottom: 0;
+    border-bottom: 0;
+  }
+
+  .admin-compact-workspace > .admin-subtabs::before {
+    content: "";
+    position: absolute;
+    inset: auto 0 0;
+    height: 1px;
+    background: var(--admin-line);
+    pointer-events: none;
   }
 
   .admin-section {
@@ -3330,7 +3494,7 @@ body:has(.admin-shell) {
 .admin-metric-box-value.admin-metric-box-status,
 .admin-shell .admin-metric-strip > :is(article, div) > p.admin-metric-box-status:nth-child(2) {
   font-size: var(--admin-type-body);
-  font-weight: 500;
+  font-weight: 400;
   color: var(--admin-text-muted);
 }
 

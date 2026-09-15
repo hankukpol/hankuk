@@ -50,7 +50,7 @@ export default async function AdminInterviewsPage({
 
   return (
     <div className="admin-flat-page">
-      <section>
+      <section className="max-md:sr-only">
         <h1 className="admin-page-title">면담 기록</h1>
       </section>
 

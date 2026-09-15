@@ -93,7 +93,7 @@ test("student attendance calendar derives class and ordinary excused labels and 
 
   for (const [reason, label, tone] of [
     ["수업: 형법 기본이론", "수업", "--admin-attendance-class"],
-    ["병원 진료", "사유결석", "text-blue-600"],
+    ["병원 진료", "사유결석", "text-attend-excused"],
   ] as const) {
     const cells = Array.from(document.querySelectorAll("td")).filter((cell) =>
       cell.getAttribute("title") === reason || cell.querySelector(`[title="${reason}"]`),
@@ -187,7 +187,7 @@ test("student detail separates class from ordinary excused in weekly cells and h
   assert.ok(excusedRows.length >= 2, "weekly and history excused rows rendered");
   for (const row of excusedRows) {
     assert.match(row.textContent ?? "", /사유결석/);
-    assert.match(row.innerHTML, /text-blue-600/);
+    assert.match(row.innerHTML, /text-attend-excused/);
   }
   assert.ok(Array.from(document.querySelectorAll("button")).some((button) => button.textContent === "수업"));
 });

@@ -174,6 +174,8 @@ export function getShellMenuLabel(role: ShellRole) {
  * 활성 판정은 사이드바와 같은 규칙이라 메뉴에서 강조되는 항목과 늘 일치한다.
  */
 export function getShellScreenLabel(role: ShellRole, divisionSlug: string, pathname: string) {
+  if (role === "admin" && pathname === `/${divisionSlug}/admin/staff`) return "직원 관리";
+  if (role === "admin" && pathname === `/${divisionSlug}/admin/points/rules`) return "상벌점 규칙";
   const { sections, basePath } = shellNav[role];
   let matched: { label: string; length: number } | null = null;
 
@@ -280,7 +282,7 @@ export function AdminSidebar({
             type="button"
             onClick={onLogout}
             disabled={isLoggingOut}
-            className="w-full rounded-lg border border-white/20 px-3 py-2.5 text-[15px] font-semibold text-white/80 transition hover:bg-white/10 hover:text-white disabled:opacity-60"
+            className="w-full rounded-lg border border-white/20 px-3 py-3 text-[15px] font-semibold text-white/80 transition hover:bg-white/10 hover:text-white disabled:opacity-60"
           >
             로그아웃
           </button>

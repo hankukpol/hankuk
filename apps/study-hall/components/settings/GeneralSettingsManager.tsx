@@ -6,6 +6,8 @@ import { useState } from "react";
 import { toast } from "@/lib/sonner";
 
 import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
+import { AdminTabPanel, AdminTabs } from "@/components/ui/AdminTabs";
+import { formatKstDateTime } from "@/lib/date-utils";
 import {
   OPERATING_DAY_KEYS,
   OPERATING_DAY_LABELS,
@@ -62,6 +64,7 @@ export function GeneralSettingsManager({
   const [form, setForm] = useState<FormState>(toFormState(initialSettings));
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState<"summary" | "edit">("summary");
   const { showActionComplete, actionCompleteModal } = useActionCompleteModal();
 
   const activeDayCount = OPERATING_DAY_KEYS.filter((key) => form.operatingDays[key]).length;
@@ -132,8 +135,16 @@ export function GeneralSettingsManager({
 
   return (
     <>
-      <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-        <section className="admin-section">
+      <AdminTabs
+        items={[{ id: "summary", label: "현재 설정" }, { id: "edit", label: "기본 정보 편집" }]}
+        activeId={activeTab}
+        onChange={setActiveTab}
+        label="기본 정보 설정 구분"
+        idPrefix="general-settings"
+        variant="secondary"
+      />
+      <AdminTabPanel id="summary" activeId={activeTab} idPrefix="general-settings" className="mt-6">
+        <div>
         {/* DESIGN.md 5.3 — 지점 색은 색면이 아니라 표식으로만 보여준다. */}
         <div className="admin-metric-box">
           <p className="admin-metric-box-label">지점 미리보기</p>
@@ -157,23 +168,26 @@ export function GeneralSettingsManager({
           </div>
         </div>
 
-        <div className="mt-5 space-y-3">
-          <article className="admin-section">
+        <div className="admin-panel mt-5">
+          <article className="admin-panel-row">
+            <div className="min-w-0">
             <p className="text-sm font-semibold text-slate-900">운영 요일</p>
             <p className="admin-help mt-2">현재 {activeDayCount}일 운영 중입니다.</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {OPERATING_DAY_KEYS.map((key) => (
                 <span
                   key={key}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${ form.operatingDays[key] ? "bg-admin-accent text-white" : "bg-slate-200 text-slate-500" }`}
+                  className={`rounded-lg px-3 py-2 text-xs font-semibold ${ form.operatingDays[key] ? "bg-admin-accent text-white" : "bg-slate-200 text-slate-500" }`}
                 >
                   {OPERATING_DAY_LABELS[key]}
                 </span>
               ))}
             </div>
+            </div>
           </article>
 
-          <article className="admin-section">
+          <article className="admin-panel-row">
+            <div className="min-w-0">
             <p className="text-sm font-semibold text-slate-900">직렬 목록 미리보기</p>
             <p className="admin-help mt-2">
               학생 등록과 목록 필터에서 이 직렬 목록을 기준으로 사용합니다.
@@ -183,7 +197,7 @@ export function GeneralSettingsManager({
                 studyTracks.map((track) => (
                   <span
                     key={track}
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700"
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700"
                   >
                     {track}
                   </span>
@@ -192,17 +206,19 @@ export function GeneralSettingsManager({
                 <span className="admin-help">등록된 직렬이 없습니다.</span>
               )}
             </div>
+            </div>
           </article>
 
-          <article className="admin-section">
+          <article className="admin-panel-row justify-between">
             <p className="text-sm font-semibold text-slate-900">최종 저장</p>
-            <p className="admin-help mt-2">
-              {new Date(settings.updatedAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}
+            <p className="admin-help">
+              {formatKstDateTime(settings.updatedAt)}
             </p>
           </article>
         </div>
-        </section>
-
+        </div>
+      </AdminTabPanel>
+      <AdminTabPanel id="edit" activeId={activeTab} idPrefix="general-settings" className="mt-6">
         <section className="admin-section">
         <div className="flex flex-wrap items-center justify-end gap-3">
           <button
@@ -289,7 +305,7 @@ export function GeneralSettingsManager({
                   출석 계산과 학생 포털 캘린더에서 사용하는 운영 요일입니다.
                 </p>
               </div>
-              <span className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-slate-700">
+              <span className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-slate-700">
                 주 {activeDayCount}일 운영
               </span>
             </div>
@@ -341,7 +357,7 @@ export function GeneralSettingsManager({
                 studyTracks.map((track) => (
                   <span
                     key={track}
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700"
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700"
                   >
                     {track}
                   </span>
@@ -362,7 +378,7 @@ export function GeneralSettingsManager({
           </button>
         </form>
         </section>
-      </div>
+      </AdminTabPanel>
       {actionCompleteModal}
     </>
   );

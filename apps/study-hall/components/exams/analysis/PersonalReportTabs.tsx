@@ -16,7 +16,7 @@ const sections: { id: ReportSection; label: string }[] = [
 ];
 
 /** 탭을 바꿔도 문항 필터와 펼침 상태를 보존하고 전체 인쇄에 사용할 DOM을 유지한다. */
-export function PersonalReportTabs({ children, section }: { children: ReactNode; section?: ReportSection }) {
+export function PersonalReportTabs({ children, section, navigation = "tabs" }: { children: ReactNode; section?: ReportSection; navigation?: "tabs" | "anchors" }) {
   const prefix = useId();
   const [selected, setSelected] = useState<ReportSection>("overview");
   const active = section ?? selected;
@@ -26,8 +26,17 @@ export function PersonalReportTabs({ children, section }: { children: ReactNode;
   );
   const items = sections.filter(item => group(item.id).length > 0);
 
+  if (navigation === "anchors" && !section) return <>
+    <nav data-report-navigation className="admin-choice-group" aria-label="개인 성적 분석 바로가기">
+      {items.map(item => <a key={item.id} className="admin-choice-button admin-choice-button-auto" href={`#${prefix}-section-${item.id}`}>{item.label}</a>)}
+    </nav>
+    {items.map(item => <section key={item.id} id={`${prefix}-section-${item.id}`} aria-label={item.label} data-report-panel data-report-section-id={item.id} className="admin-flat-page scroll-mt-16 md:scroll-mt-0">
+      {group(item.id)}
+    </section>)}
+  </>;
+
   return <>
-    {!section && <div data-report-navigation><AdminTabs variant="secondary" scrollable label="개인 성적 분석 항목" idPrefix={prefix} items={items} activeId={active} onChange={setSelected} /></div>}
+    {!section && <div data-report-navigation className="admin-compact-workspace"><AdminTabs variant="secondary" scrollable label="개인 성적 분석 항목" idPrefix={prefix} items={items} activeId={active} onChange={setSelected} /></div>}
     {items.map(item => <div key={item.id} id={`${prefix}-panel-${item.id}`} role="tabpanel" aria-labelledby={!section ? `${prefix}-${item.id}` : undefined} aria-label={section ? item.label : undefined} hidden={active !== item.id} data-report-panel className="admin-flat-page">
       {group(item.id)}
     </div>)}

@@ -5,6 +5,7 @@ import vm from "node:vm";
 import test from "node:test";
 import ts from "typescript";
 import * as React from "react";
+import * as ReactDOM from "react-dom";
 import * as jsx from "react/jsx-runtime";
 import { renderToStaticMarkup } from "react-dom/server";
 import * as rangeSchema from "../../lib/morning-exam-analysis-schemas";
@@ -41,6 +42,7 @@ function load(file: string, overrides: Record<string, unknown> = {}, globals: Re
       if (name in overrides) return overrides[name];
       if (name === "@/lib/morning-exam-analysis-schemas") return rangeSchema;
       if (name === "react") return React;
+      if (name === "react-dom") return ReactDOM;
       // 아이콘은 화면 검증 대상이 아니다. 개별 override 가 없으면 빈 요소로 대체한다.
       if (name === "lucide-react") return new Proxy({}, { get: () => () => null });
       if (name === "react/jsx-runtime") return jsx;
@@ -89,6 +91,19 @@ const report: MorningStudentReport = {
   topics: [], dailyItems: [], cumulativeGap: null, weeklyRanks: [],
 };
 
+test("multiple mounted reports keep section IDs unique and anchor targets local", () => {
+  const Component = load("components/exams/analysis/MorningStudentReport.tsx").MorningStudentReport;
+  const html = renderToStaticMarkup(React.createElement(React.Fragment, null,
+    React.createElement(Component, { report, mode: "student" }),
+    React.createElement(Component, { report, mode: "student" }),
+  ));
+  const ids = Array.from(html.matchAll(/\sid="([^"]+)"/g)).map(match => match[1]);
+  assert.equal(ids.length, new Set(ids).size);
+  const anchors = Array.from(html.matchAll(/href="#([^"]+)"/g)).map(match => match[1]);
+  assert.ok(anchors.length > 0);
+  for (const target of anchors) assert.equal(ids.filter(id => id === target).length, 1);
+});
+
 test("first-month report uses configured attended-session counts and shows every unavailable section", () => {
   const Component = load("components/exams/analysis/MorningStudentReport.tsx").MorningStudentReport;
   const html = renderToStaticMarkup(React.createElement(Component, { report, mode: "student" }));
@@ -127,7 +142,7 @@ test("student full grading and external rank stay in daily details without infer
   for (const text of ["외부 석차 3등", "상위 15%", "전체 채점표 (1문항)", "3,4", "2,4", "80%", "<td>X</td>", "직전 주 기록이 없어"]) assert.ok(html.includes(text), text);
   assert.ok(!html.includes("(n="));
   assert.ok(!html.includes("취약단원") && !html.includes("강점단원"));
-  const itemSection = html.slice(html.indexOf('id="personal-items"'));
+  const itemSection = html.slice(html.indexOf('data-report-section="items"'));
   assert.ok(itemSection.indexOf("2026-09-08") >= 0 && itemSection.indexOf("2026-09-08") < itemSection.indexOf("2026-09-01"));
   assert.ok(!/<details[^>]*\bopen/.test(html));
   assert.ok(!html.includes("관리자전용이름"));
@@ -203,7 +218,7 @@ test("student SSR uses authenticated identity, validates period, preserves manua
   const Component = load("app/[division]/student/exams/page.tsx", {
     "next/dynamic": { default: () => empty },
     "next/navigation": { notFound: () => { throw new Error("page404"); }, redirect: () => { throw new Error("redirect"); } },
-    "lucide-react": { ChartNoAxesColumn: empty },
+    "lucide-react": { ChartNoAxesColumn: empty, SlidersHorizontal: empty, X: empty, Printer: empty },
     "@/components/exams/ExamScoreChartLoader": { ExamScoreChartLoader: empty },
     "@/components/exams/ExamTabLayout": { ExamTabLayout: (props: { morningContent: React.ReactNode; regularContent: React.ReactNode; defaultTab: string }) => { tab = props.defaultTab; return React.createElement("main", null, props.morningContent, props.regularContent); } },
     "@/components/exams/MorningExamStudentView": { MorningExamStudentView: () => React.createElement("p", null, "기존 수기 아침 성적") },

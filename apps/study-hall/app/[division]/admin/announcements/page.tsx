@@ -17,7 +17,7 @@ export default async function AdminAnnouncementsPage({ params }: AdminAnnounceme
 
   return (
     <div className="admin-flat-page">
-      <section>
+      <section className="max-md:sr-only">
         <h1 className="admin-page-title">공지사항</h1>
       </section>
 

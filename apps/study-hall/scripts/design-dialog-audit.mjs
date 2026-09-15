@@ -5,6 +5,8 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
+const baseURL = process.env.DESIGN_AUDIT_URL || "http://127.0.0.1:3100";
+assert.ok(["localhost", "127.0.0.1"].includes(new URL(baseURL).hostname), "Local mock UI audit only");
 const { build } = require(require.resolve("esbuild", { paths: [require.resolve("tsx")] }));
 const output = process.env.DESIGN_AUDIT_OUTPUT || ".superloopy/evidence/frontend/2026-09-08-design-audit/dialogs";
 fs.mkdirSync(output, { recursive: true });
@@ -14,7 +16,9 @@ const results = [];
 try {
   for (const width of [390, 768, 1280, 1600]) {
     const page = await browser.newPage({ viewport: { width, height: 568 }, reducedMotion: "reduce" });
-    await page.goto(`${process.env.DESIGN_AUDIT_URL || "http://127.0.0.1:3100"}/login`, { waitUntil: "networkidle" });
+    await page.goto(`${baseURL}/login`, { waitUntil: "load", timeout: 90000 });
+    await page.waitForLoadState("networkidle", { timeout: 1000 }).catch(() => {});
+    await page.evaluate(() => document.fonts.ready);
     await page.addScriptTag({ path: path.join(output, "fixture.js") });
     const trigger = page.getByRole("button", { name: "Open fixture drawer" });
     await trigger.click();

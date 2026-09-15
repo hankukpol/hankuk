@@ -18,6 +18,8 @@ type AdminTabsProps<T extends string> = {
   label: string;
   /** tabpanel 과 연결할 id 접두사 */
   idPrefix?: string;
+  /** 교체 렌더링하는 단일 패널을 여러 탭이 공유할 때 지정한다. */
+  panelId?: string;
   className?: string;
   variant?: "primary" | "secondary";
   /** 항목이 많은 서브 탭을 줄바꿈 대신 한 줄 가로 스크롤로 둔다. */
@@ -35,6 +37,7 @@ export function AdminTabs<T extends string>({
   onChange,
   label,
   idPrefix = "tab",
+  panelId,
   className,
   variant = "primary",
   scrollable = false,
@@ -76,7 +79,7 @@ export function AdminTabs<T extends string>({
             type="button"
             role="tab"
             id={`${idPrefix}-${item.id}`}
-            aria-controls={`${idPrefix}-panel-${item.id}`}
+            aria-controls={panelId ?? `${idPrefix}-panel-${item.id}`}
             aria-selected={isActive}
             tabIndex={isActive ? 0 : -1}
             disabled={item.disabled}

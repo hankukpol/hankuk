@@ -10,6 +10,7 @@ import { toast } from "@/lib/sonner";
 
 import { ActionCompleteModal } from "@/components/ui/ActionCompleteModal";
 import { SlideOver } from "@/components/ui/SlideOver";
+import { MobileWorkspaceTools } from "@/components/ui/MobileWorkspaceTools";
 import { StudentSearchCombobox } from "@/components/ui/StudentSearchCombobox";
 import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
 import {
@@ -74,7 +75,7 @@ function toFormState(studentId?: string): FormState {
 }
 
 function formatDate(value: string) {
-  return new Date(`${value}T00:00:00+09:00`).toLocaleDateString("ko-KR");
+  return new Date(`${value}T00:00:00+09:00`).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" });
 }
 
 function getLimit(type: LeaveTypeValue, settings: LeaveManagerProps["settings"]) {
@@ -108,6 +109,8 @@ export const LeaveManager = memo(function LeaveManager({
   );
   const defaultStudentId = activeStudents[0]?.id ?? "";
   const [permissions, setPermissions] = useState(initialPermissions);
+  const [detailPermissionId, setDetailPermissionId] = useState<string | null>(null);
+  const detailPermission = permissions.find((permission) => permission.id === detailPermissionId);
   const [viewTab, setViewTab] = useState<"history" | "usage" | "settlement">("history");
   const [form, setForm] = useState<FormState>(toFormState(defaultStudentId));
   const [summaryStudentId, setSummaryStudentId] = useState(defaultStudentId);
@@ -454,6 +457,7 @@ export const LeaveManager = memo(function LeaveManager({
           label="외출·휴가 업무"
           idPrefix="leave-view"
         />
+        <MobileWorkspaceTools title="외출·휴가 작업" icon={Plus}>
         <div className="admin-workspace-toolbar">
           <p className="admin-help">운영 학생 <strong className="text-admin-text">{activeStudents.length}명</strong></p>
           <div className="flex flex-wrap gap-2">
@@ -465,8 +469,10 @@ export const LeaveManager = memo(function LeaveManager({
             </button>
           </div>
         </div>
+        </MobileWorkspaceTools>
 
         <AdminTabPanel id="history" activeId={viewTab} idPrefix="leave-view" className="space-y-4">
+          <MobileWorkspaceTools title="외출·휴가 조회 조건" active={viewTab === "history"}>
           <div className="admin-filter-bar">
             <label><span className="admin-label mb-2 block">학생</span>
               <StudentSearchCombobox students={activeStudents} value={historyStudentId} onChange={setHistoryStudentId} allStudentsLabel="전체 학생" />
@@ -475,28 +481,18 @@ export const LeaveManager = memo(function LeaveManager({
               <input type="month" value={historyMonth} onChange={(event) => setHistoryMonth(event.target.value)} className="w-full" />
             </label>
           </div>
-          <div className="admin-workspace-toolbar">
+          </MobileWorkspaceTools>
+          <div className="admin-workspace-toolbar max-md:hidden">
             <h2 className="admin-section-title">외출·휴가 이력 <span className="text-admin-accent">{historyRows.length}건</span></h2>
             <p className="admin-help">{historyMonth}</p>
           </div>
-          <div className="space-y-4 md:hidden">
+          <div className="md:hidden">
             {historyRows.map((permission) => (
-              <article key={permission.id} className="admin-record-card">
-                <div className="admin-workspace-toolbar">
-                  <div><h3 className="admin-section-title">{permission.studentName}</h3><p className="admin-help mt-1">{permission.studentNumber}</p></div>
-                  <span className={`admin-badge ${getLeaveStatusClasses(permission.status)}`}>{getLeaveStatusLabel(permission.status)}</span>
-                </div>
-                <div className="admin-workspace-toolbar mt-4">
-                  <span className="font-semibold">{getLeaveTypeLabel(permission.type)}</span>
-                  <time dateTime={permission.date} className="text-sm tabular-nums">{formatDate(permission.date)}</time>
-                </div>
-                {permission.reason ? <p className="mt-3 whitespace-pre-wrap break-words text-sm">{permission.reason}</p> : null}
-                {canCancelPermission(permission) ? (
-                  <div className="mt-4 flex justify-end border-t border-admin-line-soft pt-4">
-                    <button type="button" onClick={() => void handleCancelPermission(permission)} disabled={cancellingPermissionId === permission.id} className="admin-button">{cancellingPermissionId === permission.id ? "처리 중..." : "승인 취소"}</button>
-                  </div>
-                ) : null}
-              </article>
+              <button key={permission.id} type="button" className="admin-list-row admin-list-row-stack w-full text-left" onClick={() => setDetailPermissionId(permission.id)} aria-label={`${permission.studentName} 외출·휴가 상세`}>
+                <span className="admin-list-row-label">{getLeaveTypeLabel(permission.type)} · {formatDate(permission.date)}</span>
+                <span className="admin-list-row-title">{permission.studentName} · {getLeaveStatusLabel(permission.status)}</span>
+                <span className="admin-list-row-meta">{permission.studentNumber}{permission.reason ? ` · ${permission.reason}` : ""}</span>
+              </button>
             ))}
             {!historyRows.length ? <div className="admin-empty-state"><p className="font-semibold">조회 조건에 맞는 이력이 없습니다.</p><p className="admin-help mt-2">{historyMonth}</p></div> : null}
           </div>
@@ -523,7 +519,7 @@ export const LeaveManager = memo(function LeaveManager({
                       <td>{getLeaveTypeLabel(permission.type)}</td>
                       <td>{formatDate(permission.date)}</td>
                       <td>
-                        <span className={`inline-flex rounded-lg border px-2.5 py-1 text-xs font-medium ${getLeaveStatusClasses(permission.status)}`}>
+                        <span className={`inline-flex rounded-lg border px-3 py-1 text-xs font-medium ${getLeaveStatusClasses(permission.status)}`}>
                           {getLeaveStatusLabel(permission.status)}
                         </span>
                       </td>
@@ -534,7 +530,7 @@ export const LeaveManager = memo(function LeaveManager({
                             type="button"
                             onClick={() => void handleCancelPermission(permission)}
                             disabled={cancellingPermissionId === permission.id}
-                            className="inline-flex items-center rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="inline-flex items-center rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {cancellingPermissionId === permission.id ? "처리 중..." : "승인 취소"}
                           </button>
@@ -558,6 +554,7 @@ export const LeaveManager = memo(function LeaveManager({
         </AdminTabPanel>
 
         <AdminTabPanel id="usage" activeId={viewTab} idPrefix="leave-view" className="space-y-4">
+          <MobileWorkspaceTools title="학생별 휴가 조회 조건" active={viewTab === "usage"}>
           <div className="admin-filter-bar">
             <label><span className="admin-label mb-2 block">학생</span>
               <StudentSearchCombobox students={activeStudents} value={summaryStudentId} onChange={setSummaryStudentId} placeholder="학생을 선택해 주세요." />
@@ -566,6 +563,7 @@ export const LeaveManager = memo(function LeaveManager({
               <input type="month" value={summaryMonth} onChange={(event) => setSummaryMonth(event.target.value)} className="w-full" />
             </label>
           </div>
+          </MobileWorkspaceTools>
           <div className="admin-workspace-toolbar">
             <div>
               <h2 className="admin-section-title">{selectedSummaryStudent ? `${selectedSummaryStudent.name} 사용 현황` : "학생별 사용 현황"}</h2>
@@ -665,6 +663,19 @@ export const LeaveManager = memo(function LeaveManager({
 
         </AdminTabPanel>
       </div>
+
+      <SlideOver open={Boolean(detailPermission)} onClose={() => setDetailPermissionId(null)} title="외출·휴가 상세">
+        {detailPermission ? <div className="space-y-4">
+          <h2 className="admin-section-title">{detailPermission.studentName}</h2>
+          <dl className="admin-record-details">
+            <div><dt className="admin-label">유형</dt><dd>{getLeaveTypeLabel(detailPermission.type)}</dd></div>
+            <div><dt className="admin-label">일자</dt><dd>{formatDate(detailPermission.date)}</dd></div>
+            <div><dt className="admin-label">상태</dt><dd>{getLeaveStatusLabel(detailPermission.status)}</dd></div>
+            <div><dt className="admin-label">사유</dt><dd>{detailPermission.reason || "없음"}</dd></div>
+          </dl>
+          {canCancelPermission(detailPermission) ? <button type="button" className="admin-button" disabled={cancellingPermissionId === detailPermission.id} onClick={() => { setDetailPermissionId(null); void handleCancelPermission(detailPermission); }}>{cancellingPermissionId === detailPermission.id ? "처리 중..." : "승인 취소"}</button> : null}
+        </div> : null}
+      </SlideOver>
 
       <SlideOver
         open={isEditorOpen}

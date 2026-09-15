@@ -31,10 +31,10 @@ export function getLeaveStatusClasses(status: string | null | undefined) {
     case "APPROVED":
       return "border-sky-200 bg-sky-50 text-sky-700";
     case "USED":
-      return "border-emerald-200 bg-emerald-50 text-emerald-700";
+      return "border-admin-success-line bg-admin-success-soft text-admin-success";
     case "REJECTED":
       return "border-slate-300 bg-slate-100 text-slate-600";
     default:
-      return "border-amber-200 bg-amber-50 text-amber-700";
+      return "border-admin-warning-line bg-admin-warning-soft text-admin-warning";
   }
 }

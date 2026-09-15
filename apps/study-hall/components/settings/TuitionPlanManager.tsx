@@ -1,4 +1,5 @@
 "use client";
+import { MobileWorkspaceTools } from "@/components/ui/MobileWorkspaceTools";
 
 import { LoaderCircle, Pencil, Plus, RefreshCcw, Save, Trash2 } from "lucide-react";
 import { useId, useMemo, useState, type FormEvent } from "react";
@@ -7,6 +8,7 @@ import { toast } from "@/lib/sonner";
 import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
 import { useConfigurationReview } from "@/components/settings/ConfigurationReview";
 import { tuitionPlanSchema } from "@/lib/tuition-schemas";
+import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
 import { DialogActions } from "@/components/ui/DialogActions";
 import { SlideOver } from "@/components/ui/SlideOver";
 import type { TuitionPlanItem } from "@/lib/services/tuition-plan.service";
@@ -158,6 +160,7 @@ export function TuitionPlanManager({ divisionSlug, initialPlans }: TuitionPlanMa
   return (
     <>
       <section className="admin-section">
+        <MobileWorkspaceTools title="등록 플랜 작업">
         <div className="admin-workspace-toolbar">
           <h2 className="admin-section-title">등록 플랜 목록</h2>
           <div className="flex flex-wrap items-center gap-2">
@@ -177,8 +180,9 @@ export function TuitionPlanManager({ divisionSlug, initialPlans }: TuitionPlanMa
           </div>
         </div>
 
+        </MobileWorkspaceTools>
         {sortedPlans.length > 0 ? (
-          <div className="admin-table-frame mt-5">
+          <div className="admin-table-frame mt-5 max-md:mt-0">
             <table>
               <thead>
                 <tr>
@@ -310,6 +314,7 @@ export function TuitionPlanManager({ divisionSlug, initialPlans }: TuitionPlanMa
         </form>
       </SlideOver>
       {dialog}
+      {confirmDialog}
       {actionCompleteModal}
     </>
   );

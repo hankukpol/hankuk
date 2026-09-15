@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { formatPrintDocument, reportDocumentStyle } from "./print-document";
 
 /** Copies only the selected report; no API or student data is sent elsewhere. */
 export function ReportPrintButton() {
@@ -72,7 +73,12 @@ export function ReportPrintButton() {
         .print-actions button { display: inline-block !important; padding: 3mm; cursor: pointer; }
         @media print { .print-actions { display: none !important; } body { max-width: none; } }
       `;
+      style.textContent += reportDocumentStyle;
       doc.head.append(style);
+      const viewport = doc.createElement("meta");
+      viewport.name = "viewport";
+      viewport.content = "width=device-width, initial-scale=1";
+      doc.head.append(viewport);
       const actions = doc.createElement("div");
       actions.className = "print-actions";
       const help = doc.createElement("p");
@@ -91,7 +97,7 @@ export function ReportPrintButton() {
         const content = Array.from(copy.querySelectorAll("header, [data-learning-summary]"));
         copy.replaceChildren(...content);
       }
-      copy.querySelectorAll("[data-report-print], [data-report-navigation], script").forEach(node => node.remove());
+      copy.querySelectorAll("[data-report-print], [data-report-navigation], .admin-mobile-tools-heading, .admin-mobile-tools-overlay, [data-mobile-tools-trigger], script").forEach(node => node.remove());
       copy.querySelectorAll<HTMLElement>("[data-report-panel]").forEach(node => { node.hidden = false; });
       copy.querySelectorAll("details").forEach(node => { node.open = true; });
       const originals = source.querySelectorAll('svg.recharts-surface[role="application"]');
@@ -125,6 +131,7 @@ export function ReportPrintButton() {
         }
         chart.replaceWith(figure);
       });
+      formatPrintDocument(copy, doc);
       doc.body.replaceChildren(actions, copy);
       popup.opener = null;
       popup.focus();

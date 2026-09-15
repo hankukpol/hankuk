@@ -77,7 +77,7 @@ export function PortalSectionHeader({
        action 에 shrink-0 만 주면 제목이 한 글자 폭으로 붕괴한다. */
     <div className="admin-workspace-toolbar">
       <div className="min-w-0 flex-1 basis-[240px]">
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-3">
           {icon ? (
             <div
               className="flex h-8 w-8 shrink-0 items-center justify-center"
@@ -88,7 +88,7 @@ export function PortalSectionHeader({
           ) : null}
           <h2 className="admin-section-title">{title}</h2>
         </div>
-        {description ? <p className="admin-help mt-1.5">{description}</p> : null}
+        {description ? <p className="admin-help mt-2">{description}</p> : null}
       </div>
       {action ? <div className="min-w-0 shrink-0">{action}</div> : null}
     </div>
@@ -146,7 +146,7 @@ export function PortalEmptyState({ title, description }: PortalEmptyStateProps) 
     /* DESIGN.md 5.3 — 빈 상태는 점선 상자가 아니라 평면 soft 영역이다. */
     <div className="admin-empty-state">
       <p className="text-[15px] font-semibold text-admin-text">{title}</p>
-      <p className="admin-help mt-1.5">{description}</p>
+      <p className="admin-help mt-2">{description}</p>
     </div>
   );
 }

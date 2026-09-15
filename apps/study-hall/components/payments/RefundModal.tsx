@@ -271,7 +271,7 @@ export function RefundModal({
         {activeStudent ? (
           <div className="grid gap-3 md:grid-cols-3">
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm"><p className="admin-help">총 납부</p><p className="mt-1 font-semibold text-slate-900">{formatCurrency(totalPaid)}원</p></div>
-            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm"><p className="admin-help">기환불</p><p className="mt-1 font-semibold text-rose-600">{formatCurrency(totalRefunded)}원</p></div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm"><p className="admin-help">기환불</p><p className="mt-1 font-semibold text-admin-danger">{formatCurrency(totalRefunded)}원</p></div>
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm"><p className="admin-help">잔여 환불 가능액</p><p className="mt-1 font-semibold text-slate-900">{formatCurrency(Math.max(totalPaid - totalRefunded, 0))}원</p></div>
           </div>
         ) : null}
@@ -310,7 +310,7 @@ export function RefundModal({
             <p className="font-medium text-slate-700">묶음 결제 목록</p>
             <div className="mt-3 space-y-2">
               {selectedGroupPayments.map((payment) => (
-                <div key={payment.id} className={`rounded-lg border px-3 py-3 ${payment.id === originalPaymentId ? "border-rose-300 bg-rose-50" : "border-slate-200 bg-white"}`}>
+                <div key={payment.id} className={`rounded-lg border px-3 py-3 ${payment.id === originalPaymentId ? "border-admin-danger-line bg-admin-danger-soft" : "border-slate-200 bg-white"}`}>
                   <p className="font-medium text-slate-900">{payment.paymentTypeName}</p>
                   <p className="admin-help mt-1">{formatDate(payment.paymentDate)} · {formatPaymentMethod(payment.method)} · 결제 {formatCurrency(payment.amount)}원 · 기환불 {formatCurrency(payment.refundedAmount)}원 · 잔여 {formatCurrency(payment.remainingAmount)}원</p>
                 </div>

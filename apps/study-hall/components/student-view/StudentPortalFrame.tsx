@@ -56,12 +56,13 @@ export function StudentPortalFrame({
             {/* 768px 미만 상단 바 (MOBILE_DESIGN.md 2.1). 지점명·학생명은 아래 요약 격자에 이미 있다. */}
             <div className="admin-mobile-topbar md:hidden">
               <p className="admin-mobile-topbar-title">{title}</p>
+              <span className="contents" data-mobile-workspace-host />
               <StudentLogoutButton divisionSlug={division.slug} />
             </div>
 
             <div className="min-w-0 max-md:hidden">
               <h1 className="admin-page-title break-keep">{title}</h1>
-              <p className="admin-help mt-1.5">{description}</p>
+              <p className="admin-help mt-2">{description}</p>
             </div>
 
             <div className="admin-portal-overview">

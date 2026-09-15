@@ -1,5 +1,7 @@
 "use client";
 
+import { ChevronDown, Grid2X2 } from "lucide-react";
+
 import {
   HANKUK_APP_KEYS,
   getHankukPortalLaunchUrl,
@@ -38,11 +40,10 @@ export function AppSwitchMenu({ role, divisionSlug = null }: AppSwitchMenuProps)
   return (
     /* DESIGN.md 5.12 — 드롭다운 항목은 버튼이 아니라 작업 메뉴 항목이다. */
     <details className="admin-action-menu">
-      <summary className="admin-action-menu-trigger list-none cursor-pointer [&::-webkit-details-marker]:hidden">
-        앱 전환
-        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="m6 9 6 6 6-6" />
-        </svg>
+      <summary aria-label="앱 전환" title="앱 전환" className="admin-action-menu-trigger list-none cursor-pointer [&::-webkit-details-marker]:hidden">
+        <span className="admin-app-switch-label">앱 전환</span>
+        <ChevronDown className="admin-app-switch-chevron h-4 w-4" />
+        <Grid2X2 className="admin-app-switch-icon h-5 w-5" />
       </summary>
 
       <div className="admin-action-menu-panel">

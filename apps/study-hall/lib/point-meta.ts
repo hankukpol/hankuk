@@ -53,15 +53,15 @@ export function getPointCategoryLabel(category: string | null | undefined) {
 export function getPointCategoryClasses(category: string | null | undefined) {
   switch (getPointCategoryLabel(category)) {
     case "출결":
-      return "border-emerald-200 bg-emerald-50 text-emerald-700";
+      return "border-admin-success-line bg-admin-success-soft text-admin-success";
     case "생활":
-      return "border-amber-200 bg-amber-50 text-amber-700";
+      return "border-admin-warning-line bg-admin-warning-soft text-admin-warning";
     case "시험":
       return "border-blue-200 bg-blue-50 text-blue-700";
     case "자습":
       return "border-slate-200 bg-slate-100 text-slate-700";
     default:
-      return "border-cyan-200 bg-cyan-50 text-cyan-700";
+      return "border-admin-success-line bg-admin-success-soft text-admin-success";
   }
 }
 

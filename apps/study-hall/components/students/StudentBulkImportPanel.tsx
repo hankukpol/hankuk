@@ -195,7 +195,7 @@ export function StudentBulkImportPanel({
           <select
             value={studyTrack}
             onChange={(event) => setStudyTrack(event.target.value)}
-            className="mt-1.5 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
+            className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
           >
             <option value="">지정 안 함</option>
             {studyTrackOptions.map((option) => (
@@ -269,10 +269,10 @@ export function StudentBulkImportPanel({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="admin-label">
               등록 대상
-              <span className="ml-1.5 font-semibold text-[var(--division-color)]">
+              <span className="ml-2 font-semibold text-[var(--division-color)]">
                 {selectedRows.length}명 선택
               </span>
-              <span className="ml-1.5 font-normal text-slate-400">
+              <span className="ml-2 font-normal text-slate-400">
                 / 읽은 {rows.length}행 · 신규 {newCount}명 · 이미 등록 {duplicateCount}명
               </span>
             </p>
@@ -316,10 +316,10 @@ export function StudentBulkImportPanel({
                       onChange={() => toggleRow(row.key)}
                       className="h-4 w-4 rounded border-slate-300"
                     />
-                    <span className="font-mono text-xs text-slate-500">{row.studentNumber}</span>
+                    <span className="font-mono admin-help">{row.studentNumber}</span>
                     <span className="font-medium text-slate-900">{row.name}</span>
                     {row.duplicateReason ? (
-                      <span className="ml-auto text-xs text-amber-600">
+                      <span className="ml-auto text-xs text-admin-warning">
                         {row.duplicateReason === "REGISTERED" ? "이미 등록됨" : "목록 내 중복"}
                       </span>
                     ) : null}
@@ -339,7 +339,7 @@ export function StudentBulkImportPanel({
             {result.failedCount}명
           </p>
           {failedItems.length > 0 ? (
-            <ul className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+            <ul className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-admin-danger-line bg-admin-danger-soft p-3 text-xs text-admin-danger">
               {failedItems.map((item) => (
                 <li key={`${item.rowNumber}:${item.studentNumber}`}>
                   {item.studentNumber} {item.name} — {item.message}

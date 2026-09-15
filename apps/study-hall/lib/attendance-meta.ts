@@ -110,19 +110,19 @@ export function getAttendanceStatusClasses(status: string | null | undefined, re
   }
   switch (status) {
     case "PRESENT":
-      return "border-slate-200 bg-white text-emerald-600 font-medium";
+      return "border-slate-200 bg-white text-attend-present font-medium";
     case "TARDY":
-      return "border-slate-200 bg-white text-amber-600 font-medium";
+      return "border-slate-200 bg-white text-attend-tardy font-medium";
     case "ABSENT":
-      return "border-slate-200 bg-white text-rose-600 font-medium";
+      return "border-slate-200 bg-white text-attend-absent font-medium";
     case "EXCUSED":
-      return "border-slate-200 bg-white text-blue-600 font-medium";
+      return "border-slate-200 bg-white text-attend-excused font-medium";
     case "HOLIDAY":
     case "HALF_HOLIDAY":
     case "NOT_APPLICABLE":
       return "border-slate-200 bg-slate-50 text-slate-500 font-medium";
     default:
-      return "border-indigo-200 bg-indigo-50 text-indigo-400";
+      return "border-attend-unprocessed/30 bg-attend-unprocessed/10 text-attend-unprocessed";
   }
 }
 

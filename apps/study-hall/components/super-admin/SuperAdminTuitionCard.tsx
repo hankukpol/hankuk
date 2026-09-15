@@ -15,9 +15,9 @@ function ProgressBar({ rate, color }: { rate: number; color?: string }) {
     clampedRate >= 90 ? "var(--admin-success-soft)" : clampedRate >= 70 ? "var(--admin-warning-soft)" : "var(--admin-danger-soft)";
 
   return (
-    <div className="h-3 w-full overflow-hidden rounded-full" style={{ backgroundColor: trackColor }}>
+    <div className="h-3 w-full overflow-hidden rounded-lg" style={{ backgroundColor: trackColor }}>
       <div
-        className="h-full rounded-full transition-all duration-500"
+        className="h-full rounded-lg transition-all duration-500"
         style={{ width: `${clampedRate}%`, backgroundColor: barColor }}
       />
     </div>
@@ -63,7 +63,7 @@ export function SuperAdminTuitionCard() {
       {/* 전체 요약 */}
       <div className="flex flex-wrap items-center gap-6">
         <div className="flex items-center gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-admin-success-soft text-admin-success">
             <Banknote className="h-6 w-6" />
           </div>
           <div>
@@ -78,20 +78,20 @@ export function SuperAdminTuitionCard() {
         <div className="flex flex-1 flex-wrap gap-6 text-sm text-slate-600">
           <div>
             <span className="text-slate-400">예상 수납액</span>
-            <p className="mt-0.5 text-lg font-bold tabular-nums text-slate-900">
+            <p className="mt-1 text-lg font-bold tabular-nums text-slate-900">
               ₩{krw.format(data.totalExpected)}
             </p>
           </div>
           <div>
             <span className="text-slate-400">실제 수납액</span>
-            <p className="mt-0.5 text-lg font-bold tabular-nums text-emerald-700">
+            <p className="mt-1 text-lg font-bold tabular-nums text-admin-success">
               ₩{krw.format(data.totalCollected)}
             </p>
           </div>
           <div>
             <span className="text-slate-400">미납 학생</span>
             <p
-              className={`mt-0.5 text-lg font-bold tabular-nums ${ data.unpaidCount > 0 ? "text-red-600" : "text-slate-900" }`}
+              className={`mt-1 text-lg font-bold tabular-nums ${ data.unpaidCount > 0 ? "text-admin-danger" : "text-slate-900" }`}
             >
               {data.unpaidCount}명
             </p>
@@ -108,7 +108,7 @@ export function SuperAdminTuitionCard() {
           {data.divisions.map((div) => (
             <div key={div.slug} className="rounded-lg border border-slate-200 bg-slate-50/50 p-4">
               <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-3">
                   <span
                     className="h-3 w-3 shrink-0 rounded-full"
                     style={{ backgroundColor: div.color }}
@@ -121,18 +121,18 @@ export function SuperAdminTuitionCard() {
                     ₩{krw.format(div.collected)} / ₩{krw.format(div.expected)}
                   </span>
                   <span
-                    className={`font-bold ${ div.collectionRate >= 90 ? "text-green-700" : div.collectionRate >= 70 ? "text-amber-700" : "text-red-700" }`}
+                    className={`font-bold ${ div.collectionRate >= 90 ? "text-admin-success" : div.collectionRate >= 70 ? "text-admin-warning" : "text-admin-danger" }`}
                   >
                     {div.collectionRate}%
                   </span>
                   {div.unpaidCount > 0 && (
-                    <span className="rounded-lg border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700">
+                    <span className="rounded-lg border border-admin-danger-line bg-admin-danger-soft px-2 py-1 text-xs font-semibold text-admin-danger">
                       미납 {div.unpaidCount}
                     </span>
                   )}
                 </div>
               </div>
-              <div className="mt-2.5">
+              <div className="mt-3">
                 <ProgressBar rate={div.collectionRate} color={div.color} />
               </div>
             </div>

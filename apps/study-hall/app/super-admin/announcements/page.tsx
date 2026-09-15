@@ -222,7 +222,7 @@ export default function SuperAdminAnnouncementsPage() {
         <SlideOver open={showForm} onClose={() => !isSaving && cancelForm()} title={editingId ? "공지사항 수정" : "새 전체 공지 등록"}>
           <form id={formId} onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">제목 *</label>
+              <label className="mb-2 block text-sm font-medium text-slate-700">제목 *</label>
               <input
                 className={inputCls}
                 value={form.title}
@@ -233,7 +233,7 @@ export default function SuperAdminAnnouncementsPage() {
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">내용 *</label>
+              <label className="mb-2 block text-sm font-medium text-slate-700">내용 *</label>
               <textarea
                 className={`${inputCls} resize-none`}
                 rows={5}
@@ -246,7 +246,7 @@ export default function SuperAdminAnnouncementsPage() {
 
             <div className="flex flex-wrap items-end gap-5">
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                <label className="mb-2 block text-sm font-medium text-slate-700">
                   예약 발행 일시 (비워두면 즉시 공개)
                 </label>
                 <input
@@ -302,7 +302,7 @@ export default function SuperAdminAnnouncementsPage() {
             <button
               type="button"
               onClick={openCreate}
-              className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-slate-900"
+              className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900"
             >
               <Plus className="h-4 w-4" />
               첫 공지 등록하기
@@ -319,13 +319,13 @@ export default function SuperAdminAnnouncementsPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       {item.isPinned && (
-                        <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-0.5 text-[13px] font-semibold text-slate-600">
+                        <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 text-[13px] font-semibold text-slate-600">
                           <Pin className="h-3 w-3" />
                           고정
                         </span>
                       )}
                       {!item.isPublished && (
-                        <span className="rounded-lg bg-amber-50 px-2 py-0.5 text-[13px] font-semibold text-amber-700">
+                        <span className="rounded-lg bg-admin-warning-soft px-2 py-1 text-[13px] font-semibold text-admin-warning">
                           예약됨 {item.publishedAt ? formatDate(item.publishedAt) : ""}
                         </span>
                       )}
@@ -359,7 +359,7 @@ export default function SuperAdminAnnouncementsPage() {
                     <button
                       type="button"
                       onClick={() => void handleDelete(item.id, item.title)}
-                      className="rounded-lg border border-red-100 p-2 text-red-400 transition hover:bg-red-50"
+                      className="rounded-lg border border-admin-danger-line p-2 text-admin-danger transition hover:bg-admin-danger-soft"
                       title="삭제"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -375,7 +375,7 @@ export default function SuperAdminAnnouncementsPage() {
       {/* 안내 */}
       <section className="rounded-lg border border-admin-line bg-slate-50 p-4">
         <p className="flex items-start gap-2 text-sm text-slate-600">
-          <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+          <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-slate-400" />
           전체 공지는 경찰반·소방반 등 모든 지점의 학생 포탈 공지란에 함께 표시됩니다.
           각 지점 공지사항은 해당 지점 관리자 페이지에서 관리하세요.
         </p>

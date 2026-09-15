@@ -99,14 +99,14 @@ export function StudentSearchCombobox({
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => handleSelect("")}
-                className={`w-full px-4 py-2.5 text-left text-sm transition hover:bg-slate-50 ${ value === "" ? "bg-slate-100 font-semibold text-slate-900" : "text-slate-500" }`}
+                className={`w-full px-4 py-3 text-left text-sm transition hover:bg-slate-50 ${ value === "" ? "bg-slate-100 font-semibold text-slate-900" : "text-slate-500" }`}
               >
                 {allStudentsLabel}
               </button>
             </li>
           )}
           {filtered.length === 0 ? (
-            <li className="px-4 py-3 text-sm text-slate-400">검색 결과가 없습니다.</li>
+            <li className="px-4 py-3 admin-help">검색 결과가 없습니다.</li>
           ) : (
             filtered.map((student) => (
               <li key={student.id}>
@@ -114,7 +114,7 @@ export function StudentSearchCombobox({
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => handleSelect(student.id)}
-                  className={`w-full px-4 py-2.5 text-left text-sm transition hover:bg-slate-50 ${ value === student.id ? "bg-slate-100 font-semibold text-slate-900" : "text-slate-700" }`}
+                  className={`w-full px-4 py-3 text-left text-sm transition hover:bg-slate-50 ${ value === student.id ? "bg-slate-100 font-semibold text-slate-900" : "text-slate-700" }`}
                 >
                   {student.studentNumber} · {student.name}
                   {showStudyTrack && student.studyTrack ? ` · ${student.studyTrack}` : ""}

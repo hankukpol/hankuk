@@ -5,6 +5,7 @@ import vm from "node:vm";
 import test from "node:test";
 import ts from "typescript";
 import * as React from "react";
+import * as ReactDOM from "react-dom";
 import * as jsx from "react/jsx-runtime";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { RegularStudentReport } from "../../lib/exam-analysis-types";
@@ -21,6 +22,49 @@ test("grading table distinguishes missing responses from explicit unanswered mar
 });
 
 const root = path.resolve(__dirname, "../..");
+test("student score targets use unframed rows without changing the default editor", () => {
+  const Component = load("components/exams/ScoreTargetPanel.tsx").ScoreTargetPanel;
+  const props = { divisionSlug: "test", studentId: "student", initialTargets: [{
+    id: "target", examTypeId: "exam", examTypeName: "Target exam", targetScore: 90,
+    latestScore: 80, latestExamDate: null, latestExamRound: null, isAchieved: false,
+    gapToTarget: 10, studyTrack: null, note: null,
+  }] };
+  const flat = renderToStaticMarkup(React.createElement(Component, { ...props, variant: "rows" }));
+  assert.match(flat, /<article class="admin-section">/);
+  assert.match(flat, /grid grid-cols-3 gap-3/);
+  const original = renderToStaticMarkup(React.createElement(Component, props));
+  assert.doesNotMatch(original, /<article class="admin-section">/);
+  assert.doesNotMatch(original, /class="admin-portal-summary /);
+});
+
+test("student report anchors retain every analysis section without hidden panels", () => {
+  const Component = load("components/exams/analysis/PersonalReportTabs.tsx").PersonalReportTabs;
+  const html = renderToStaticMarkup(React.createElement(Component, { navigation: "anchors" },
+    React.createElement("div", { "data-report-section": "overview" }, "overview content"),
+    React.createElement("div", { "data-report-section": "diagnosis" }, "diagnosis content"),
+  ));
+  assert.match(html, /aria-label="개인 성적 분석 바로가기"/);
+  assert.equal((html.match(/href="#/g) ?? []).length, 2);
+  assert.equal((html.match(/data-report-panel/g) ?? []).length, 2);
+  assert.doesNotMatch(html, /hidden=|role="tablist"|role="tabpanel"/);
+});
+
+test("subject choices preserve hidden print panels without tab semantics", () => {
+  const Component = load("components/exams/analysis/LearningActionSummary.tsx").SubjectTabs;
+  const html = renderToStaticMarkup(React.createElement(Component, { subjects: [
+    { id: "first", name: "first subject", content: "first content" },
+    { id: "second", name: "second subject", content: "second content" },
+  ] }));
+  assert.match(html, /aria-pressed="true"/);
+  assert.match(html, /aria-pressed="false"/);
+  assert.match(html, /hidden="" data-report-panel/);
+  assert.doesNotMatch(html, /role="tablist"|role="tabpanel"|aria-labelledby/);
+  const css = fs.readFileSync(path.join(root, "app/globals.css"), "utf8");
+  assert.match(css, /\[data-report-panel\]\[hidden\]\s*\{\s*display: none !important;/);
+  const print = fs.readFileSync(path.join(root, "components/exams/analysis/ReportPrintButton.tsx"), "utf8");
+  assert.match(print, /node\.hidden = false/);
+});
+
 test("student analysis return link preserves current category and filters instead of entry filters", () => {
   for (const kind of ["morning", "regular"]) {
     let cursor = 0;
@@ -38,6 +82,8 @@ test("student analysis return link preserves current category and filters instea
       initial: { kind: kind === "regular" ? "morning" : "regular", examTypeId: "old-type", examDate: "2026-03-15", from: "2026-01-01", to: "2026-01-31" },
     }));
     const href = html.match(/href="([^"]+)"/)?.[1].replaceAll("&amp;", "&");
+    assert.match(html, /class="relative w-full min-w-0"/, "student search must fit its responsive filter field");
+    assert.doesNotMatch(html, /sm:w-72/);
     assert.ok(href);
     const query = new URL(href, "http://localhost").searchParams;
     assert.equal(query.get("tab"), kind);
@@ -80,6 +126,7 @@ function load(file: string, overrides: Record<string, unknown> = {}, globals: Re
     require(name: string) {
       if (name in overrides) return overrides[name];
       if (name === "react") return React;
+      if (name === "react-dom") return ReactDOM;
       // 아이콘은 화면 검증 대상이 아니다. 개별 override 가 없으면 빈 요소로 대체한다.
       if (name === "lucide-react") return new Proxy({}, { get: () => () => null });
       if (name === "react/jsx-runtime") return jsx;
@@ -214,6 +261,7 @@ test("secondary tabs: both analyses are enabled and import busy state still guar
   let items: { id: string; disabled?: boolean }[] = [];
   const empty = () => null;
   const Component = load("components/exams/ExamSecondaryTabs.tsx", {
+    "@/components/ui/MobileWorkspaceTools": { MobileWorkspaceScope: ({ children }: { children: React.ReactNode }) => children },
     "@/components/ui/AdminTabs": { AdminTabs: (props: { items: typeof items }) => { items = props.items; return null; }, AdminTabPanel: empty },
     "@/components/exams/import/ExamImportWizard": { ExamImportWizard: empty },
     "@/components/exams/ExamScoreManager": { ExamScoreManager: empty },
@@ -236,7 +284,7 @@ test("student SSR: requests own viewer, rejects unknown session selection and pr
   const Component = load("app/[division]/student/exams/page.tsx", {
     "next/dynamic": { default: () => empty },
     "next/navigation": { notFound: () => { throw new Error("404"); }, redirect: () => { throw new Error("redirect"); } },
-    "lucide-react": { ChartNoAxesColumn: empty },
+    "lucide-react": { ChartNoAxesColumn: empty, SlidersHorizontal: empty, X: empty, Printer: empty },
     "@/components/exams/ExamScoreChartLoader": { ExamScoreChartLoader: empty },
     "@/components/exams/ExamTabLayout": { ExamTabLayout: ({ morningContent, regularContent }: { morningContent: React.ReactNode; regularContent: React.ReactNode }) => React.createElement("main", null, morningContent, regularContent) },
     "@/components/exams/MorningExamStudentView": { MorningExamStudentView: () => React.createElement("p", null, "아침 기존 기록") },

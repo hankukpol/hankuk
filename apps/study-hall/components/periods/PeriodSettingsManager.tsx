@@ -1,5 +1,6 @@
 "use client";
 import { useConfigurationReview } from "@/components/settings/ConfigurationReview";
+import { MobileWorkspaceTools } from "@/components/ui/MobileWorkspaceTools";
 
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -18,6 +19,7 @@ import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { toast } from "@/lib/sonner";
 
 import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
+import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
 import { AdminTabPanel, AdminTabs } from "@/components/ui/AdminTabs";
 import { DialogActions } from "@/components/ui/DialogActions";
 import { SlideOver } from "@/components/ui/SlideOver";
@@ -348,6 +350,7 @@ export function PeriodSettingsManager({
       />
       <AdminTabPanel id="list" activeId={activeTab} idPrefix="period-settings" className="mt-6">
         <section className="admin-section">
+        <MobileWorkspaceTools title="교시 목록 작업" active={activeTab === "list"}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="admin-section-title">교시 목록 정렬</h2>
@@ -377,7 +380,8 @@ export function PeriodSettingsManager({
           </div>
         </div>
 
-        <div className="mt-5 space-y-3">
+        </MobileWorkspaceTools>
+        <div className="mt-5 space-y-3 max-md:mt-0">
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={orderedPeriods.map((period) => period.id)} strategy={verticalListSortingStrategy}>
               {orderedPeriods.map((period) => (
@@ -509,6 +513,7 @@ export function PeriodSettingsManager({
         </AdminTabPanel>
       ) : null}
       {dialog}
+      {confirmDialog}
       {actionCompleteModal}
     </>
   );

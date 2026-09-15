@@ -3,7 +3,7 @@
 import { useId } from "react";
 import { DialogActions } from "@/components/ui/DialogActions";
 
-import { LoaderCircle, Pencil, Pin, Plus, RefreshCcw, Save, Search, Trash2 } from "lucide-react";
+import { LoaderCircle, Pencil, Pin, Plus, RefreshCcw, Save, Search, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "@/lib/sonner";
 
@@ -39,16 +39,12 @@ function toFormState(scope: AnnouncementScope): FormState {
 }
 
 function formatDateTime(value: string) {
-  return new Date(value).toLocaleString("ko-KR");
+  return formatDateTimeLocal(value).replace("T", " ");
 }
 
 function formatBoardDate(value: string) {
-  return new Date(value).toLocaleString("ko-KR", {
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  // OS locale data can spell day periods differently during hydration.
+  return formatDateTime(value).slice(5);
 }
 
 function formatDateTimeLocal(value: string | null) {
@@ -63,7 +59,7 @@ function formatDateTimeLocal(value: string | null) {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-    hour12: false,
+    hourCycle: "h23",
   }).formatToParts(new Date(value));
 
   const pick = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
@@ -122,6 +118,7 @@ export function AnnouncementManager({
   const [filterScope, setFilterScope] = useState<"ALL" | AnnouncementScope>("ALL");
   const [visibilityFilter, setVisibilityFilter] = useState<VisibilityFilter>("ALL");
   const [searchKeyword, setSearchKeyword] = useState("");
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [form, setForm] = useState<FormState>(toFormState("DIVISION"));
   const [isSaving, setIsSaving] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -323,7 +320,7 @@ export function AnnouncementManager({
     <>
       <div className="admin-section">
         <div className="admin-workspace-toolbar">
-          <dl className="flex flex-wrap gap-4" aria-label="공지 집계">
+          <dl className={mobileFiltersOpen ? "flex flex-wrap gap-4" : "hidden flex-wrap gap-4 md:flex"} aria-label="공지 집계">
             {[
               ["전체", announcements.length], ["공개 중", publishedCount],
               ["예약", scheduledCount], ["상단 고정", pinnedCount],
@@ -334,16 +331,19 @@ export function AnnouncementManager({
               </div>
             ))}
           </dl>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => void refreshAnnouncements(true)} disabled={isRefreshing} className="admin-button">
-              {isRefreshing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />} 새로고침
+          <div className="flex flex-wrap gap-2 max-md:w-full">
+            <button type="button" className="admin-button md:hidden" aria-expanded={mobileFiltersOpen} aria-controls={`${dialogFormId}-filters`} onClick={() => setMobileFiltersOpen((open) => !open)}>
+              <SlidersHorizontal className="h-4 w-4" />조회 조건
+            </button>
+            <button type="button" onClick={() => void refreshAnnouncements(true)} disabled={isRefreshing} className="admin-button max-md:ml-auto max-md:w-11 max-md:px-0" aria-label="새로고침" title="새로고침">
+              {isRefreshing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />} <span className="max-md:sr-only">새로고침</span>
             </button>
             <button type="button" onClick={openCreatePanel} className="admin-button admin-button-primary">
               <Plus className="h-4 w-4" /> 공지 작성
             </button>
           </div>
         </div>
-        <div className="admin-filter-bar">
+        <div id={`${dialogFormId}-filters`} className={mobileFiltersOpen ? "admin-filter-bar" : "admin-filter-bar max-md:hidden"}>
           <label>
             <span className="admin-label mb-2 block">공지 검색</span>
             <span className="admin-input-group">
@@ -364,7 +364,7 @@ export function AnnouncementManager({
             </select>
           </label>
         </div>
-        <h2 className="admin-section-title">공지 목록 <span className="text-admin-accent">{visibleAnnouncements.length}건</span></h2>
+        <h2 className="admin-section-title max-md:sr-only">공지 목록 <span className="text-admin-accent">{visibleAnnouncements.length}건</span></h2>
         {visibleAnnouncements.length ? (
           <>
             <div className="admin-table-frame hidden md:block">
@@ -385,16 +385,13 @@ export function AnnouncementManager({
                 </tbody>
               </table>
             </div>
-            <div className="grid gap-4 md:hidden">
+            <div className="md:hidden">
               {visibleAnnouncements.map((item) => (
-                <article key={item.id} className="admin-record-card">
-                  <AnnouncementBadges announcement={item} />
-                  <h3 className="mt-3"><button type="button" className="admin-announcement-title" onClick={() => setSelectedAnnouncementId(item.id)} aria-haspopup="dialog">{item.title}</button></h3>
-                  <p className="mt-2 break-words text-admin-text-secondary">{getPreviewText(item.content)}</p>
-                  <div className="mt-4 flex flex-wrap justify-between gap-2 border-t border-admin-line-soft pt-4">
-                    <p className="admin-help">{getScopeLabel(item.scope, item.divisionName)} · {item.createdByName}</p>
-                    <p className="admin-help">{formatBoardDate(getAnnouncementDate(item))}</p>
-                  </div>
+                <article key={item.id} className="admin-list-row admin-list-row-stack">
+                  <p className="admin-list-row-label">{getScopeLabel(item.scope, item.divisionName)} · <time dateTime={getAnnouncementDate(item)}>{formatBoardDate(getAnnouncementDate(item))}</time></p>
+                  <h3 className="admin-list-row-title"><button type="button" className="admin-announcement-title" onClick={() => setSelectedAnnouncementId(item.id)} aria-haspopup="dialog">{item.title}</button></h3>
+                  <p className="break-words text-admin-text-secondary">{getPreviewText(item.content)}</p>
+                  <p className="admin-list-row-meta">{item.createdByName} · {getVisibilityLabel(item)}{item.isPinned ? " · 상단 고정" : ""}</p>
                 </article>
               ))}
             </div>

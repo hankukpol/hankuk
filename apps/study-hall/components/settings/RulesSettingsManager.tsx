@@ -1,6 +1,7 @@
 "use client";
 import { useConfigurationReview } from "./ConfigurationReview";
 import { rulesSettingsSchema } from "@/lib/settings-schemas";
+import { MobileWorkspaceTools } from "@/components/ui/MobileWorkspaceTools";
 
 import { AlertTriangle, Calculator, LoaderCircle, RefreshCcw, Save } from "lucide-react";
 import { useState } from "react";
@@ -264,6 +265,7 @@ export function RulesSettingsManager({
         scrollable
       />
       <AdminTabPanel id="overview" activeId={activeTab} idPrefix="rule-settings" className="mt-6">
+      <MobileWorkspaceTools title="운영 규칙 적용 기준" active={activeTab === "overview"}>
       <section className="admin-section">
         <h2 className="admin-section-title">벌점 집계 기준</h2>
         <p className="mt-2 text-sm text-slate-700">
@@ -272,10 +274,11 @@ export function RulesSettingsManager({
         <p className="admin-help mt-1">{aggregationDescription}</p>
       </section>
       {policy && <section className="admin-section"><h2 className="admin-section-title">{policy.version}</h2><p className="admin-help">출결 벌점: {policy.managerConfirmsAttendance ? "관리자 확인 후 확정" : "자동 적용"} · 집계: {policy.monthlyPoints ? "월별" : "수강 기간"}</p><Link className="admin-text-action" href={`/${divisionSlug}/admin/settings/rules?section=policy`}>이 학원의 운영 규정 수정</Link></section>}
+      </MobileWorkspaceTools>
         <section className="space-y-4">
         <article className="admin-section">
-          <h2 className="admin-section-title">현재 운영 규칙 요약</h2>
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <h2 className="admin-section-title max-md:sr-only">현재 운영 규칙 요약</h2>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 max-md:mt-0">
             <div className="admin-dashboard-metric" data-tone="accent">
               <p className="admin-dashboard-metric-label">지각</p>
               <p className="admin-dashboard-metric-value">{form.tardyMinutes}분</p>
@@ -354,10 +357,10 @@ export function RulesSettingsManager({
 
         <article className="admin-section">
           <div className="flex items-start gap-3">
-            <AlertTriangle className="mt-0.5 h-5 w-5 text-amber-700" />
+            <AlertTriangle className="mt-1 h-5 w-5 text-admin-warning" />
             <div>
-              <p className="text-sm font-semibold text-amber-900">주의</p>
-              <p className="mt-2 text-sm leading-6 text-amber-900/85">
+              <p className="text-sm font-semibold text-admin-warning">주의</p>
+              <p className="mt-2 text-sm leading-6 text-admin-warning/85">
                 경고 기준을 낮추면 기존 누적 벌점 학생이 즉시 경고 대상자로 올라갈 수 있습니다.
                 저장 전에 경고 대상자 페이지에서 영향 범위를 다시 확인하는 편이 안전합니다.
               </p>
@@ -601,7 +604,7 @@ export function RulesSettingsManager({
                             <td className="tabular-nums">{stage.current}명</td>
                             <td className="tabular-nums font-semibold">{stage.next}명</td>
                             <td
-                              className={`tabular-nums ${delta === 0 ? "text-slate-500" : delta > 0 ? "text-admin-danger" : "text-emerald-600"}`}
+                              className={`tabular-nums ${delta === 0 ? "text-slate-500" : delta > 0 ? "text-admin-danger" : "text-admin-success"}`}
                             >
                               {delta === 0 ? "변화 없음" : delta > 0 ? `+${delta}명` : `${delta}명`}
                             </td>
@@ -786,7 +789,7 @@ export function RulesSettingsManager({
                   className="w-full"
                   required
                 />
-                <span className="admin-help mt-1.5 block">
+                <span className="admin-help mt-2 block">
                   예: 14일로 설정하면, 수강 종료 14일 전부터 대시보드에 만료 임박으로 표시됩니다.
                 </span>
               </label>

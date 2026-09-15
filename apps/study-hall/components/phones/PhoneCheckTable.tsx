@@ -183,7 +183,7 @@ export function PhoneCheckTable({
                   </button>
                   {saveState ? (
                     <span
-                      className={`mt-1 inline-flex rounded-lg px-2 py-0.5 text-[13px] font-semibold ${ saveState === "saving" ? "bg-amber-50 text-amber-700" : saveState === "saved" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700" }`}
+                      className={`mt-1 inline-flex rounded-lg px-2 py-1 text-[13px] font-semibold ${ saveState === "saving" ? "bg-admin-warning-soft text-admin-warning" : saveState === "saved" ? "bg-admin-success-soft text-admin-success" : "bg-admin-danger-soft text-admin-danger" }`}
                     >
                       {saveState === "saving"
                         ? "저장 중"
@@ -209,14 +209,14 @@ export function PhoneCheckTable({
                 </td>
                 <td className="hidden sm:table-cell">
                   <span
-                    className={`inline-flex rounded-lg border px-2.5 py-1 text-xs font-semibold ${getAttendanceBadgeClassName( attendanceCell, attendanceIntegrationEnabled, )}`}
+                    className={`inline-flex rounded-lg border px-3 py-1 text-xs font-semibold ${getAttendanceBadgeClassName( attendanceCell, attendanceIntegrationEnabled, )}`}
                   >
                     {attendanceIntegrationEnabled
                       ? getAttendanceStatusLabel(attendanceCell?.status, attendanceCell?.reason)
                       : "출결 연동 없음"}
                   </span>
                   {attendanceCell?.reason ? (
-                    <p className="mt-1 max-w-[160px] truncate text-xs text-slate-400">
+                    <p className="mt-1 max-w-[160px] truncate admin-help">
                       {attendanceCell.reason}
                     </p>
                   ) : null}

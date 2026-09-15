@@ -1,6 +1,7 @@
 "use client";
 
 import { type ReactNode, useSyncExternalStore } from "react";
+import { X } from "lucide-react";
 
 type ToastVariant = "default" | "success" | "error" | "warning";
 
@@ -101,11 +102,11 @@ function addToast(message: ReactNode, variant: ToastVariant) {
 function getToastToneClasses(variant: ToastVariant) {
   switch (variant) {
     case "success":
-      return "border-emerald-200 bg-emerald-50 text-emerald-950";
+      return "border-admin-success-line bg-admin-success-soft text-admin-success";
     case "error":
-      return "border-red-200 bg-red-50 text-red-950";
+      return "border-admin-danger-line bg-admin-danger-soft text-admin-danger";
     case "warning":
-      return "border-amber-200 bg-amber-50 text-amber-950";
+      return "border-admin-warning-line bg-admin-warning-soft text-admin-warning";
     default:
       return "border-slate-200 bg-white text-slate-950";
   }
@@ -114,11 +115,11 @@ function getToastToneClasses(variant: ToastVariant) {
 function getToastAccentClasses(variant: ToastVariant) {
   switch (variant) {
     case "success":
-      return "bg-emerald-500";
+      return "bg-admin-success";
     case "error":
-      return "bg-red-500";
+      return "bg-admin-danger";
     case "warning":
-      return "bg-amber-500";
+      return "bg-admin-warning";
     default:
       return "bg-slate-400";
   }
@@ -168,7 +169,7 @@ export function Toaster({ position = "top-right" }: ToasterProps) {
       {items.map((item) => (
         <div
           key={item.id}
-          className={`pointer-events-auto overflow-hidden rounded-2xl border shadow-[0_18px_45px_rgba(15,23,42,0.14)] ${getToastToneClasses(item.variant)}`}
+          className={`pointer-events-auto overflow-hidden rounded-lg border ${getToastToneClasses(item.variant)}`}
           role="status"
         >
           <div className="flex items-start gap-3 px-4 py-3">
@@ -176,13 +177,12 @@ export function Toaster({ position = "top-right" }: ToasterProps) {
             <div className="min-w-0 flex-1 text-sm font-medium leading-6">{item.message}</div>
             <button
               aria-label="알림 닫기"
-              className="shrink-0 rounded-full p-1 text-current/60 transition hover:bg-black/5 hover:text-current"
+              title="알림 닫기"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-current transition hover:bg-admin-surface-soft"
               onClick={() => dismiss(item.id)}
               type="button"
             >
-              <span aria-hidden="true" className="block text-sm leading-none">
-                x
-              </span>
+              <X aria-hidden="true" className="h-5 w-5" />
             </button>
           </div>
         </div>

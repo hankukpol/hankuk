@@ -21,13 +21,15 @@ export function getInterviewResultTypeLabel(value: string | null | undefined) {
 export function getInterviewResultTypeClasses(value: string | null | undefined) {
   switch (value) {
     case "WARNING_1":
-      return "border-yellow-200 bg-yellow-50 text-yellow-700";
+      return "border-warn-1-line bg-warn-1-soft text-warn-1";
     case "WARNING_2":
-      return "border-orange-200 bg-orange-50 text-orange-700";
+      return "border-warn-2-line bg-warn-2-soft text-warn-2";
     case "WITHDRAWAL":
-      return "border-rose-200 bg-rose-50 text-rose-700";
+      return "border-warn-withdraw-line bg-warn-withdraw-soft text-warn-withdraw";
+    case "INTERVIEW":
+      return "border-warn-interview-line bg-warn-interview-soft text-warn-interview";
     default:
-      return "border-sky-200 bg-sky-50 text-sky-700";
+      return "border-admin-line bg-admin-surface-muted text-admin-text-secondary";
   }
 }
 
@@ -47,7 +49,7 @@ export function getInterviewStatusLabel(value: string | null | undefined) {
 export function getInterviewStatusClasses(value: string | null | undefined) {
   return value === "CLOSED"
     ? "border-slate-200 bg-slate-100 text-slate-600"
-    : "border-emerald-200 bg-emerald-50 text-emerald-700";
+    : "border-admin-success-line bg-admin-success-soft text-admin-success";
 }
 
 /**

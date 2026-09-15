@@ -37,7 +37,7 @@ export default async function WarningPage({ params }: WarningPageProps) {
 
   return (
     <div className="admin-flat-page">
-      <section>
+      <section className="max-md:sr-only">
         <h1 className="admin-page-title">경고 대상자 관리</h1>
         <p className="admin-page-description">
           직렬 설정의 경고 임계값을 기준으로 대상자를 자동 분류하고, 안내 완료 여부를 기록할 수 있습니다.

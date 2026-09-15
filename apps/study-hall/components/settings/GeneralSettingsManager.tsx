@@ -186,7 +186,7 @@ export function GeneralSettingsManager({
               {OPERATING_DAY_KEYS.map((key) => (
                 <span
                   key={key}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${ form.operatingDays[key] ? "bg-admin-accent text-white" : "bg-slate-200 text-slate-500" }`}
+                  className={`rounded-lg px-3 py-2 text-xs font-semibold ${ form.operatingDays[key] ? "bg-admin-accent text-white" : "bg-slate-200 text-slate-500" }`}
                 >
                   {OPERATING_DAY_LABELS[key]}
                 </span>
@@ -206,7 +206,7 @@ export function GeneralSettingsManager({
                 studyTracks.map((track) => (
                   <span
                     key={track}
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700"
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700"
                   >
                     {track}
                   </span>
@@ -314,7 +314,7 @@ export function GeneralSettingsManager({
                   출석 계산과 학생 포털 캘린더에서 사용하는 운영 요일입니다.
                 </p>
               </div>
-              <span className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-slate-700">
+              <span className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-slate-700">
                 주 {activeDayCount}일 운영
               </span>
             </div>
@@ -366,7 +366,7 @@ export function GeneralSettingsManager({
                 studyTracks.map((track) => (
                   <span
                     key={track}
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700"
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700"
                   >
                     {track}
                   </span>

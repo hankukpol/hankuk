@@ -126,7 +126,7 @@ export default async function StudentPointsPage({ params }: StudentPointsPagePro
                     <tr key={record.id}>
                       <td>
                         {formatDate(record.date)}
-                        <div className="admin-help mt-0.5 sm:hidden">
+                        <div className="admin-help mt-1 sm:hidden">
                           {formatTime(record.date)}
                         </div>
                         <span className="hidden sm:inline"> {formatTime(record.date)}</span>

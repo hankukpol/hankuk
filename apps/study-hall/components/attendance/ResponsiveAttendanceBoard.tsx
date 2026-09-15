@@ -8,7 +8,7 @@ import type { MobileCheckFormProps } from "@/components/attendance/MobileCheckFo
 import { CHECK_SAFETY_CHANGED, hasPendingCheckChanges } from "@/lib/check-navigation";
 
 const boardFallback = () => (
-  <div className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-500">
+  <div className="rounded-lg border border-slate-200 bg-white p-6 admin-help">
     출석 보드를 불러오는 중입니다.
   </div>
 );

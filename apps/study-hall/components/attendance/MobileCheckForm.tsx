@@ -587,7 +587,7 @@ export function MobileCheckForm({
   }
 
   return (
-    <div className="admin-check-workspace space-y-3">
+    <div className="admin-check-workspace admin-compact-workspace space-y-3">
       {contextReady && !isLoading && <CheckDraftSafety key={`${selectedDate}:${selectedPeriodId}`} scope={`attendance:${divisionSlug}:${selectedDate}:${selectedPeriodId}`}
         values={toDraftCells(formState)} baseline={toDraftCells(savedFormState)} busy={isSaving}
         onRestore={(patch) => setFormState((current) => ({ ...current, ...fromDraftCells(patch) }))}
@@ -600,6 +600,7 @@ export function MobileCheckForm({
           onChange={setViewMode}
           label="출석 체크 보기"
           idPrefix="attendance-view"
+          panelId="attendance-view-panel"
         />
       ) : null}
 
@@ -612,11 +613,13 @@ export function MobileCheckForm({
           onChange={(id: string) => { if (id !== selectedPeriodId) requestCheckNavigation(() => { setPickedByHand(true); setIsLoading(true); setSelectedPeriodId(id); }); }}
           label="출석 확인 교시"
           idPrefix="attendance-period"
+          panelId="attendance-period-panel"
           variant="secondary"
           scrollable
         />
       ) : null}
 
+      <div role="tabpanel" id="attendance-period-panel" aria-labelledby={selectedPeriodId ? `attendance-period-${selectedPeriodId}` : undefined} className="space-y-3">
       <div className="sticky z-20 -mx-1 bg-admin-surface px-1 pb-3" style={{ top: `${headerHeight}px` }}>
         <section className="admin-check-summary overflow-hidden rounded-lg border border-admin-line bg-white">
           {/* 항상 표시되는 컴팩트 헤더 바 */}
@@ -634,7 +637,7 @@ export function MobileCheckForm({
                 <span className="admin-help ml-2">{selectedDate}</span>
               </h2>
               {selectedPeriod && (
-                <p className="admin-help mt-0.5">
+                <p className="admin-help mt-1">
                   {selectedPeriod.startTime} – {selectedPeriod.endTime}
                 </p>
               )}
@@ -650,7 +653,7 @@ export function MobileCheckForm({
               </p>
             </div>
 
-            <div className="shrink-0 rounded-lg bg-slate-100 p-1.5 text-slate-500">
+            <div className="shrink-0 rounded-lg bg-slate-100 p-2 text-slate-500">
               {isSummaryCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
             </div>
           </button>
@@ -772,7 +775,7 @@ export function MobileCheckForm({
         </section>
       </div>
 
-      <section className="admin-section">
+      <section className="admin-section" role={hasSeatLayout ? "tabpanel" : "region"} id="attendance-view-panel" aria-labelledby={hasSeatLayout ? `attendance-view-${viewMode}` : undefined} aria-label={hasSeatLayout ? undefined : "출석 체크"}>
         <div className="admin-workspace-toolbar">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <h2 className="admin-section-title">학생 출결 체크</h2>
@@ -985,6 +988,7 @@ export function MobileCheckForm({
         ) : null}
       </section>
 
+      </div>
       <div className="admin-check-savebar md:hidden">
         <span className="admin-help">{selectedPeriod?.name ?? "교시 선택"} · 미처리 {summary.uncheckedCount}명</span>
         <button type="button" onClick={handleSave} disabled={isSaving || isLoading} className="admin-button admin-button-primary">

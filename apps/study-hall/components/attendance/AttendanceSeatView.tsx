@@ -82,27 +82,27 @@ const STATUS_LABEL: Record<StatusKey, string> = {
 };
 
 const STATUS_BADGE: Record<StatusKey, string> = {
-  PRESENT: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  CLASS: "border-sky-200 bg-sky-50 text-sky-700",
-  TARDY: "border-amber-200 bg-amber-50 text-amber-700",
-  ABSENT: "border-rose-200 bg-rose-50 text-rose-700",
-  EXCUSED: "border-sky-200 bg-sky-50 text-sky-700",
-  HOLIDAY: "border-sky-200 bg-sky-50 text-sky-700",
-  HALF_HOLIDAY: "border-indigo-200 bg-indigo-50 text-indigo-700",
+  PRESENT: "border-attend-present/30 bg-attend-present/10 text-attend-present",
+  CLASS: "border-[var(--admin-attendance-class-line)] bg-[var(--admin-attendance-class-soft)] text-[var(--admin-attendance-class)]",
+  TARDY: "border-attend-tardy/30 bg-attend-tardy/10 text-attend-tardy",
+  ABSENT: "border-attend-absent/30 bg-attend-absent/10 text-attend-absent",
+  EXCUSED: "border-attend-excused/30 bg-attend-excused/10 text-attend-excused",
+  HOLIDAY: "border-attend-holiday/30 bg-attend-holiday/10 text-attend-holiday",
+  HALF_HOLIDAY: "border-attend-holiday/30 bg-attend-holiday/10 text-attend-holiday",
   NOT_APPLICABLE: "border-slate-200 bg-slate-50 text-slate-500",
-  UNPROCESSED: "border-indigo-200 bg-indigo-50 text-indigo-400",
+  UNPROCESSED: "border-attend-unprocessed/30 bg-attend-unprocessed/10 text-attend-unprocessed",
 };
 
 const STATUS_TONE: Record<StatusKey, string> = {
-  PRESENT: "border-emerald-200 bg-emerald-50 text-emerald-900",
-  CLASS: "border-sky-200 bg-sky-50 text-sky-900",
-  TARDY: "border-amber-200 bg-amber-50 text-amber-900",
-  ABSENT: "border-rose-200 bg-rose-50 text-rose-900",
-  EXCUSED: "border-sky-200 bg-sky-50 text-sky-900",
-  HOLIDAY: "border-sky-200 bg-sky-50 text-sky-900",
-  HALF_HOLIDAY: "border-indigo-200 bg-indigo-50 text-indigo-900",
+  PRESENT: "border-attend-present/30 bg-attend-present/10 text-attend-present",
+  CLASS: "border-[var(--admin-attendance-class-line)] bg-[var(--admin-attendance-class-soft)] text-[var(--admin-attendance-class)]",
+  TARDY: "border-attend-tardy/30 bg-attend-tardy/10 text-attend-tardy",
+  ABSENT: "border-attend-absent/30 bg-attend-absent/10 text-attend-absent",
+  EXCUSED: "border-attend-excused/30 bg-attend-excused/10 text-attend-excused",
+  HOLIDAY: "border-attend-holiday/30 bg-attend-holiday/10 text-attend-holiday",
+  HALF_HOLIDAY: "border-attend-holiday/30 bg-attend-holiday/10 text-attend-holiday",
   NOT_APPLICABLE: "border-slate-200 bg-slate-50 text-slate-500",
-  UNPROCESSED: "border-slate-200 bg-white text-slate-600",
+  UNPROCESSED: "border-attend-unprocessed/30 bg-attend-unprocessed/10 text-attend-unprocessed",
 };
 
 const QUICK_STATUSES: { value: Exclude<AttendanceInputValue, "">; label: string }[] = [
@@ -272,20 +272,21 @@ export function AttendanceSeatView({
                   onClick={() => {
                     if (student && seat.isActive && selectedPeriod) setModalStudentId(student.id);
                   }}
-                  className={`relative flex min-h-[108px] w-full flex-col justify-between rounded-lg border p-3 text-left transition hover:opacity-80 ${tone} ${ isSelected ? "ring-2 ring-slate-900 ring-offset-1" : "" } ${!student || !seat.isActive ? "cursor-default" : ""}`}
+                  data-selected={isSelected}
+                  className={`admin-seat-card relative flex min-h-[108px] w-full flex-col justify-between rounded-lg border p-3 text-left transition ${tone} ${!student || !seat.isActive ? "cursor-default" : ""}`}
                 >
                   {/* 상단: 좌석번호 + 선택 교시 상태 */}
                   <div className="flex flex-wrap items-start justify-between gap-1">
                     <span className="whitespace-nowrap text-xs font-semibold">{seat.label}</span>
                     {student && periodStatus && (
-                      <span className={`shrink-0 rounded-lg border px-1.5 py-0.5 text-[13px] font-semibold ${STATUS_BADGE[periodStatus]}`}>
+                      <span className={`shrink-0 rounded-lg border px-2 py-1 text-[13px] font-semibold ${STATUS_BADGE[periodStatus]}`}>
                         {STATUS_LABEL[periodStatus]}
                       </span>
                     )}
                   </div>
 
                   {/* 하단: 학생 정보 */}
-                  <div className="space-y-0.5">
+                  <div className="space-y-1">
                     <p className="text-sm font-semibold">
                       {student?.name ?? (seat.isActive ? "공석" : "비활성")}
                     </p>
@@ -333,12 +334,12 @@ export function AttendanceSeatView({
                       </p>
                     </div>
                     {cell.status && (
-                      <span className={`rounded-lg px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${getAttendanceStatusClasses(cell.status, cell.reason)}`}>
+                      <span className={`rounded-lg px-3 py-1 text-xs font-medium border ${getAttendanceStatusClasses(cell.status, cell.reason)}`}>
                         {getAttendanceStatusLabel(cell.status, cell.reason)}
                       </span>
                     )}
                   </div>
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="flex flex-wrap gap-2">
                     {QUICK_STATUSES.map(({ value, label }) => (
                       <button
                         key={value}
@@ -351,7 +352,7 @@ export function AttendanceSeatView({
                             cell,
                           ))
                         }
-                        className={`rounded-lg px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition ${ getAttendanceInputValue(cell.status, cell.reason) === value ? getAttendanceStatusClasses(cell.status, cell.reason) : "bg-white text-slate-500 ring-slate-200 hover:bg-slate-50" }`}
+                        className={`rounded-lg px-3 py-1 text-xs font-medium border transition ${ getAttendanceInputValue(cell.status, cell.reason) === value ? getAttendanceStatusClasses(cell.status, cell.reason) : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50" }`}
                       >
                         {label}
                       </button>

@@ -10,6 +10,7 @@ import { StaffChatDock } from "@/components/chat/StaffChatDock";
 import type { DivisionFeatureFlags } from "@/lib/division-features";
 import { CheckDraftOwner } from "@/components/ui/CheckDraftSafety";
 import { requestCheckNavigation } from "@/lib/check-navigation";
+import { MobileWorkspaceHost } from "@/components/ui/MobileWorkspaceTools";
 
 type AdminShellProps = {
   children: ReactNode;
@@ -45,6 +46,7 @@ export function AdminShell({
   const screenLabel = getShellScreenLabel(role, divisionSlug, pathname ?? "");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [mobileToolsHost, setMobileToolsHost] = useState<HTMLDivElement | null>(null);
 
   const closeMenu = () => setIsMenuOpen(false);
 
@@ -162,6 +164,7 @@ export function AdminShell({
                 <Menu className="h-5 w-5" />
               </button>
               <p className="admin-mobile-topbar-title md:hidden">{screenLabel ?? divisionName}</p>
+              <div ref={setMobileToolsHost} className="contents md:hidden" />
               <StaffChatDock
                 divisionSlug={divisionSlug}
                 divisionName={divisionName}
@@ -171,7 +174,7 @@ export function AdminShell({
               />
               <AppSwitchMenu role={role} divisionSlug={divisionSlug} />
             </div>
-            {children}
+            <MobileWorkspaceHost.Provider value={mobileToolsHost}>{children}</MobileWorkspaceHost.Provider>
           </div>
         </main>
       </div>

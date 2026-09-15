@@ -51,14 +51,14 @@ type PhoneCheckSeatMapProps = {
 };
 
 const STATUS_BADGE: Record<PhoneCheckStatus, string> = {
-  SUBMITTED: "border-green-200 bg-green-50 text-green-700",
-  NOT_SUBMITTED: "border-red-200 bg-red-50 text-red-700",
+  SUBMITTED: "border-admin-success-line bg-admin-success-soft text-admin-success",
+  NOT_SUBMITTED: "border-admin-danger-line bg-admin-danger-soft text-admin-danger",
   RENTED: "border-sky-200 bg-sky-50 text-sky-700",
 };
 
 const STATUS_TONE: Record<PhoneCheckStatus, string> = {
-  SUBMITTED: "border-green-200 bg-green-50 text-green-900",
-  NOT_SUBMITTED: "border-red-200 bg-red-50 text-red-900",
+  SUBMITTED: "border-admin-success-line bg-admin-success-soft text-admin-success",
+  NOT_SUBMITTED: "border-admin-danger-line bg-admin-danger-soft text-admin-danger",
   RENTED: "border-sky-100 bg-sky-50 text-sky-900",
 };
 
@@ -247,14 +247,15 @@ export function PhoneCheckSeatMap({
                   onClick={() => {
                     if (student) setModalStudentId(student.id);
                   }}
-                  className={`phone-seat-card relative flex min-h-[108px] w-full flex-col justify-between rounded-lg border p-3 text-left transition hover:opacity-80 ${tone} ${ isSelected ? "ring-2 ring-slate-900 ring-offset-1" : "" } ${!student || !seat.isActive ? "cursor-default" : ""}`}
+                  data-selected={isSelected}
+                  className={`admin-seat-card phone-seat-card relative flex min-h-[108px] w-full flex-col justify-between rounded-lg border p-3 text-left transition ${tone} ${!student || !seat.isActive ? "cursor-default" : ""}`}
                 >
                   {/* 상단: 좌석번호 + 상태 배지 */}
                   <div className="flex flex-wrap items-start gap-1">
                     <span className="w-full whitespace-nowrap text-[13px] font-semibold">{seat.label}</span>
                     {student && (
                       <span
-                        className={`shrink-0 rounded-lg border px-1.5 py-0.5 text-[13px] font-semibold ${getAttendanceBadgeClassName( attendanceCell ?? undefined, attendanceIntegrationEnabled, )}`}
+                        className={`shrink-0 rounded-lg border px-2 py-1 text-[13px] font-semibold ${getAttendanceBadgeClassName( attendanceCell ?? undefined, attendanceIntegrationEnabled, )}`}
                       >
                         {attendanceIntegrationEnabled
                           ? getAttendanceStatusLabel(attendanceCell?.status, attendanceCell?.reason)
@@ -262,29 +263,29 @@ export function PhoneCheckSeatMap({
                       </span>
                     )}
                     {student && isCheckable && status && (
-                      <span className={`shrink-0 rounded-lg border px-1.5 py-0.5 text-[13px] font-semibold ${STATUS_BADGE[status]}`}>
+                      <span className={`shrink-0 rounded-lg border px-2 py-1 text-[13px] font-semibold ${STATUS_BADGE[status]}`}>
                         {PHONE_CHECK_STATUS_LABEL[status]}
                       </span>
                     )}
                     {student && isCheckable && !status && (
-                      <span className="shrink-0 rounded-lg border border-slate-200 bg-white px-1.5 py-0.5 text-[13px] font-semibold text-slate-400">
+                      <span className="shrink-0 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[13px] font-semibold text-slate-400">
                         미체크
                       </span>
                     )}
                     {student && !isCheckable && (
-                      <span className="shrink-0 rounded-lg border border-slate-200 bg-white px-1.5 py-0.5 text-[13px] font-semibold text-slate-400">
+                      <span className="shrink-0 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[13px] font-semibold text-slate-400">
                         체크 없음
                       </span>
                     )}
                     {student && saveState === "saving" && (
-                      <span className="shrink-0 rounded-lg border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[13px] font-semibold text-amber-700">
+                      <span className="shrink-0 rounded-lg border border-admin-warning-line bg-admin-warning-soft px-2 py-1 text-[13px] font-semibold text-admin-warning">
                         저장 중
                       </span>
                     )}
                   </div>
 
                   {/* 하단: 학생 정보 */}
-                  <div className="space-y-0.5">
+                  <div className="space-y-1">
                     <p className="text-sm font-semibold">
                       {student?.name ?? (seat.isActive ? "공석" : "비활성")}
                     </p>
@@ -321,15 +322,15 @@ export function PhoneCheckSeatMap({
               !isCheckable
                 ? "border-slate-100 bg-slate-50/80 opacity-75"
                 : status === "SUBMITTED"
-                ? "border-green-100 bg-green-50/30"
+                ? "border-admin-success-line bg-admin-success-soft/30"
                 : status === "NOT_SUBMITTED"
-                  ? "border-red-100 bg-red-50/30"
+                  ? "border-admin-danger-line bg-admin-danger-soft/30"
                   : status === "RENTED"
                     ? "border-sky-100 bg-sky-50/30"
                     : "border-slate-100 bg-white";
 
             return (
-              <div key={student.id} className={`rounded-lg border p-3 transition ${cardBg}`}>
+              <div key={student.id} className={`admin-seat-unassigned-row rounded-lg border p-3 transition ${cardBg}`}>
                 <div className="flex items-center gap-3">
                   <div className="min-w-0 flex-1">
                     <button
@@ -343,7 +344,7 @@ export function PhoneCheckSeatMap({
                       {student.seatDisplay ?? "좌석 미배정"} · {student.studentNumber}
                     </p>
                     <span
-                      className={`mt-1 inline-flex rounded-lg border px-2 py-0.5 text-[13px] font-semibold ${getAttendanceBadgeClassName( attendanceCell, attendanceIntegrationEnabled, )}`}
+                      className={`mt-1 inline-flex rounded-lg border px-2 py-1 text-[13px] font-semibold ${getAttendanceBadgeClassName( attendanceCell, attendanceIntegrationEnabled, )}`}
                     >
                       {attendanceIntegrationEnabled
                         ? getAttendanceStatusLabel(attendanceCell?.status, attendanceCell?.reason)
@@ -351,7 +352,7 @@ export function PhoneCheckSeatMap({
                     </span>
                     {saveState ? (
                       <span
-                        className={`ml-1 mt-1 inline-flex rounded-lg px-2 py-0.5 text-[13px] font-semibold ${ saveState === "saving" ? "bg-amber-50 text-amber-700" : saveState === "saved" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700" }`}
+                        className={`ml-1 mt-1 inline-flex rounded-lg px-2 py-1 text-[13px] font-semibold ${ saveState === "saving" ? "bg-admin-warning-soft text-admin-warning" : saveState === "saved" ? "bg-admin-success-soft text-admin-success" : "bg-admin-danger-soft text-admin-danger" }`}
                       >
                         {saveState === "saving"
                           ? "저장 중"
@@ -412,7 +413,7 @@ export function PhoneCheckSeatMap({
           <div className="space-y-4">
             <div>
               <span
-                className={`inline-flex rounded-lg border px-2.5 py-1 text-xs font-semibold ${getAttendanceBadgeClassName( modalAttendanceCell ?? undefined, attendanceIntegrationEnabled, )}`}
+                className={`inline-flex rounded-lg border px-3 py-1 text-xs font-semibold ${getAttendanceBadgeClassName( modalAttendanceCell ?? undefined, attendanceIntegrationEnabled, )}`}
               >
                 {attendanceIntegrationEnabled
                   ? getAttendanceStatusLabel(modalAttendanceCell?.status, modalAttendanceCell?.reason)
@@ -423,7 +424,7 @@ export function PhoneCheckSeatMap({
               ) : null}
               {modalSaveState ? (
                 <span
-                  className={`mt-2 inline-flex rounded-lg px-2 py-0.5 text-[13px] font-semibold ${ modalSaveState === "saving" ? "bg-amber-50 text-amber-700" : modalSaveState === "saved" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700" }`}
+                  className={`mt-2 inline-flex rounded-lg px-2 py-1 text-[13px] font-semibold ${ modalSaveState === "saving" ? "bg-admin-warning-soft text-admin-warning" : modalSaveState === "saved" ? "bg-admin-success-soft text-admin-success" : "bg-admin-danger-soft text-admin-danger" }`}
                 >
                   {modalSaveState === "saving"
                     ? "저장 중"
@@ -435,7 +436,7 @@ export function PhoneCheckSeatMap({
             </div>
 
             {!modalCheckable ? (
-              <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-500">
+              <div className="admin-help rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
                 출석 또는 지각으로 처리된 학생만 휴대폰 상태를 체크할 수 있습니다.
               </div>
             ) : null}
@@ -447,7 +448,7 @@ export function PhoneCheckSeatMap({
                   onOpenBulkRental(modalStudentId);
                   setModalStudentId(null);
                 }}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-700 transition hover:bg-sky-100"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-700 transition hover:bg-sky-100"
               >
                 <Phone className="h-4 w-4" />
                 일괄 대여
@@ -486,7 +487,7 @@ export function PhoneCheckSeatMap({
                   placeholder="대여 사유 (예: 인강 수강)"
                   maxLength={200}
                   autoFocus
-                  className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm transition placeholder:text-slate-400"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition placeholder:text-slate-400"
                 />
                 <DialogActions>
 <button

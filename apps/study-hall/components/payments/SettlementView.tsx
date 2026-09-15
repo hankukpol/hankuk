@@ -202,7 +202,7 @@ export function SettlementView({ divisionSlug, isActive = true, refreshKey }: Se
       </div>
 
       {isLoading ? (
-        <div className="mt-8 flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-12 text-sm text-slate-500">
+        <div className="mt-8 flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-12 admin-help">
           <LoaderCircle className="h-4 w-4 animate-spin" />
           정산 정보를 불러오는 중입니다.
         </div>

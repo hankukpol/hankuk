@@ -105,7 +105,7 @@ export function PaymentEntriesEditor({
                   type="button"
                   onClick={() => removeEntry(entry.id)}
                   disabled={disabled || entries.length <= 1}
-                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-600 transition hover:bg-rose-50 disabled:opacity-50"
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-admin-danger transition hover:bg-admin-danger-soft disabled:opacity-50"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                   삭제

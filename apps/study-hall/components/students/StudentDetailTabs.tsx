@@ -25,7 +25,7 @@ import type { PointRecordItem, PointRuleItem } from "@/lib/services/point.servic
 import type { ScoreTargetItem } from "@/lib/services/score-target.service";
 import type { StudentDashboardData } from "@/lib/services/student-dashboard.service";
 import type { TuitionPlanItem } from "@/lib/services/tuition-plan.service";
-import { getKstTodayYmd } from "@/lib/date-utils";
+import { formatKstDateTime, getKstTodayYmd } from "@/lib/date-utils";
 import {
   getAttendanceStatusClasses,
   getAttendanceStatusLabel,
@@ -66,7 +66,7 @@ type StudentDetailTabsProps = {
 };
 
 const tabSectionFallback = () => (
-  <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500">
+  <div className="rounded-lg border border-slate-200 bg-white p-4 admin-help">
     불러오는 중...
   </div>
 );
@@ -91,28 +91,15 @@ function formatDate(value: string | null) {
     return "-";
   }
 
-  return new Date(value).toLocaleDateString("ko-KR");
+  return new Date(value).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" });
 }
 
 function formatDateTime(value: string) {
-  return new Date(value).toLocaleString("ko-KR", {
-    timeZone: "Asia/Seoul",
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatKstDateTime(value);
 }
 
 function formatFullDateTime(value: string) {
-  return new Date(value).toLocaleString("ko-KR", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatKstDateTime(value);
 }
 
 function getKstDateKey(date = new Date()) {
@@ -161,7 +148,7 @@ function getWeeklyAttendanceStatusClasses(
     case "OFF":
       return "border-slate-200 bg-slate-100 text-slate-500";
     case "UNPROCESSED":
-      return "border-orange-200 bg-orange-50 text-orange-700";
+      return "border-attend-unprocessed/30 bg-attend-unprocessed/10 text-attend-unprocessed";
     default:
       return getAttendanceStatusClasses(status, reason);
   }
@@ -500,7 +487,7 @@ export function StudentDetailTabs({
                     </th>
                     {row.cells.map((cell) => (
                       <td key={`${row.date}-${cell.periodId}`} className="border-b border-r border-slate-100 px-3 py-3 align-top last:border-r-0">
-                        <span className={`inline-flex rounded-lg border px-2.5 py-1 text-xs font-semibold ${getWeeklyAttendanceStatusClasses(cell.status, cell.reason)}`}>
+                        <span className={`inline-flex rounded-lg border px-3 py-1 text-xs font-semibold ${getWeeklyAttendanceStatusClasses(cell.status, cell.reason)}`}>
                           {getWeeklyAttendanceStatusLabel(cell.status, cell.reason, cell.statusLabel)}
                         </span>
                         <p className="admin-help mt-2 leading-5">
@@ -532,7 +519,7 @@ export function StudentDetailTabs({
                     type="date"
                     value={attendanceDateFrom}
                     onChange={(event) => setAttendanceDateFrom(event.target.value)}
-                    className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
+                    className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
                   />
                 </label>
                 <label className="admin-label">
@@ -541,12 +528,12 @@ export function StudentDetailTabs({
                     type="date"
                     value={attendanceDateTo}
                     onChange={(event) => setAttendanceDateTo(event.target.value)}
-                    className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
+                    className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
                   />
                 </label>
               </div>
 
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-2">
                 {[
                   { key: "month" as const, label: "이번 달" },
                   { key: "last7" as const, label: "최근 7일" },
@@ -572,7 +559,7 @@ export function StudentDetailTabs({
                   ? ` / 기간 내 ${attendanceHistoryInRange.length}건`
                   : ""}
               </p>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-2">
                 {attendanceHistoryFilters.map((filter) => (
                   <button
                     key={filter.value}
@@ -610,7 +597,7 @@ export function StudentDetailTabs({
                         ) : null}
                       </td>
                       <td>
-                        <span className={`inline-flex rounded-lg border px-2.5 py-1 text-xs font-semibold ${getAttendanceStatusClasses(record.status, record.reason)}`}>
+                        <span className={`inline-flex rounded-lg border px-3 py-1 text-xs font-semibold ${getAttendanceStatusClasses(record.status, record.reason)}`}>
                           {getAttendanceStatusLabel(record.status, record.reason)}
                         </span>
                       </td>
@@ -658,7 +645,7 @@ export function StudentDetailTabs({
                         <td>{formatDate(permission.date)}</td>
                         <td>{getLeaveTypeLabel(permission.type)}</td>
                         <td>
-                          <span className={`inline-flex rounded-lg border px-2.5 py-1 text-xs font-semibold ${getLeaveStatusClasses(permission.status)}`}>
+                          <span className={`inline-flex rounded-lg border px-3 py-1 text-xs font-semibold ${getLeaveStatusClasses(permission.status)}`}>
                             {getLeaveStatusLabel(permission.status)}
                           </span>
                         </td>
@@ -753,7 +740,7 @@ export function StudentDetailTabs({
                   setPointRuleId(e.target.value);
                   setManualPoints("");
                 }}
-                className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-950"
+                className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-950"
               >
                 <option value="">직접 점수 입력</option>
                 {pointRules.map((rule) => (
@@ -786,7 +773,7 @@ export function StudentDetailTabs({
                   onChange={(e) => setManualPoints(e.target.value)}
                   required={!pointRuleId}
                   placeholder="예: 5 또는 -3"
-                  className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-950"
+                  className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-950"
                 />
               </div>
             )}
@@ -797,7 +784,7 @@ export function StudentDetailTabs({
                 value={pointsNotes}
                 onChange={(e) => setPointsNotes(e.target.value)}
                 rows={3}
-                className="mt-1.5 w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-950"
+                className="mt-2 w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-950"
                 placeholder="메모를 입력하세요"
               />
             </div>
@@ -846,7 +833,7 @@ export function StudentDetailTabs({
             <select
               value={selectedExamTypeName}
               onChange={(e) => setSelectedExamTypeName(e.target.value)}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700"
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
             >
               {examTypeNames.map((name) => (
                 <option key={name} value={name}>{name}</option>
@@ -957,7 +944,7 @@ export function StudentDetailTabs({
               <button
                 type="button"
                 onClick={() => setIsRefundOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-medium text-rose-700 transition hover:bg-rose-50"
+                className="inline-flex items-center gap-2 rounded-lg border border-admin-danger-line px-3 py-2 text-xs font-medium text-admin-danger transition hover:bg-admin-danger-soft"
               >
                 환불 처리
               </button>
@@ -992,7 +979,7 @@ export function StudentDetailTabs({
                       <p className="font-medium text-slate-900">{payment.paymentTypeName}</p>
                       <p className="admin-help mt-1">{payment.notes || "메모 없음"}</p>
                     </td>
-                    <td className={`px-3 py-4 font-semibold ${payment.amount < 0 ? "text-rose-600" : "text-slate-950"}`}>
+                    <td className={`px-3 py-4 font-semibold ${payment.amount < 0 ? "text-admin-danger" : "text-slate-950"}`}>
                       {payment.amount < 0 ? "-" : ""}{formatCurrency(Math.abs(payment.amount))}원
                     </td>
                     <td>{formatDate(payment.paymentDate)}</td>
@@ -1038,7 +1025,7 @@ export function StudentDetailTabs({
                           {new Intl.NumberFormat("ko-KR").format(plan.amount)}원
                         </p>
                       </div>
-                      <p className={`mt-0.5 text-xs ${selectedPlanId === plan.id ? "text-slate-300" : "text-slate-400"}`}>
+                      <p className={`mt-1 text-xs ${selectedPlanId === plan.id ? "text-slate-300" : "text-slate-400"}`}>
                         {plan.durationDays}일
                       </p>
                     </button>
@@ -1053,7 +1040,7 @@ export function StudentDetailTabs({
                 value={paymentTypeId}
                 onChange={(e) => setPaymentTypeId(e.target.value)}
                 required
-                className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-950"
+                className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-950"
               >
                 <option value="">선택해 주세요</option>
                 {paymentCategories.map((cat) => (
@@ -1069,7 +1056,7 @@ export function StudentDetailTabs({
                 value={paymentDate}
                 onChange={(e) => setPaymentDate(e.target.value)}
                 required
-                className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-950"
+                className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-950"
               />
             </div>
 
@@ -1082,19 +1069,19 @@ export function StudentDetailTabs({
                 required
                 min="1"
                 placeholder="0"
-                className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-950"
+                className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-950"
               />
             </div>
 
             <div>
               <label className="admin-label block">납부 방식</label>
-              <div className="mt-1.5">
+              <div className="mt-2">
                 <PaymentMethodSelect
                   value={paymentMethod}
                   onChange={setPaymentMethod}
                   required
-                  selectClassName="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-950"
-                  inputClassName="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-950"
+                  selectClassName="w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-950"
+                  inputClassName="w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-950"
                 />
               </div>
             </div>
@@ -1105,7 +1092,7 @@ export function StudentDetailTabs({
                 value={paymentNotes}
                 onChange={(e) => setPaymentNotes(e.target.value)}
                 rows={3}
-                className="mt-1.5 w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-950"
+                className="mt-2 w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-950"
                 placeholder="메모를 입력하세요"
               />
             </div>
@@ -1169,7 +1156,7 @@ export function StudentDetailTabs({
             >
               <div className="flex flex-wrap items-center gap-2">
                 <span
-                  className={`rounded-lg border px-2.5 py-1 text-xs font-semibold ${getInterviewResultTypeClasses(interview.resultType)}`}
+                  className={`rounded-lg border px-3 py-1 text-xs font-semibold ${getInterviewResultTypeClasses(interview.resultType)}`}
                 >
                   {getInterviewResultTypeLabel(interview.resultType)}
                 </span>

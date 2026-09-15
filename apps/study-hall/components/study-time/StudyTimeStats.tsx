@@ -93,7 +93,7 @@ export function StudyTimeStats({ divisionSlug, studentId }: StudyTimeStatsProps)
             value={month}
             max={getKstMonth()}
             onChange={(e) => handleMonthChange(e.target.value)}
-            className="mt-1 block rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm transition"
+            className="mt-1 block rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition"
           />
         </div>
       </div>
@@ -133,7 +133,7 @@ export function StudyTimeStats({ divisionSlug, studentId }: StudyTimeStatsProps)
           <p className="mb-4 text-xs font-semibold text-slate-500">
             일별 학습 시간
           </p>
-          <div className="flex items-end gap-1.5 overflow-x-auto pb-2" style={{ minHeight: "100px" }}>
+          <div className="flex items-end gap-2 overflow-x-auto pb-2" style={{ minHeight: "100px" }}>
             {byDate.map(({ date, minutes }) => {
               const heightPx = maxMinutes > 0 ? Math.max(Math.round((minutes / maxMinutes) * 80), minutes > 0 ? 4 : 2) : 2;
               return (
@@ -164,9 +164,9 @@ export function StudyTimeStats({ divisionSlug, studentId }: StudyTimeStatsProps)
             {activePeriods.map((p) => (
                 <div key={p.periodId} className="flex items-center gap-3">
                   <span className="w-14 shrink-0 text-xs font-medium text-slate-600">{p.periodName}</span>
-                  <div className="flex-1 rounded-full bg-slate-100 h-2">
+                  <div className="flex-1 rounded-lg bg-slate-100 h-2">
                     <div
-                      className="h-2 rounded-full bg-[var(--division-color)] opacity-70"
+                      className="h-2 rounded-lg bg-[var(--division-color)] opacity-70"
                       style={{
                         width: `${Math.min(100, Math.round((p.avgMinutes / 300) * 100))}%`,
                       }}

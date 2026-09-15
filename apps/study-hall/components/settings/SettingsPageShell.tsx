@@ -94,7 +94,7 @@ export function SettingsPageShell({
   mobileTitleInShell?: boolean;
 }) {
   return (
-    <div className="admin-flat-page">
+    <div className="admin-flat-page admin-compact-workspace admin-settings-workspace">
       <section className={mobileTitleInShell ? "max-md:sr-only" : undefined}>
         <h1 className="admin-page-title">{title}</h1>
         <p className="admin-page-description">{description}</p>

@@ -92,7 +92,7 @@ const LEAVE_TYPE_LABEL: Record<string, string> = {
 
 const LEAVE_STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   PENDING: { label: "대기", cls: "bg-slate-100 text-slate-600" },
-  APPROVED: { label: "승인", cls: "bg-emerald-50 text-emerald-700" },
+  APPROVED: { label: "승인", cls: "bg-admin-success-soft text-admin-success" },
   REJECTED: { label: "승인 취소", cls: "bg-slate-100 text-slate-600" },
   USED: { label: "사용됨", cls: "bg-slate-100 text-slate-500" },
 };
@@ -541,9 +541,9 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
         iconClass: "bg-slate-100 text-slate-600",
         badgeClass:
           data.summary.uncheckedPeriodCount > 0
-            ? "bg-amber-50 text-amber-700"
+            ? "bg-admin-warning-soft text-admin-warning"
             : "bg-slate-100 text-slate-600",
-        borderClass: data.summary.uncheckedPeriodCount > 0 ? "border-amber-100" : "border-admin-line",
+        borderClass: data.summary.uncheckedPeriodCount > 0 ? "border-admin-warning-line" : "border-admin-line",
         featureKey: "attendanceManagement",
       },
       {
@@ -560,9 +560,9 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
         iconClass: "bg-slate-100 text-slate-600",
         badgeClass:
           data.attentionStudents.length > 0
-            ? "bg-amber-50 text-amber-700"
+            ? "bg-admin-warning-soft text-admin-warning"
             : "bg-slate-100 text-slate-600",
-        borderClass: data.attentionStudents.length > 0 ? "border-amber-100" : "border-admin-line",
+        borderClass: data.attentionStudents.length > 0 ? "border-admin-warning-line" : "border-admin-line",
         featureKey: "attendanceManagement",
       },
       {
@@ -579,9 +579,9 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
         iconClass: "bg-slate-100 text-slate-600",
         badgeClass:
           data.summary.riskStudentCount > 0
-            ? "bg-rose-50 text-rose-700"
+            ? "bg-admin-danger-soft text-admin-danger"
             : "bg-slate-100 text-slate-600",
-        borderClass: data.summary.riskStudentCount > 0 ? "border-rose-100" : "border-admin-line",
+        borderClass: data.summary.riskStudentCount > 0 ? "border-admin-danger-line" : "border-admin-line",
         featureKey: "warningManagement",
       },
       {
@@ -598,9 +598,9 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
         iconClass: "bg-slate-100 text-slate-600",
         badgeClass:
           followUps.length > 0
-            ? "bg-amber-50 text-amber-700"
+            ? "bg-admin-warning-soft text-admin-warning"
             : "bg-slate-100 text-slate-600",
-        borderClass: followUps.length > 0 ? "border-amber-100" : "border-admin-line",
+        borderClass: followUps.length > 0 ? "border-admin-warning-line" : "border-admin-line",
         featureKey: "interviewManagement",
       },
       {
@@ -617,9 +617,9 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
         iconClass: "bg-slate-100 text-slate-600",
         badgeClass:
           data.expiringStudents.length > 0
-            ? "bg-rose-50 text-rose-700"
+            ? "bg-admin-danger-soft text-admin-danger"
             : "bg-slate-100 text-slate-600",
-        borderClass: data.expiringStudents.length > 0 ? "border-rose-100" : "border-admin-line",
+        borderClass: data.expiringStudents.length > 0 ? "border-admin-danger-line" : "border-admin-line",
         featureKey: "studentManagement",
       },
     ];
@@ -715,7 +715,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                 className="admin-panel-row"
               >
                 <span
-                  className={`inline-block rounded-lg px-3 py-1 text-sm font-extrabold ${ exam.dDayValue === 0 ? "bg-red-100 text-red-600" : exam.dDayValue < 0 ? "bg-slate-200 text-slate-500" : "bg-blue-50 text-blue-600" }`}
+                  className={`inline-block rounded-lg px-3 py-1 text-sm font-extrabold ${ exam.dDayValue === 0 ? "bg-admin-danger-soft text-admin-danger" : exam.dDayValue < 0 ? "bg-slate-200 text-slate-500" : "bg-blue-50 text-blue-600" }`}
                 >
                   {exam.dDayLabel}
                 </span>
@@ -730,7 +730,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
       )}
 
       {/* 핵심 지표 */}
-      <section className="admin-dashboard-metrics">
+      <section className="admin-dashboard-metrics max-md:-order-1">
         {visibleSummaryCards.map((card) => {
 
           return (
@@ -782,7 +782,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                   <div className={`inline-flex h-12 w-12 items-center justify-center rounded-lg ${card.iconClass}`}>
                     <Icon className="h-5 w-5" />
                   </div>
-                  <span className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${card.badgeClass}`}>
+                  <span className={`rounded-lg px-3 py-1 text-xs font-semibold ${card.badgeClass}`}>
                     {card.value}
                   </span>
                 </div>
@@ -810,7 +810,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
           className={`admin-section h-full ${ featureFlags.attendanceManagement ? "" : "hidden" }`}
         >
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-3">
               <h2 className="admin-section-title">교시별 출결 현황</h2>
             </div>
             <Link
@@ -831,19 +831,19 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
 
                 <div className="flex-1">
                   <div className="mb-1 flex items-center justify-between">
-                    <div className="flex items-center gap-2.5 text-xs">
-                      <span className="font-medium text-emerald-600">출 {row.counts.present}</span>
-                      <span className="font-medium text-amber-600">지 {row.counts.tardy}</span>
-                      <span className="font-medium text-rose-600">결 {row.counts.absent}</span>
+                    <div className="flex items-center gap-3 text-xs">
+                      <span className="font-medium text-attend-present">출 {row.counts.present}</span>
+                      <span className="font-medium text-attend-tardy">지 {row.counts.tardy}</span>
+                      <span className="font-medium text-attend-absent">결 {row.counts.absent}</span>
                       {row.counts.unprocessed > 0 && (
                         <span className="text-slate-400">미 {row.counts.unprocessed}</span>
                       )}
                     </div>
                     <span className="text-xs font-bold text-slate-900">{row.attendanceRate}%</span>
                   </div>
-                  <div className="h-1 rounded-full bg-slate-100">
+                  <div className="h-1 rounded-lg bg-slate-100">
                     <div
-                      className={`h-full rounded-full transition-all ${ row.attendanceRate >= 90 ? "bg-emerald-400" : row.attendanceRate >= 75 ? "bg-amber-400" : "bg-rose-400" }`}
+                      className={`h-full rounded-lg transition-all ${ row.attendanceRate >= 90 ? "bg-admin-success" : row.attendanceRate >= 75 ? "bg-admin-warning" : "bg-admin-danger" }`}
                       style={{ width: `${row.attendanceRate}%` }}
                     />
                   </div>
@@ -869,11 +869,11 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
           <section
             className={`admin-section ${ featureFlags.attendanceManagement ? "" : "hidden" }`}
           >
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-3">
               <h2 className="admin-section-title">반복 지각 · 결석</h2>
               <div className="ml-auto flex items-center gap-2">
                 {attentionPreview.length > 0 && (
-                  <span className="rounded-lg bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-600">
+                  <span className="rounded-lg bg-admin-warning-soft px-3 py-1 text-xs font-semibold text-admin-warning">
                     {data.attentionStudents.length}명
                   </span>
                 )}
@@ -895,7 +895,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                       className="admin-panel-row"
                     >
                       <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-1.5">
+                        <div className="flex flex-wrap items-center gap-2">
                           {featureFlags.studentManagement ? (
                             <Link
                               href={`/${divisionSlug}/admin/students/${student.studentId}`}
@@ -910,12 +910,12 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                           )}
                           <span className="admin-help">{student.studentNumber}</span>
                           <span
-                            className={`rounded-lg px-2 py-0.5 text-[13px] font-semibold ${ student.type === "ABSENT" ? "bg-rose-50 text-rose-600" : "bg-amber-50 text-amber-600" }`}
+                            className={`rounded-lg px-2 py-1 text-[13px] font-semibold ${ student.type === "ABSENT" ? "bg-admin-danger-soft text-admin-danger" : "bg-admin-warning-soft text-admin-warning" }`}
                           >
                             {student.type === "ABSENT" ? "결석 반복" : "지각 반복"}
                           </span>
                         </div>
-                        <p className="admin-help mt-0.5">
+                        <p className="admin-help mt-1">
                           {student.message} · {student.seatLabel || "좌석 미배정"}
                         </p>
                       </div>
@@ -940,11 +940,11 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
 
           {/* 경고 위험 학생 */}
           {featureFlags.warningManagement && <section className="admin-section">
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-3">
               <h2 className="admin-section-title">경고 위험 학생</h2>
               <div className="ml-auto flex items-center gap-2">
                 {riskPreview.length > 0 && (
-                  <span className="rounded-lg bg-rose-50 px-2.5 py-0.5 text-xs font-semibold text-rose-600">
+                  <span className="rounded-lg bg-admin-danger-soft px-3 py-1 text-xs font-semibold text-admin-danger">
                     {data.riskStudents.length}명
                   </span>
                 )}
@@ -963,7 +963,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                   {riskPreview.map((student) => (
                     <div key={student.id} className="admin-panel-row">
                       <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-1.5">
+                        <div className="flex flex-wrap items-center gap-2">
                           {featureFlags.studentManagement ? (
                             <Link
                               href={`/${divisionSlug}/admin/students/${student.id}`}
@@ -979,14 +979,14 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                           <span className="admin-help">{student.studentNumber}</span>
                           <WarningStageBadge stage={student.warningStage} label={student.warningStageLabel} />
                         </div>
-                        <p className="admin-help mt-0.5">
+                        <p className="admin-help mt-1">
                           벌점 {student.netPoints}p · {student.seatLabel || "좌석 미배정"}
                         </p>
                       </div>
                       <button
                         type="button"
                         onClick={() => void copyPhone(student.phone)}
-                        className="shrink-0 rounded-lg border border-slate-200 p-1.5 text-slate-500 transition hover:bg-slate-50"
+                        className="shrink-0 rounded-lg border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50"
                         title="연락처 복사"
                       >
                         <Copy className="h-3.5 w-3.5" />
@@ -1038,18 +1038,18 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                     {expiringPreview.map((student) => {
                       const dBadge =
                         student.daysRemaining < 0
-                          ? { label: "만료됨", cls: "bg-rose-50 text-rose-600" }
+                          ? { label: "만료됨", cls: "bg-admin-danger-soft text-admin-danger" }
                           : student.daysRemaining === 0
-                            ? { label: "오늘", cls: "bg-rose-50 text-rose-600" }
+                            ? { label: "오늘", cls: "bg-admin-danger-soft text-admin-danger" }
                             : student.daysRemaining <= 7
-                              ? { label: `D-${student.daysRemaining}`, cls: "bg-amber-50 text-amber-600" }
+                              ? { label: `D-${student.daysRemaining}`, cls: "bg-admin-warning-soft text-admin-warning" }
                               : { label: `D-${student.daysRemaining}`, cls: "bg-slate-100 text-slate-600" };
                       return (
                         <tr key={student.id} className="group">
                           <td>
                             <Link
                               href={`/${divisionSlug}/admin/students/${student.id}`}
-                              className="font-semibold text-slate-900 transition group-hover:text-slate-600"
+                              className="font-semibold text-slate-900 transition group-hover:text-slate-600 max-md:inline-flex max-md:min-h-11 max-md:min-w-11 max-md:items-center"
                             >
                               {student.name}
                             </Link>
@@ -1058,7 +1058,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                           <td>{student.studyTrack || "—"}</td>
                           <td>{student.courseEndDate}</td>
                           <td>
-                            <span className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${dBadge.cls}`}>
+                            <span className={`rounded-lg px-3 py-1 text-xs font-semibold ${dBadge.cls}`}>
                               {dBadge.label}
                             </span>
                           </td>
@@ -1084,7 +1084,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                 <h2 className="admin-section-title">신규 입실</h2>
               </div>
             </div>
-            <span className="rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+            <span className="rounded-lg bg-admin-success-soft px-3 py-1 text-xs font-semibold text-admin-success">
               최근 10일 {data.newStudents.length}명
             </span>
           </div>
@@ -1107,14 +1107,14 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                         student.daysAgo === 0 ? "오늘" : student.daysAgo === 1 ? "어제" : `${student.daysAgo}일 전`;
                       const dayCls =
                         student.daysAgo === 0
-                          ? "bg-emerald-50 text-emerald-600"
+                          ? "bg-admin-success-soft text-admin-success"
                           : "bg-slate-100 text-slate-600";
                       return (
                         <tr key={student.id} className="group">
                           <td>
                             <Link
                               href={`/${divisionSlug}/admin/students/${student.id}`}
-                              className="font-semibold text-slate-900 transition group-hover:text-slate-600"
+                              className="font-semibold text-slate-900 transition group-hover:text-slate-600 max-md:inline-flex max-md:min-h-11 max-md:min-w-11 max-md:items-center"
                             >
                               {student.name}
                             </Link>
@@ -1123,7 +1123,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                           <td>{student.studyTrack || "—"}</td>
                           <td>{student.seatLabel || "미배정"}</td>
                           <td>
-                            <span className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${dayCls}`}>
+                            <span className={`rounded-lg px-3 py-1 text-xs font-semibold ${dayCls}`}>
                               {dayLabel}
                             </span>
                           </td>
@@ -1173,18 +1173,18 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                         </span>
                         <span className="admin-help">{record.studentNumber}</span>
                       </div>
-                      <p className="admin-help mt-0.5 truncate">
+                      <p className="admin-help mt-1 truncate">
                         {record.ruleName || "직접 입력"}
                         {record.notes ? ` · ${record.notes}` : ""}
                       </p>
                     </div>
                     <div className="shrink-0 text-right">
                       <span
-                        className={`rounded-lg px-2.5 py-0.5 text-xs font-bold ${ record.points > 0 ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700" }`}
+                        className={`rounded-lg px-3 py-1 text-xs font-bold ${ record.points > 0 ? "bg-admin-success-soft text-admin-success" : "bg-admin-danger-soft text-admin-danger" }`}
                       >
                         {formatPointValue(record.points)}
                       </span>
-                      <p className="mt-0.5 text-[13px] text-slate-400">
+                      <p className="mt-1 text-[13px] text-slate-400">
                         {new Date(record.date).toLocaleDateString("ko-KR")}
                       </p>
                     </div>
@@ -1236,7 +1236,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                           <p className="admin-help">{payment.studentNumber}</p>
                         </td>
                         <td>{payment.paymentTypeName}</td>
-                        <td className="admin-table-amount text-emerald-700">
+                        <td className="admin-table-amount text-admin-success">
                           {payment.amount.toLocaleString("ko-KR")}원
                         </td>
                         <td>
@@ -1286,7 +1286,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                   return (
                     <div key={leave.id} className="admin-panel-row">
                       <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-1.5">
+                        <div className="flex flex-wrap items-center gap-2">
                           {featureFlags.studentManagement ? (
                             <Link
                               href={`/${divisionSlug}/admin/students/${leave.studentId}`}
@@ -1300,15 +1300,15 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                             </span>
                           )}
                           <span className="admin-help">{leave.studentNumber}</span>
-                          <span className="rounded-lg bg-blue-50 px-2 py-0.5 text-[13px] font-semibold text-blue-700">
+                          <span className="rounded-lg bg-blue-50 px-2 py-1 text-[13px] font-semibold text-blue-700">
                             {LEAVE_TYPE_LABEL[leave.type] ?? leave.type}
                           </span>
                         </div>
-                        <p className="admin-help mt-0.5">
+                        <p className="admin-help mt-1">
                           {leave.seatLabel || "좌석 미배정"}
                         </p>
                       </div>
-                      <span className={`shrink-0 rounded-lg px-2.5 py-1 text-xs font-semibold ${statusInfo.cls}`}>
+                      <span className={`shrink-0 rounded-lg px-3 py-1 text-xs font-semibold ${statusInfo.cls}`}>
                         {statusInfo.label}
                       </span>
                     </div>
@@ -1348,7 +1348,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                 {data.interviewNeededStudents.slice(0, 5).map((student) => (
                   <div key={student.id} className="admin-panel-row">
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-1.5">
+                      <div className="flex flex-wrap items-center gap-2">
                         {featureFlags.studentManagement ? (
                           <Link
                             href={`/${divisionSlug}/admin/students/${student.id}`}
@@ -1363,7 +1363,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                         )}
                         <span className="admin-help">{student.studentNumber}</span>
                       </div>
-                      <p className="admin-help mt-0.5">
+                      <p className="admin-help mt-1">
                         벌점 {student.netPoints}p ·{" "}
                         {student.lastInterviewDate
                           ? `최근 면담: ${student.lastInterviewDate}`
@@ -1374,7 +1374,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                     <button
                       type="button"
                       onClick={() => void copyPhone(student.phone)}
-                      className="shrink-0 rounded-lg border border-slate-200 p-1.5 text-slate-500 transition hover:bg-slate-50"
+                      className="shrink-0 rounded-lg border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50"
                       title="연락처 복사"
                     >
                       <Copy className="h-3.5 w-3.5" />

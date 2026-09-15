@@ -1,5 +1,6 @@
 "use client";
 import { useConfigurationReview } from "@/components/settings/ConfigurationReview";
+import { MobileWorkspaceTools } from "@/components/ui/MobileWorkspaceTools";
 
 import { LoaderCircle, Pencil, Plus, RotateCcw, Save, Search, Trash2 } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
@@ -275,7 +276,14 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
       });
       if(result?.status!=="APPLIED"){if(result?.status==="PENDING")setIsEditorOpen(false);return;}
       toast.success(editingId ? "규칙을 수정했습니다." : "규칙을 추가했습니다.");
-      await refreshRules();
+      if (data.rule) {
+        const savedRule = data.rule;
+        setRules((current) => editingId
+          ? current.map((rule) => rule.id === editingId ? savedRule : rule)
+          : [...current, savedRule]);
+      } else {
+        await refreshRules();
+      }
       resetForm();
       setIsEditorOpen(false);
     } catch (error) {
@@ -288,6 +296,8 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
   }
 
   async function handleDelete(ruleId: string) {
+    const rule = rules.find((item) => item.id === ruleId);
+    if (!(await confirm({ title: "상벌점 규칙을 삭제할까요?", description: `${rule?.name ?? "선택한"} 규칙을 삭제합니다.`, confirmLabel: "삭제", variant: "danger" }))) return;
     setDeletingId(ruleId);
 
     try {
@@ -454,7 +464,7 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
   }
 
   return (
-    <div className="min-w-0 space-y-5">
+    <div className="admin-compact-workspace min-w-0 space-y-5">
       <AdminTabs
         items={[{ id: "rules", label: "규칙 목록" }, { id: "categories", label: "카테고리" }]}
         activeId={activeTab}
@@ -464,7 +474,8 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
         variant="secondary"
       />
 
-      <AdminTabPanel id="rules" activeId={activeTab} idPrefix="point-rule-settings" className="space-y-5">
+      <AdminTabPanel id="rules" activeId={activeTab} idPrefix="point-rule-settings" className="space-y-5 max-md:space-y-0">
+        <MobileWorkspaceTools title="상벌점 규칙 조회·추가" active={activeTab === "rules"}>
         <div className="admin-workspace-toolbar">
           <div className="flex flex-wrap items-center gap-3">
             <h2 className="admin-section-title">상벌점 규칙</h2>
@@ -502,6 +513,7 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
           </div>
         </div>
 
+        </MobileWorkspaceTools>
         {filteredRules.length > 0 ? (
           <>
             <div className="admin-table-frame">
@@ -543,7 +555,8 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
         )}
       </AdminTabPanel>
 
-      <AdminTabPanel id="categories" activeId={activeTab} idPrefix="point-rule-settings" className="space-y-5">
+      <AdminTabPanel id="categories" activeId={activeTab} idPrefix="point-rule-settings" className="space-y-5 max-md:space-y-0">
+        <MobileWorkspaceTools title="상벌점 카테고리 작업" active={activeTab === "categories"}>
         <div className="admin-workspace-toolbar">
           <div className="flex flex-wrap items-center gap-3">
             <h2 className="admin-section-title">카테고리</h2>
@@ -555,6 +568,7 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
             </button>
           ) : null}
         </div>
+        </MobileWorkspaceTools>
         {!categoryCustomizationEnabled ? <p className="admin-notice">현재 학원은 기본 카테고리를 사용합니다.</p> : null}
         {categories.length ? (
           <div className="admin-table-frame">

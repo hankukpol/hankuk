@@ -61,6 +61,10 @@ Spacing base: 4px (간격 스케일의 기본 단위).
 | `--admin-warning-soft` / `--admin-warning-line` | `#fff8e6` / `#f0dca8` | 주의 상태 배경·경계 |
 | `--admin-success` | `#1b7a1b` | 완료 안내 |
 | `--admin-success-soft` / `--admin-success-line` | `#eef8ee` / `#c5e3c5` | 완료 상태 배경·경계 |
+| `--admin-warn-1` / `-soft` / `-line` | `#a16207` / `#fefce8` / `#fef08a` | 1차 경고 글자·배경·경계 |
+| `--admin-warn-2` / `-soft` / `-line` | `#c2410c` / `#fff7ed` / `#fed7aa` | 2차 경고 글자·배경·경계 |
+| `--admin-warn-interview` / `-soft` / `-line` | `#b91c1c` / `#fef2f2` / `#fecaca` | 면담 단계 글자·배경·경계 |
+| `--admin-warn-withdraw` / `-soft` / `-line` | `#881337` / `#ffe4e6` / `#fda4af` | 퇴실 단계 글자·배경·경계 |
 | `--admin-overlay` | `rgb(0 0 0 / 0.5)` | 모달 뒤 배경. blur 없음 |
 | `--admin-dialog-shadow` | `0 12px 32px rgb(10 10 10 / 0.14)` | 모달·작업 메뉴의 한정된 그림자 |
 
@@ -92,6 +96,9 @@ Spacing base: 4px (간격 스케일의 기본 단위).
 | `slate/gray/zinc/neutral` 50→950 | `surface-soft` → `surface-muted` → `line-soft` → `line` → `text-muted` → `text-secondary` → `sidebar-hover` → `text` |
 | `blue/indigo/sky` 50→900 | `accent-soft` → `accent-tint` → `accent-line` → `accent` → `accent-hover` |
 | `admin-*` | 토큰 직접 접근 (`bg-admin-surface-soft`, `text-admin-text-muted`, `border-admin-line` …) |
+| `warn-1/2/interview/withdraw` 및 `-soft/-line` | `--admin-warn-*`의 본색·배경·경계. 기존 경고 배지의 읽기 대비를 유지하며 직렬 강조색과 분리 |
+
+수료(`GRADUATED`)는 `admin-text-secondary`와 중립 배경·경계로 표시한다. 상벌점 기타 분류의 기존 cyan은 `admin-success` 계열로 통합한다. 분류 배지 색은 점수의 양수·음수 판정이 아니며 점수 자체의 성공·위험 표시와 구분한다.
 
 **Tailwind 는 소스에 적힌 클래스 문자열만 생성한다.** 상태색 클래스를 만들어 돌려주는 `lib/*-meta.ts` 가 `content` 글로브에 들어 있어야 한다. 빠지면 그 클래스는 오류 없이 조용히 사라진다(`text-yellow-700` 이 검정으로 나오던 원인).
 
@@ -213,6 +220,8 @@ Spacing base: 4px (간격 스케일의 기본 단위).
 
 라벨과 입력 8px, 필드 사이 16px, 섹션 사이 24px. 입력 컨트롤은 8px 12px, 버튼은 8px 16px. 글자가 잘리지 않도록 높이는 `min-height`로 준다.
 
+좌석 카드 3종은 `.admin-seat-card`로 상호작용 표현만 공유한다. hover는 `surface-soft`, 선택은 `text` 테두리, 이동 대상은 `accent` 테두리와 `accent-soft` 면을 쓴다. 배정 좌석의 `--admin-seat-assigned-surface` / `--admin-seat-assigned-line`은 각 카드에서 현재 `accent-rgb`의 80% / 95%로 파생하며, hover에는 `accent-hover`, 선택에는 `text` 경계를 쓴다. 좌석 형상·크기·드래그 동작은 각 작업 화면이 유지한다. 전체 투명도를 낮추는 hover와 shadow ring은 쓰지 않는다.
+
 ### 모서리 결정표
 
 | 대상 | 최종 모서리 |
@@ -286,6 +295,7 @@ Tailwind의 `rounded-sm`~`rounded-3xl`은 모두 8px로 매핑되어 있다. 직
 - 1280px 미만 2열, 이상 4열. KPI 숫자 32px, 단위 13px. **768px 미만에서는 숫자 20px·padding 16px로 낮춘다** — 32px 숫자 넷이면 휴대폰 한 화면을 요약만으로 다 쓴다.
 - 패널(`.admin-panel`) 제목부는 padding 16px 20px, 최소 높이 56px, soft 배경과 아래 1px line.
 - 패널 내부 행(`.admin-panel-row`)은 좌우 20px, 위아래 12px, `line-soft`. 마지막 행의 아래 선은 없다.
+- 768px 미만에서는 패널 외곽 테두리와 모서리를 없애고 내부 구분 행만 유지한다(2026-09-14 운영자 결정, MOBILE_DESIGN 2.4).
 
 **표와 패널 중 무엇으로 묶는지는 읽는 방식이 정한다.**
 
@@ -380,7 +390,7 @@ Tailwind의 `rounded-sm`~`rounded-3xl`은 모두 8px로 매핑되어 있다. 직
 - 화면이 좁으면 버튼 폭을 글자 길이에 맞춰 줄이지 않고 **줄바꿈**한다. 768px 미만 그룹 기준 폭 260px(128px 두 개 + 4px), `max-width: 100%`.
 - **자습실 이름처럼 길이를 미리 알 수 없는 데이터 라벨에는 `.admin-choice-button-auto`를 함께 준다.** 128px 고정 폭에 넣으면 이름이 두 줄로 쪼개진다. 이 변형은 내용에 맞춰 128~260px로 늘어나고 넘치면 말줄임한다. 한 줄 유지(`white-space: nowrap`)는 §5.12 버튼 규격의 `white-space: normal`을 되돌려야 하므로 정규화 레이어에서 `.admin-shell .admin-choice-button-auto`로 다시 지정한다.
 - **한 줄에 안 들어가는 선택지에는 `.admin-choice-button`을 쓰지 않는다.** 128px 고정 폭이라 제목이 글자 단위로 쪼개진다. 제목·보조설명이 여러 줄인 목록 선택은 `.admin-choice-card`(전체 폭, 세로 배치, 왼쪽 정렬, 선택 시 accent 테두리 + `accent-soft` 배경)를 쓰고 제목은 `.admin-choice-card-title`로 둔다. `button` 안에는 `div`·`p`를 넣을 수 없으므로 자식은 `span`으로 쓴다.
-- 이동만 하는 목록은 선택 버튼이 아니라 `.admin-panel` + `.admin-panel-row.admin-panel-row-link` 평면 목록이다. **카드 격자를 메뉴 템플릿으로 쓰지 않는다**(§5.3). 다만 **갈 곳이 고정된 묶음이면 목록이 아니라 1차 탭으로 만든다** — 설정이 허브 목록에서 10개 경로 탭으로 바뀐 이유다(§5.4). 한 번 더 눌러야 본론이 나오는 중간 화면을 만들지 않는다.
+- 이동만 하는 목록은 선택 버튼이 아니라 `.admin-list-row` 평면 목록을 사용한다. **카드 격자를 메뉴 템플릿으로 쓰지 않는다**(§5.3). 다만 **갈 곳이 고정된 묶음이면 목록이 아니라 1차 탭으로 만든다** — 설정이 허브 목록에서 10개 경로 탭으로 바뀐 이유다(§5.4). 한 번 더 눌러야 본론이 나오는 중간 화면을 만들지 않는다.
 **버튼은 세 가지 위계뿐이다.** 화면마다 손으로 색과 여백을 정하면 전부 같은 회색 버튼이 되어 무엇을 눌러야 할지 사라진다.
 
 | 위계 | 클래스 | 모양 | 쓰는 곳 |
@@ -436,6 +446,8 @@ hover는 면 한 단계(`surface-soft` / `accent-hover`), 누름은 한 단계 �
 표는 `width: 100%`, 셀 padding 12px, 헤더 `accent-tint`/600, 행 hover `accent-soft`, 본문 13px, `tabular-nums`, 셀 `white-space: nowrap`.
 
 표 안에서 상세 화면으로 이동하는 이름·제목은 **`.admin-table-link`**(accent 글자, hover 밑줄)를 쓴다. `.admin-button`을 셀에 넣으면 이름마다 테두리 상자가 생겨 표가 버튼 격자처럼 보인다. 행 전체에 `onClick`을 걸지 않는다. 키보드로 도달할 수 없고 어디를 눌러야 하는지 알 수 없다.
+
+768px 미만에서는 이름·제목 링크의 터치 영역을 최소 44px로 확보한다. 이로 인한 행 높이 증가는 허용하며 버튼 테두리는 추가하지 않는다(2026-09-14 운영자 결정).
 
 **정렬은 오른쪽이거나 가운데다. 왼쪽은 없다.** 오른쪽은 자릿수를 맞춰 위아래로 읽는 숫자(금액·점수)의 것이고, 그 밖의 모든 칸은 가운데다. 한 열만 왼쪽에 붙으면 그 열이 격자에서 빠져 보인다. 이름 열도 가운데이며, `.admin-table-name`은 이제 정렬이 아니라 폭과 줄바꿈만 담당한다.
 
@@ -586,7 +598,7 @@ Tailwind의 `shadow-card` / `shadow-card-hover` / `shadow-header`는 `none`으�
 
 관리자 규격을 그대로 쓰되 아래는 유지한다.
 
-- **조교**: 관리자와 **같은 셸(`AdminShell`)**을 쓴다. 1024px 이상은 256px 검은 사이드바, 미만은 상단 헤더의 `조교 메뉴` 버튼으로 펼친다. 본문 폭·여백·유틸리티 행도 §5.1과 같다. 조교 전용 하단 고정 탐색은 두지 않는다 — 관리자와 다른 껍데기를 쓰면 같은 제품으로 보이지 않는다.
+- **조교**: 관리자와 **같은 셸(`AdminShell`)**을 쓴다. 1024px 이상은 256px 검은 사이드바, 미만은 상단 헤더의 `조교 메뉴` 버튼으로 펼친다. 본문 폭·여백·유틸리티 행도 §5.1과 같다. 현장 업무의 예외로 1024px 미만에서 `홈 · 출석체크 · 휴대폰` 하단 고정 탐색을 유지한다(2026-09-14 운영자 결정). 저장 바와 겹치지 않는 배치는 MOBILE_DESIGN 2.7을 따른다.
 - 조교 메뉴는 `AdminSidebar`의 `role="assistant"` 목록(조교 홈·출석체크·휴대폰 체크)이다. 관리자 메뉴를 권한으로 가리지 않고 애초에 다른 목록을 둔다.
 - 현장에서 서서 쓰는 화면이므로 터치 영역을 44px 아래로 줄이지 않는다.
 - 조교 홈의 요약은 관리자 대시보드와 같은 `.admin-dashboard-metrics` 격자다(768px 미만 2열, 1280px 이상 4열). 조교 전용 요약 박스를 따로 만들지 않는다.
@@ -673,12 +685,14 @@ Tailwind의 `shadow-card` / `shadow-card-hover` / `shadow-header`는 `none`으�
 ```js
 (() => {
   const I = [], F = document.querySelector(".admin-content-frame");
+  const visible = (e) => e.getBoundingClientRect().height > 0 && getComputedStyle(e).visibility !== "hidden";
+  const all = (selector) => [...F.querySelectorAll(selector)].filter(visible);
   const bd = (e) => {
     const s = getComputedStyle(e);
     return parseFloat(s.borderTopWidth) > 0 && parseFloat(s.borderLeftWidth) > 0;
   };
   // 테두리 박스 안의 테두리 박스 (버튼·배지는 제외)
-  F.querySelectorAll("section, article, div").forEach((e) => {
+  all("section, article, div").forEach((e) => {
     if (!bd(e) || e.closest("table") || e.closest('[role="dialog"]')) return;
     let p = e.parentElement, h = 0;
     while (p && p !== F && h < 3) {
@@ -687,26 +701,33 @@ Tailwind의 `shadow-card` / `shadow-card-hover` / `shadow-header`는 `none`으�
     }
   });
   // 가로 형제인데 위쪽 선만 있는 요소
-  F.querySelectorAll(".admin-section").forEach((e) => {
+  all(".admin-section").forEach((e) => {
     const s = getComputedStyle(e);
     if (parseFloat(s.borderTopWidth) > 0 && parseFloat(s.borderLeftWidth) === 0 &&
         getComputedStyle(e.parentElement).display.includes("grid"))
       I.push("grid stray선: " + e.className);
   });
-  // 같은 문구의 제목 중복
-  const t = [...F.querySelectorAll(".admin-page-title, .admin-section-title")]
-    .map((x) => x.textContent.trim());
-  t.filter((x, i) => x && t.indexOf(x) !== i).forEach((x) => I.push("제목중복: " + x));
+  // 같은 분석 영역의 제목만 비교한다. 다른 영역의 같은 과목명은 중복이 아니다.
+  const titles = new Map();
+  all(".admin-page-title, .admin-section-title").forEach((e) => {
+    const scope = e.closest("[data-report-section], [data-report-panel]") || F;
+    const seen = titles.get(scope) || new Set();
+    const title = e.textContent.trim();
+    if (title && seen.has(title)) I.push("제목중복: " + title);
+    seen.add(title); titles.set(scope, seen);
+  });
   // 탭 줄 개수 — 1차 1줄 + 2차 1줄까지 (§5.5)
-  if (F.querySelectorAll(".admin-tabs").length > 1) I.push("1차탭 두 줄");
-  if (F.querySelectorAll(".admin-subtabs").length > 1) I.push("2차탭 두 줄");
+  if (all(".admin-tabs:not(.admin-portal-nav)").length > 1) I.push("1차탭 두 줄");
+  if (all(".admin-subtabs").length > 1) I.push("2차탭 두 줄");
   // 목록 옆 편집 열 (§5.2) — 넓은 화면에서만 생기므로 1280px 에서 잰다
-  F.querySelectorAll('[class*="grid-cols-["]').forEach((e) => {
+  all('[class*="grid-cols-["]').forEach((e) => {
     if (e.querySelector("table") && e.querySelector("form")) I.push("2열 편집: " + e.className);
   });
   // 묶이지 않은 낱개 섹션 (§5.3)
-  const loose = [...F.querySelectorAll(".admin-flat-page > .admin-section")].length;
-  if (loose >= 5) I.push("낱개 섹션 " + loose + "개");
+  all(".admin-flat-page").forEach((e) => {
+    const loose = [...e.children].filter((child) => child.matches(".admin-section") && visible(child)).length;
+    if (loose >= 5) I.push("낱개 섹션 " + loose + "개");
+  });
   return { page: location.pathname, n: I.length, i: [...new Set(I)] };
 })();
 ```
@@ -721,10 +742,14 @@ Tailwind의 `shadow-card` / `shadow-card-hover` / `shadow-header`는 `none`으�
   const aW = ["400", "600", "700"];
   const off = [], fonts = new Set();
   document.querySelectorAll("body *").forEach((el) => {
-    if (!el.textContent || el.children.length) return;
+    if (!el.textContent || el.children.length || el.getBoundingClientRect().height === 0) return;
     const s = getComputedStyle(el);
+    if (s.visibility === "hidden") return;
     fonts.add(s.fontFamily.split(",")[0]);
-    if (!aS.includes(s.fontSize) || !aW.includes(s.fontWeight)) {
+    // MOBILE_DESIGN 2.2의 모바일 2차 탭 14px은 본문 스케일과 구분한다.
+    const mobileSubtab = innerWidth < 768 && el.closest(".admin-subtab") && s.fontSize === "14px";
+    const attendanceText = el.matches(".admin-attendance-student-name, .admin-attendance-status-select") && s.fontSize === "14px";
+    if ((!aS.includes(s.fontSize) && !mobileSubtab && !attendanceText) || !aW.includes(s.fontWeight)) {
       off.push({ cls: el.className, size: s.fontSize, weight: s.fontWeight });
     }
   });
@@ -764,4 +789,4 @@ pnpm run build
 
 학생 포털 `/[division]/student/exams`는 1차 학생 메뉴와 2차 시험 종류를 유지한다. 개인 분석 항목은 내용을 숨기지 않는 섹션 바로가기로 표시한다(운영자 확정, 2026-09-14). 학습 진단의 과목 선택은 표시 대상 필터이므로 선택 칩을 쓰며, 인쇄용 과목 DOM은 유지한다. 관리자 개인 분석 화면은 기존 분석 항목 탭을 유지한다.
 
-관리자 성적 분석의 학생 선택은 `/[division]/admin/exams/students/[studentId]`로 이동한다. 우측 드로어를 사용하지 않고 관리자 본문 전체 폭을 사용한다. 상단에 목록 복귀, 학생 이름, 정기/아침 구분, 학생·시험·날짜(기간) 선택, 섹션 바로가기를 둔다. 기존 `admin-flat-page`, `admin-tabs`, `admin-filter-bar`, `admin-button` 규격을 재사용한다. 섹션 바로가기는 문서 내 탐색이며 내용을 숨기지 않아 전체 인쇄와 차트 크기를 유지한다. 목록 복귀 링크는 원래 시험 종류·날짜·기간과 분석 탭을 전달한다.
+관리자 성적 분석의 학생 선택은 `/[division]/admin/exams/students/[studentId]`로 이동한다. 우측 드로어를 사용하지 않고 관리자 본문 전체 폭을 사용한다. 상단에 목록 복귀, 학생 이름, 정기/아침 구분, 학생·시험·날짜(기간) 선택, 분석 항목 탭을 둔다. 기존 `admin-flat-page`, `admin-tabs`, `admin-filter-bar`, `admin-button` 규격을 재사용한다. 관리자 분석 항목은 탭으로 전환하고, 전체 인쇄를 위해 비활성 항목의 DOM도 유지한다. 내용을 모두 표시하는 섹션 바로가기는 위 학생 포털 규격에 적용한다. 목록 복귀 링크는 원래 시험 종류·날짜·기간과 분석 탭을 전달한다.

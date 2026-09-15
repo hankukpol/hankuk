@@ -28,6 +28,7 @@ import { RenewPaymentModal } from "@/components/payments/RenewPaymentModal";
 import { SettlementView } from "@/components/payments/SettlementView";
 import { ActionCompleteModal } from "@/components/ui/ActionCompleteModal";
 import { SlideOver } from "@/components/ui/SlideOver";
+import { MobileWorkspaceTools } from "@/components/ui/MobileWorkspaceTools";
 import { StudentSearchCombobox } from "@/components/ui/StudentSearchCombobox";
 import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
 import { formatCurrency, formatPaymentMethod, formatPaymentMonth } from "@/lib/payment-meta";
@@ -105,7 +106,7 @@ function monthMatches(date: string, targetMonth: string) {
 }
 
 function formatDate(value: string) {
-  return new Date(`${value}T00:00:00+09:00`).toLocaleDateString("ko-KR");
+  return new Date(`${value}T00:00:00+09:00`).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" });
 }
 
 const PAYMENT_VIEW_TABS = [
@@ -124,6 +125,8 @@ export function PaymentManager({
   const dialogFormId = useId();
   const [studentList, setStudentList] = useState(students);
   const [payments, setPayments] = useState(initialPayments);
+  const [detailPaymentId, setDetailPaymentId] = useState<string | null>(null);
+  const detailPayment = payments.find((payment) => payment.id === detailPaymentId);
   const [viewTab, setViewTab] = useState<ViewTab>("status");
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -460,6 +463,7 @@ export function PaymentManager({
     <>
       <div className="admin-flat-page">
         <AdminTabs items={PAYMENT_VIEW_TABS} activeId={viewTab} onChange={setViewTab} label="수납 화면" idPrefix="payment-view" />
+        <MobileWorkspaceTools title="수납 등록" icon={Plus}>
         <div className="admin-workspace-toolbar">
             <div className="flex flex-wrap gap-2">
               <button
@@ -513,8 +517,10 @@ export function PaymentManager({
             </div>
 
         </div>
+        </MobileWorkspaceTools>
 
         <AdminTabPanel id="status" activeId={viewTab} idPrefix="payment-view" className="space-y-4">
+                <MobileWorkspaceTools title="수납 현황 조회 조건" active={viewTab === "status"}>
                 <div className="admin-filter-bar">
                   <label className="block">
                     <span className="admin-label mb-2 block">수납 유형</span>
@@ -554,6 +560,7 @@ export function PaymentManager({
                     </select>
                   </label>
                 </div>
+                </MobileWorkspaceTools>
 
 
           <div className="admin-metric-strip">
@@ -575,22 +582,13 @@ export function PaymentManager({
             <p className="admin-help">{formatPaymentMonth(summaryMonth)} · {selectedCategoryName}</p>
           </div>
           {exemptCount > 0 ? <p className="admin-notice">수납 면제 {exemptCount}명은 미납 집계에서 제외됩니다.</p> : null}
-          <div className="space-y-4 md:hidden">
+          <div className="md:hidden">
             {summaryRows.map((row) => (
-              <article key={row.studentId} className="admin-record-card">
-                <div className="admin-workspace-toolbar">
-                  <div><h3 className="admin-section-title">{row.studentName}</h3><p className="admin-help mt-1">{row.studentNumber}</p></div>
-                  <span className={row.status === "PAID" ? "admin-badge text-admin-success" : "admin-badge text-admin-warning"}>{row.status === "PAID" ? "완납" : "미납"}</span>
-                </div>
-                <dl className="mt-4 space-y-2 text-sm">
-                  <div className="flex flex-wrap justify-between gap-2"><dt className="text-admin-text-secondary">좌석</dt><dd>{row.seatLabel || "미배정"}</dd></div>
-                  <div className="flex flex-wrap justify-between gap-2"><dt className="text-admin-text-secondary">마지막 납부일</dt><dd>{row.lastPaymentDate ? formatDate(row.lastPaymentDate) : "납부 이력 없음"}</dd></div>
-                </dl>
-                <div className="admin-workspace-toolbar mt-4 border-t border-admin-line-soft pt-4">
-                  <p className="text-2xl font-bold tabular-nums">{row.totalAmount < 0 ? "-" : ""}{formatCurrency(Math.abs(row.totalAmount))}<span className="ml-1 text-xs font-normal">원</span></p>
-                  <button type="button" onClick={() => openCreatePanel(row.studentId)} className="admin-button">{row.status === "UNPAID" ? "바로 수납" : "추가 수납"}</button>
-                </div>
-              </article>
+              <button key={row.studentId} type="button" className="admin-list-row admin-list-row-stack w-full text-left" onClick={() => openCreatePanel(row.studentId)} aria-label={`${row.studentName} 수납 등록`}>
+                <span className="admin-list-row-label">{selectedCategoryName} · {formatPaymentMonth(summaryMonth)}</span>
+                <span className="flex w-full items-center justify-between gap-4"><span className="admin-list-row-title">{row.studentName} · {row.status === "PAID" ? "완납" : "미납"}</span><span className="admin-list-row-value">{row.totalAmount < 0 ? "-" : ""}{formatCurrency(Math.abs(row.totalAmount))}원</span></span>
+                <span className="admin-list-row-meta">{row.studentNumber} · {row.seatLabel || "좌석 미배정"} · {row.lastPaymentDate ? formatDate(row.lastPaymentDate) : "납부 이력 없음"}</span>
+              </button>
             ))}
             {!summaryRows.length ? <div className="admin-empty-state">조건에 맞는 학생이 없습니다.</div> : null}
           </div>
@@ -615,6 +613,7 @@ export function PaymentManager({
         </AdminTabPanel>
 
         <AdminTabPanel id="history" activeId={viewTab} idPrefix="payment-view" className="space-y-4">
+                <MobileWorkspaceTools title="수납 내역 조회 조건" active={viewTab === "history"}>
                 <div className="admin-filter-bar">
                   <label className="block">
                     <span className="admin-label mb-2 block">검색</span>
@@ -672,32 +671,20 @@ export function PaymentManager({
                     />
                   </label>
                 </div>
+                </MobileWorkspaceTools>
 
 
           <div className="admin-workspace-toolbar">
             <h2 className="admin-section-title">수납 내역 <span className="text-admin-accent">{historyRows.length}건</span></h2>
             <p className="admin-help">{historyDateFrom || "전체 기간"}{historyDateTo ? ` ~ ${historyDateTo}` : ""}</p>
           </div>
-          <div className="space-y-4 md:hidden">
+          <div className="md:hidden">
             {historyRows.map((payment) => (
-              <article key={payment.id} className="admin-record-card">
-                <div className="admin-workspace-toolbar">
-                  <div><h3 className="admin-section-title">{payment.studentName}</h3><p className="admin-help mt-1">{payment.studentNumber}</p></div>
-                  <span className="admin-badge">{payment.paymentTypeName}</span>
-                </div>
-                <div className="admin-workspace-toolbar mt-4">
-                  <p className="admin-help">{formatDate(payment.paymentDate)}<br />{formatPaymentMethod(payment.method)}</p>
-                  <p className={`text-2xl font-bold tabular-nums ${payment.amount < 0 ? "text-admin-danger" : ""}`}>{payment.amount < 0 ? "-" : ""}{formatCurrency(Math.abs(payment.amount))}<span className="ml-1 text-xs font-normal">원</span></p>
-                </div>
-                {payment.notes ? <p className="mt-4 whitespace-pre-wrap break-words text-sm">{payment.notes}</p> : null}
-                <div className="admin-workspace-toolbar mt-4 border-t border-admin-line-soft pt-4">
-                  <p className="admin-help">기록자 {payment.recordedByName}</p>
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => startEdit(payment)} className="admin-button w-11 px-0" aria-label={`${payment.studentName} 수납 수정`} title="수납 수정"><Pencil className="h-4 w-4" /></button>
-                    <button type="button" onClick={() => void handleDelete(payment.id)} disabled={deletingId === payment.id} className="admin-button admin-button-danger-outline w-11 px-0" aria-label={`${payment.studentName} 수납 삭제`} title="수납 삭제">{deletingId === payment.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}</button>
-                  </div>
-                </div>
-              </article>
+              <button key={payment.id} type="button" className="admin-list-row admin-list-row-stack w-full text-left" onClick={() => setDetailPaymentId(payment.id)} aria-label={`${payment.studentName} 수납 상세`}>
+                <span className="admin-list-row-label">{payment.paymentTypeName} · {formatDate(payment.paymentDate)}</span>
+                <span className="flex w-full items-center justify-between gap-4"><span className="admin-list-row-title">{payment.studentName}</span><span className={`admin-list-row-value ${payment.amount < 0 ? "text-admin-danger" : ""}`}>{payment.amount < 0 ? "-" : ""}{formatCurrency(Math.abs(payment.amount))}원</span></span>
+                <span className="admin-list-row-meta">{payment.studentNumber} · {formatPaymentMethod(payment.method)} · {payment.recordedByName}</span>
+              </button>
             ))}
             {!historyRows.length ? <div className="admin-empty-state">조건에 맞는 수납 내역이 없습니다.</div> : null}
           </div>
@@ -732,6 +719,24 @@ export function PaymentManager({
           <SettlementView divisionSlug={divisionSlug} isActive={viewTab === "settlement"} refreshKey={payments} />
         </AdminTabPanel>
       </div>
+
+      <SlideOver open={Boolean(detailPayment)} onClose={() => setDetailPaymentId(null)} title="수납 내역 상세">
+        {detailPayment ? <div className="space-y-4">
+          <h2 className="admin-section-title">{detailPayment.studentName}</h2>
+          <dl className="admin-record-details">
+            <div><dt className="admin-label">수납 유형</dt><dd>{detailPayment.paymentTypeName}</dd></div>
+            <div><dt className="admin-label">수납일</dt><dd>{formatDate(detailPayment.paymentDate)}</dd></div>
+            <div><dt className="admin-label">금액</dt><dd>{formatCurrency(detailPayment.amount)}원</dd></div>
+            <div><dt className="admin-label">결제 수단</dt><dd>{formatPaymentMethod(detailPayment.method)}</dd></div>
+            <div><dt className="admin-label">메모</dt><dd>{detailPayment.notes || "없음"}</dd></div>
+            <div><dt className="admin-label">기록자</dt><dd>{detailPayment.recordedByName}</dd></div>
+          </dl>
+          <div className="flex flex-wrap gap-4">
+            <button type="button" className="admin-button" onClick={() => { setDetailPaymentId(null); startEdit(detailPayment); }}><Pencil className="h-4 w-4" />수납 수정</button>
+            <button type="button" className="admin-button admin-button-danger-outline" disabled={deletingId === detailPayment.id} onClick={() => { setDetailPaymentId(null); void handleDelete(detailPayment.id); }}><Trash2 className="h-4 w-4" />수납 삭제</button>
+          </div>
+        </div> : null}
+      </SlideOver>
 
       <SlideOver
         open={isEditorOpen}

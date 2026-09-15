@@ -49,20 +49,20 @@ export function getStudyTrackBadgeClasses(track: string | null | undefined) {
   }
 
   if (value.includes("소방")) {
-    return "border-rose-200 bg-rose-50 text-rose-700";
+    return "border-admin-danger-line bg-admin-danger-soft text-admin-danger";
   }
 
   if (value.includes("행정")) {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    return "border-admin-success-line bg-admin-success-soft text-admin-success";
   }
 
   if (value.includes("일행")) {
-    return "border-lime-200 bg-lime-50 text-lime-700";
+    return "border-admin-success-line bg-admin-success-soft text-admin-success";
   }
 
   if (value.includes("9급")) {
-    return "border-amber-200 bg-amber-50 text-amber-700";
+    return "border-admin-warning-line bg-admin-warning-soft text-admin-warning";
   }
 
-  return "border-cyan-200 bg-cyan-50 text-cyan-700";
+  return "border-admin-success-line bg-admin-success-soft text-admin-success";
 }

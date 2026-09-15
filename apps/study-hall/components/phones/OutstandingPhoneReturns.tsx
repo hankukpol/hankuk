@@ -38,7 +38,7 @@ export function OutstandingPhoneReturns({ divisionSlug, records }: {
       <div>
         <span>{record.studentName} ({record.studentNumber}) · {record.periodName}</span>
         <p className="admin-help mt-1">
-          <span className={`mr-2 inline-flex rounded-lg border px-2 py-0.5 text-xs font-medium ${getAttendanceStatusClasses(record.attendanceStatus, record.attendanceReason)}`}>
+          <span className={`mr-2 inline-flex rounded-lg border px-2 py-1 text-xs font-medium ${getAttendanceStatusClasses(record.attendanceStatus, record.attendanceReason)}`}>
             {getAttendanceStatusLabel(record.attendanceStatus, record.attendanceReason)}
           </span>
           {record.attendanceReason || "사유 없음"}

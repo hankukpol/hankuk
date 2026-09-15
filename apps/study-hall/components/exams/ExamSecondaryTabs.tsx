@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 import { AdminTabPanel, AdminTabs } from "@/components/ui/AdminTabs";
+import { MobileWorkspaceScope } from "@/components/ui/MobileWorkspaceTools";
 import { ExamImportWizard } from "@/components/exams/import/ExamImportWizard";
 import { ExamScoreManager } from "@/components/exams/ExamScoreManager";
 import { MorningExamScoreManager } from "@/components/exams/MorningExamScoreManager";
@@ -21,7 +22,7 @@ export function ExamSecondaryTabs({ divisionSlug, category, examTypes, initialSe
   const idPrefix = useId();
   // 분석은 반 단위와 학생 단위로 나눈다. 한 화면에 13개 섹션을 쌓지 않기 위한 분리이며
   // DESIGN.md 5.5 가 3차 탭 줄을 금지하므로 2차 탭을 넓히는 방식으로 처리한다.
-  const [active, setActive] = useState<"input" | "import" | "cohort" | "students">(
+  const [active, setActive] = useState<"input" | "weekly" | "import" | "cohort" | "students">(
     initialSelection.view === "students" ? "students" : initialSelection.view === "analysis" ? "cohort" : "input",
   );
   const analysisView: "cohort" | "students" = active === "students" ? "students" : "cohort";
@@ -31,7 +32,7 @@ export function ExamSecondaryTabs({ divisionSlug, category, examTypes, initialSe
   const [busy, setBusy] = useState(false);
 
   return (
-    <div className="admin-flat-page">
+    <div className="admin-flat-page admin-compact-workspace">
       <AdminTabs
         variant="secondary"
         label={category === "MORNING" ? "아침 모의고사 작업" : "정기 모의고사 작업"}
@@ -39,15 +40,16 @@ export function ExamSecondaryTabs({ divisionSlug, category, examTypes, initialSe
         activeId={active}
         onChange={setActive}
         items={[
-          { id: "input", label: "입력", disabled: busy },
+          { id: "input", label: category === "MORNING" ? "일일 입력" : "입력", disabled: busy },
+          ...(category === "MORNING" ? [{ id: "weekly" as const, label: "주간 현황", disabled: busy }] : []),
           { id: "import", label: "가져오기" },
           { id: "cohort", label: "반 분석", disabled: busy },
           { id: "students", label: "학생별", disabled: busy },
         ]}
       />
-      <AdminTabPanel id="input" activeId={active} idPrefix={idPrefix}>
+      {category === "REGULAR" ? <AdminTabPanel id="input" activeId={active} idPrefix={idPrefix}>
+        <MobileWorkspaceScope active={active === "input"}>
         {/* Existing managers fetch into local state; refresh alone does not reload it. */}
-        {category === "REGULAR" ? (
           <ExamScoreManager
             key={scoreVersion}
             divisionSlug={divisionSlug}
@@ -57,19 +59,25 @@ export function ExamSecondaryTabs({ divisionSlug, category, examTypes, initialSe
               examDate: lastImport.examDate,
             } : undefined}
           />
-        ) : (
+        </MobileWorkspaceScope>
+      </AdminTabPanel> : (
+        <div hidden={active !== "input" && active !== "weekly"}>
+          <MobileWorkspaceScope active={active === "input" || active === "weekly"}>
           <MorningExamScoreManager
             key={scoreVersion}
             divisionSlug={divisionSlug}
             morningExamTypes={examTypes}
+            viewTab={active === "weekly" ? "weekly" : "daily"}
+            idPrefix={idPrefix}
             initialSelection={lastImport ? {
               examTypeId: lastImport.examTypeId,
               subjectId: lastImport.subjectId ?? undefined,
               examDate: lastImport.examDate,
             } : undefined}
           />
-        )}
-      </AdminTabPanel>
+          </MobileWorkspaceScope>
+        </div>
+      )}
       <AdminTabPanel id="import" activeId={active} idPrefix={idPrefix}>
         {active === "import" && (
           <ExamImportWizard

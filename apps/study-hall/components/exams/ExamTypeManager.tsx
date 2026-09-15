@@ -1,4 +1,5 @@
 "use client";
+import { MobileWorkspaceTools } from "@/components/ui/MobileWorkspaceTools";
 
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -382,6 +383,7 @@ export function ExamTypeManager({ divisionSlug, initialExamTypes, studyTrackOpti
   return (
     <>
       <section className="admin-section">
+        <MobileWorkspaceTools title="시험 템플릿 작업">
         <div className="admin-workspace-toolbar">
           <h2 className="admin-section-title">시험 템플릿 목록</h2>
           <div className="flex flex-wrap items-center gap-2">
@@ -390,6 +392,7 @@ export function ExamTypeManager({ divisionSlug, initialExamTypes, studyTrackOpti
           </div>
         </div>
         <p className="admin-help">전체 {orderedExamTypes.length}개</p>
+        </MobileWorkspaceTools>
 
         <div className="space-y-3">
           {orderedExamTypes.length > 0 ? (
@@ -426,7 +429,7 @@ export function ExamTypeManager({ divisionSlug, initialExamTypes, studyTrackOpti
             {[{ value: "MORNING" as const, label: "아침모의고사", description: "매일 과목별 입력, 주간 집계" }, { value: "REGULAR" as const, label: "정기모의고사", description: "회차별 한 번에 입력, 누적 관리" }].map((option) => (
               <label key={option.value} className="admin-choice-card cursor-pointer" data-active={form.category === option.value}>
                 <span className="flex items-start gap-3">
-                  <input type="radio" name="exam-category" checked={form.category === option.value} onChange={() => setForm((current) => ({ ...current, category: option.value }))} className="mt-0.5" />
+                  <input type="radio" name="exam-category" checked={form.category === option.value} onChange={() => setForm((current) => ({ ...current, category: option.value }))} className="mt-1" />
                   <span className="min-w-0">
                     <span className="admin-choice-card-title block">{option.label}</span>
                     <span className="admin-help mt-1 block">{option.description}</span>

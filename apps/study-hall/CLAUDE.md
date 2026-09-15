@@ -80,13 +80,17 @@ web/
 │   │       ├── interviews/
 │   │       ├── warnings/           경고 대상자 + 연락처 복사
 │   │       ├── announcements/
-│   │       ├── settings/
-│   │       │   ├── page.tsx        설정 허브
+│   │       ├── settings/           경로 탭 10개 (SettingsPageShell)
+│   │       │   ├── page.tsx        general 로 redirect (허브 화면 없음)
+│   │       │   ├── general/        직렬 기본 정보
+│   │       │   ├── features/       기능 사용 여부
 │   │       │   ├── periods/        교시 설정
 │   │       │   ├── rules/          경고기준·지각기준·휴가한도
-│   │       │   ├── seats/          좌석 배치도
-│   │       │   ├── exams/          시험 종류·과목
-│   │       │   └── general/        직렬 기본 정보
+│   │       │   ├── tuition/        등록 금액
+│   │       │   ├── seats/          자습실·좌석 배치도
+│   │       │   ├── exams/          시험 템플릿·과목
+│   │       │   └── exam-schedules/ 시험 일정
+│   │       │   ※ 나머지 두 탭은 ../points/rules, ../staff 로 연결
 │   │       └── reports/
 │   └── api/
 │       ├── auth/

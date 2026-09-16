@@ -84,6 +84,7 @@ enum PhoneSubmissionStatus {
 }
 
 model Division {
+  examLearningDocument ExamLearningDocument?
   academyTemplates AcademyTemplate[]
   academyConfigurationApplications AcademyConfigurationApplication[]
   arrivals ArrivalRecord[]
@@ -942,4 +943,14 @@ model ExamItemResponse {
   @@index([studentId, sessionId])
   @@index([divisionId, sessionId])
   @@map("exam_item_responses")
+}
+
+/// Academy-scoped learning configuration and append-only review history. Score ledgers are untouched.
+model ExamLearningDocument {
+  divisionId String @id @map("division_id")
+  document Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+  division Division @relation(fields: [divisionId], references: [id], onDelete: Restrict)
+
+  @@map("exam_learning_documents")
 }

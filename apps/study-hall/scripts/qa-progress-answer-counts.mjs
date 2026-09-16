@@ -1,0 +1,4 @@
+import ts from 'typescript';import fs from 'node:fs';import assert from 'node:assert/strict';
+const js=ts.transpileModule(fs.readFileSync('lib/exam-preview/metrics.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.ESNext}}).outputText;
+const {progressAnswers}=await import('data:text/javascript;base64,'+Buffer.from(js).toString('base64'));
+const stats=progressAnswers([{correct:true,answer:'1'},{correct:false,answer:'2'},{correct:false,answer:null},{correct:null,answer:null}]);assert.equal(stats.total,3);assert.equal(stats.missing,1);assert.equal(stats.wrong.length,1);assert.equal(stats.unanswered.length,1);assert.ok(Math.abs(stats.correctRate-100/3)<0.000001);assert.ok(Math.abs(stats.wrongRate-100/3)<0.000001);assert.equal(progressAnswers([]).correctRate,null);assert.equal(progressAnswers([{correct:null,answer:null}]).wrongRate,null);console.log('PASS recorded answer boundaries');

@@ -1,0 +1,32 @@
+import {chromium} from 'playwright';
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+const info=JSON.parse(fs.readFileSync('.local/exam-preview/runtime.json','utf8'));
+const dir='.superloopy/evidence/frontend/2026-09-16-exam-preview-paging';
+const browser=await chromium.launch({channel:'chrome',headless:true});
+const context=await browser.newContext({baseURL:info.baseUrl});
+await context.request.post('/api/auth/login',{data:{email:'admin-police@mock.local',password:'local-preview'}});
+const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+await page.goto('/police/admin/exams/preview/students/preview-police-s0?kind=morning&examTypeId=preview-police-morning&from=2026-09-08&to=2026-09-16');
+await page.locator('[data-report-root]').waitFor();
+for(const width of [390,768,1280,1874]) {
+ await page.setViewportSize({width,height:1000});
+ await page.screenshot({path:`${dir}/polish-${width}.png`,fullPage:true});
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+}
+await page.locator('#preview-tabs-panel-subjects').screenshot({path:`${dir}/chart-polish.png`});
+const panel=page.locator('details').filter({has:page.locator('summary').filter({hasText:'관리자 상담 참고'})});
+await panel.locator('summary').click();assert.ok(await panel.getAttribute('open')!==null);
+await panel.screenshot({path:`${dir}/counseling-open.png`});
+await panel.locator('summary').press('Enter');assert.equal(await panel.getAttribute('open'),null);
+await page.getByRole('button',{name:'오늘',exact:true}).click();
+await page.locator('[aria-busy="false"] [data-report-root]').waitFor();
+assert.equal(await page.getByRole('button',{name:'오늘',exact:true}).getAttribute('aria-pressed'),'true');
+assert.equal(await page.getByRole('table',{name:'과목 순위',exact:true}).count(),0);
+await page.getByRole('button',{name:'이번 달',exact:true}).click();
+await page.locator('[aria-busy="false"] [data-report-root]').waitFor();
+assert.equal(await page.getByRole('button',{name:'이번 달',exact:true}).getAttribute('aria-pressed'),'true');
+await page.locator('fieldset').screenshot({path:`${dir}/period-selected.png`});
+assert.deepEqual(errors,[]);
+fs.writeFileSync(`${dir}/polish-results.json`,JSON.stringify({passed:true,viewports:[390,768,1280,1874],checks:['no horizontal overflow','counseling mouse and keyboard','selected period states','empty ranks','no browser errors']},null,2));
+await browser.close();console.log('PASS polish controls and responsive screenshots');

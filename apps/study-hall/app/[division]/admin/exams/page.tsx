@@ -1,3 +1,4 @@
+import { listStudents } from "@/lib/services/student.service";
 import { ExamTabLayout } from "@/components/exams/ExamTabLayout";
 import { ExamSecondaryTabs } from "@/components/exams/ExamSecondaryTabs";
 import { redirectIfDivisionFeatureDisabled } from "@/lib/division-feature-guard";
@@ -13,6 +14,7 @@ type AdminExamsPageProps = {
 export default async function AdminExamsPage({ params, searchParams = {} }: AdminExamsPageProps) {
   await redirectIfDivisionFeatureDisabled(params.division, "examManagement");
   const examTypes = (await listExamTypes(params.division)).filter((examType) => examType.isActive);
+  const students = (await listStudents(params.division)).map(s => ({id:s.id,name:s.name,studentNumber:s.studentNumber}));
   const initialSelection = Object.fromEntries(Object.entries(searchParams).filter((entry): entry is [string,string] => typeof entry[1] === "string"));
   const morningTypes = examTypes.filter((t) => t.category === "MORNING");
   const regularTypes = examTypes.filter((t) => t.category === "REGULAR");
@@ -31,7 +33,7 @@ export default async function AdminExamsPage({ params, searchParams = {} }: Admi
 
       <ExamTabLayout defaultTab={initialSelection.tab === "regular" ? "regular" : "morning"}
         morningContent={
-          <ExamSecondaryTabs initialSelection={initialSelection}
+          <ExamSecondaryTabs students={students} initialSelection={initialSelection}
             key={`${params.division}-morning`}
             divisionSlug={params.division}
             category="MORNING"
@@ -39,7 +41,7 @@ export default async function AdminExamsPage({ params, searchParams = {} }: Admi
           />
         }
         regularContent={
-          <ExamSecondaryTabs initialSelection={initialSelection}
+          <ExamSecondaryTabs students={students} initialSelection={initialSelection}
             key={`${params.division}-regular`}
             divisionSlug={params.division}
             category="REGULAR"

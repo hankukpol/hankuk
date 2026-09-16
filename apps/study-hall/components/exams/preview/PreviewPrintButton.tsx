@@ -1,0 +1,185 @@
+"use client";
+
+import { useRef, useState } from "react";
+import { formatPrintDocument, reportDocumentStyle } from "../analysis/print-document";
+
+/** Copies only the selected report; no API or student data is sent elsewhere. */
+export function PreviewPrintButton({ prepare, wholeExam = false }: { prepare: () => () => void; wholeExam?: boolean }) {
+  const anchor = useRef<HTMLDivElement>(null);
+  const preparing = useRef(false);
+  const [isPreparing, setIsPreparing] = useState(false);
+  const [error, setError] = useState("");
+  async function openPrint(summaryOnly = false) {
+    if (preparing.current) return;
+    // 리포트는 data-report-root 로 자기를 밝힌다.
+    // 예전에는 parentElement 를 리포트로 가정했는데, 개인 분석 화면이 이 버튼을
+    // 제목 줄 툴바로 옮기면서 그 가정이 깨져 툴바만 인쇄됐다(표·차트 0개).
+    const source =
+      anchor.current?.closest("[data-report-root]") ??
+      document.querySelector("[data-report-root]") ??
+      anchor.current?.parentElement;
+    if (!source) return;
+    const popup = window.open("", "_blank", "width=960,height=900");
+    if (!popup) { setError("팝업이 차단되었습니다. 이 사이트의 팝업을 허용한 뒤 다시 눌러주세요."); return; }
+    preparing.current = true;
+    setIsPreparing(true);
+    popup.document.body.textContent = "인쇄 자료를 준비하고 있습니다.";
+    const restoreFilter = prepare();
+    await new Promise(resolve => window.setTimeout(resolve, 100));
+    const panels = Array.from(source.querySelectorAll<HTMLElement>("[data-report-panel]"));
+    const hidden = panels.map(panel => panel.hidden);
+    const disclosures = Array.from(source.querySelectorAll<HTMLDetailsElement>("details"));
+    const open = disclosures.map(detail => detail.open);
+    const previousVisibility = (source as HTMLElement).style.visibility;
+    const scroll = { left: window.scrollX, top: window.scrollY };
+    try {
+      // 숨긴 탭도 내보낸다. 차트가 실제 폭을 측정한 뒤 복사하고 화면 상태는 복구한다.
+      (source as HTMLElement).style.visibility = "hidden";
+      panels.forEach(panel => { panel.hidden = false; });
+      disclosures.forEach(detail => { detail.open = true; });
+      source.getBoundingClientRect();
+      await new Promise(resolve => window.setTimeout(resolve, 1800));
+      const doc = popup.document;
+      doc.documentElement.lang = "ko";
+      doc.title = source.querySelector("header")?.textContent?.trim() || "개인 성적 분석";
+      const computed = getComputedStyle(source);
+      for (const property of Array.from(computed)) {
+        if (property.startsWith("--admin-")) doc.documentElement.style.setProperty(property, computed.getPropertyValue(property));
+      }
+      const style = doc.createElement("style");
+      style.textContent = `
+        @page { size: A4 portrait; margin: 12mm; }
+        * { box-sizing: border-box; }
+        body { margin: 0 auto; max-width: 186mm; padding: 0; color: #0a0a0a; background: white; font: 10pt/1.5 Arial, "Malgun Gothic", sans-serif; }
+        h2 { font-size: 14pt; margin: 6mm 0 3mm; break-after: avoid; }
+        h3 { font-size: 11pt; break-after: avoid; }
+        p { margin: 2mm 0; }
+        section { margin: 4mm 0; }
+        table { width: 100% !important; min-width: 0 !important; table-layout: fixed; border-collapse: collapse; font-size: 8pt; }
+        th, td { border: 1px solid #dddddd; padding: 1.5mm 1mm; white-space: normal !important; overflow-wrap: anywhere; text-align: center; }
+        thead { display: table-header-group; }
+        tr { break-inside: avoid; }
+        tbody[data-print-item] { break-inside: avoid; }
+        th { background: #f3f3f5; }
+        .admin-table-frame, details { overflow: visible !important; height: auto !important; max-height: none !important; }
+        .preview-mobile-only { display: none !important; }
+        .preview-print-only { display: inline; }
+        .preview-choice-values { display: flex; flex-wrap: wrap; gap: 4mm; justify-content: center; }
+        .preview-choice-values > div { display: flex; align-items: center; gap: 1mm; }
+        #preview-tabs-panel-trend { break-before: page; }
+        #preview-tabs-panel-rank, #preview-tabs-panel-records { break-inside: avoid; }
+        svg, img { max-width: 100%; height: auto; break-inside: avoid; }
+        .recharts-responsive-container, .recharts-wrapper { height: auto !important; min-height: 0 !important; }
+        .recharts-legend-wrapper { position: static !important; width: auto !important; }
+        .recharts-tooltip-wrapper { display: none !important; }
+        .recharts-wrapper { max-width: 100%; break-inside: avoid; }
+        .admin-metric-strip { display: flex; flex-wrap: wrap; gap: 4mm; margin: 4mm 0; }
+        .admin-metric-box { min-width: 25%; }
+        .admin-metric-box-value { font-weight: bold; }
+        summary { font-weight: bold; margin: 3mm 0; }
+        button, select, input, [data-report-print] { display: none !important; }
+        .print-actions { padding: 4mm 0; }
+        .print-actions button { display: inline-block !important; padding: 3mm; cursor: pointer; }
+        @media print { .print-actions { display: none !important; } body { max-width: none; } }
+      `;
+      style.textContent += reportDocumentStyle;
+      doc.head.append(style);
+      const viewport = doc.createElement("meta");
+      viewport.name = "viewport";
+      viewport.content = "width=device-width, initial-scale=1";
+      doc.head.append(viewport);
+      const actions = doc.createElement("div");
+      actions.className = "print-actions";
+      const help = doc.createElement("p");
+      help.textContent = "A4 세로 · 인쇄 대상에서 프린터 또는 ‘PDF로 저장’을 선택하세요. 브라우저 머리글/바닥글은 끄는 것을 권장합니다.";
+      const button = doc.createElement("button");
+      button.textContent = "인쇄 / PDF 저장";
+      button.onclick = async () => {
+        await Promise.all(Array.from(doc.images).map(image => image.decode().catch(() => undefined)));
+        await doc.fonts.ready;
+        popup.print();
+      };
+      actions.append(help, button);
+      const copy = source.cloneNode(true) as HTMLElement;
+      copy.style.visibility = previousVisibility;
+      if (summaryOnly) {
+        const content = Array.from(copy.querySelectorAll("header, [data-learning-summary]"));
+        copy.replaceChildren(...content);
+      }
+      copy.querySelectorAll("[data-report-print], [data-report-navigation], [data-screen-only], .admin-mobile-tools-heading, .admin-mobile-tools-overlay, [data-mobile-tools-trigger], script").forEach(node => node.remove());
+      copy.querySelectorAll<HTMLElement>('[data-print-colspan]').forEach(node => node.setAttribute('colspan', node.dataset.printColspan!));
+      const itemTable = copy.querySelector('table[aria-label="문항별 상세 분석"]');
+      // Keep each question and its choice-rate row on the same paper page.
+      itemTable?.querySelectorAll('tr[id^="preview-item-"], tr[data-session-heading]').forEach(row => {
+        const detail = row.nextElementSibling;
+        const group = doc.createElement('tbody');
+        if(row.id.startsWith('preview-item-')) group.dataset.printItem = 'true';
+        group.append(row);
+        if (detail?.id.startsWith('preview-choices-')) group.append(detail);
+        itemTable.append(group);
+      });
+      itemTable?.querySelectorAll('tbody').forEach(body => { if (!body.children.length) body.remove(); });
+      copy.querySelectorAll<HTMLElement>("[data-report-panel]").forEach(node => { node.hidden = false; });
+      copy.querySelectorAll("details").forEach(node => { node.open = true; });
+      const originals = source.querySelectorAll('svg.recharts-surface[role="application"]');
+      copy.querySelectorAll('svg.recharts-surface[role="application"]').forEach((node, index) => {
+        const original = originals[index];
+        if (!original) return;
+        const snapshot = original.cloneNode(true) as SVGSVGElement;
+        const originalNodes = [original, ...Array.from(original.querySelectorAll("*"))];
+        const clonedNodes = [snapshot, ...Array.from(snapshot.querySelectorAll("*"))];
+        clonedNodes.forEach((element, i) => {
+          const styles = getComputedStyle(originalNodes[i]);
+          for (const property of ["fill", "stroke", "stroke-width", "font-size", "font-family", "font-weight", "opacity"]) {
+            (element as SVGElement).style.setProperty(property, styles.getPropertyValue(property));
+          }
+        });
+        const image = doc.createElement("img");
+        image.alt = original.closest('[role="img"]')?.getAttribute("aria-label") || "성적 추이 차트";
+        image.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(new XMLSerializer().serializeToString(snapshot));
+        const chart = node.closest(".recharts-responsive-container") || node;
+        const figure = doc.createElement("figure");
+        figure.style.margin = "4mm 0";
+        figure.style.breakInside = "avoid";
+        image.style.width = "100%";
+        image.style.display = "block";
+        figure.append(image);
+        const legend = chart.querySelector(".recharts-legend-wrapper");
+        if (legend) {
+          const caption = doc.createElement("figcaption");
+          caption.textContent = Array.from(legend.querySelectorAll(".recharts-legend-item-text")).map(item => item.textContent).join(" · ");
+          figure.append(caption);
+        }
+        chart.replaceWith(figure);
+      });
+      copy.querySelectorAll('.admin-portal-summary, [data-score-strip]').forEach(strip => {
+        strip.classList.add('admin-metric-strip');
+        Array.from(strip.children).forEach(box => {
+          box.classList.add('admin-metric-box');
+          box.querySelector('.admin-label')?.classList.add('admin-metric-box-label');
+        });
+      });
+      formatPrintDocument(copy, doc);
+      doc.body.replaceChildren(actions, copy);
+      popup.opener = null;
+      popup.focus();
+      setError("");
+    } catch {
+      popup.close();
+      setError("인쇄 화면을 준비하지 못했습니다. 잠시 후 다시 시도해주세요.");
+    } finally {
+      restoreFilter();
+      panels.forEach((panel, index) => { panel.hidden = hidden[index]; });
+      disclosures.forEach((detail, index) => { detail.open = open[index]; });
+      (source as HTMLElement).style.visibility = previousVisibility;
+      window.scrollTo({ ...scroll, behavior: "instant" });
+      preparing.current = false;
+      setIsPreparing(false);
+    }
+  }
+  return <div ref={anchor} data-report-print className="flex flex-wrap items-center gap-2">
+    <button type="button" disabled={isPreparing} className="admin-button" onClick={() => openPrint()}>{wholeExam?'전과목':'선택 과목'} A4 인쇄 / PDF 저장</button>
+    <button type="button" disabled={isPreparing} className="admin-button" onClick={() => openPrint(true)}>{wholeExam?'종합 성적':'선택 과목 학습'} 요약 인쇄</button>
+    {error && <p role="alert" className="admin-help">{error}</p>}
+  </div>;
+}

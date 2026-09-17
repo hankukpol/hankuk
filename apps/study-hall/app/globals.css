@@ -3556,13 +3556,6 @@ body:has(.admin-shell) {
   margin-inline: auto;
   padding: 24px 16px 32px;
 }
-.admin-arrival-keypad {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--admin-arrival-gap);
-}
-.admin-shell .admin-arrival-key { min-height: var(--admin-arrival-key-height); }
-.admin-shell .admin-arrival-numeric-key,
 .admin-shell input.admin-arrival-number,
 .admin-shell .admin-arrival-pair-code {
   font-size: var(--admin-arrival-number-size);

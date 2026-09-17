@@ -653,16 +653,16 @@ Tailwind의 `shadow-card` / `shadow-card-hover` / `shadow-header`는 `none`으�
 | 토큰 | 값 | 용도 |
 | --- | --- | --- |
 | `--admin-arrival-kiosk-width` | 480px | 공용 입력 화면 최대 폭, 모바일은 가용 폭 |
-| `--admin-arrival-key-height` | 64px | 3열 숫자 키패드 최소 높이 |
-| `--admin-arrival-number-size` | 32px | 숫자 키·등록코드·번호 입력, Pretendard 600 및 tabular-nums |
+| `--admin-arrival-key-height` | 64px | 등원 번호 입력칸 최소 높이 |
+| `--admin-arrival-number-size` | 32px | 등록코드·번호 입력, Pretendard 600 및 tabular-nums |
 | `--admin-arrival-calendar-height` | 80px | 월 달력 날짜 셀 최소 높이 |
 | `--admin-arrival-calendar-height-mobile` | 64px | 768px 미만 날짜 셀 최소 높이 |
-| `--admin-arrival-gap` | 8px | 키패드 간격·달력 날짜/시각 간격 |
+| `--admin-arrival-gap` | 8px | 달력 날짜/시각 간격 |
 | `--admin-arrival-cell-padding` | 4px | 좁은 7열 달력 셀 여백 |
 
-키패드는 1~9 / 전체 지움·0·한 자리 지움의 3열이며 일반 컨트롤 색·8px 모서리(모바일 4px)를 재사용한다. 달력은 일~토 7열 고정, 1px `admin-grid`, 외곽 모서리 0, 날짜·시각 13px, 시각 HH:mm이다. 오늘은 날짜에 밑줄과 접근성 이름, 선택은 accent-soft와 안쪽 2px accent 선, 취소는 `취소` 문구로 구분한다. 관리자 입력은 시각 아래 `정정`/`추가`를 13px로 표시하고 내용에 따라 셀 높이가 늘어난다. 학생 오늘 요약에도 출처를 표시한다. 목록 시각은 HH:mm:ss이며 모바일에서는 번호·출처를 학생·시각 열 내부로 접는다.
+등원 입력은 웹 숫자 버튼 없이 기기의 기본 숫자 키패드를 사용한다(운영자 변경 요청, 2026-09-17). 입력칸은 `type="text"`, `inputMode="numeric"`로 앞자리 0을 보존하고, 학원 설정의 자릿수를 채우면 자동 제출한다. 입력칸 터치를 막지 않으며 저장·완료 팝업 중에는 입력을 잠근다. 달력은 일~토 7열 고정, 1px `admin-grid`, 외곽 모서리 0, 날짜·시각 13px, 시각 HH:mm이다. 오늘은 날짜에 밑줄과 접근성 이름, 선택은 accent-soft와 안쪽 2px accent 선, 취소는 `취소` 문구로 구분한다. 관리자 입력은 시각 아래 `정정`/`추가`를 13px로 표시하고 내용에 따라 셀 높이가 늘어난다. 학생 오늘 요약에도 출처를 표시한다. 목록 시각은 HH:mm:ss이며 모바일에서는 번호·출처를 학생·시각 열 내부로 접는다.
 
-완료 팝업은 `ActionCompleteModal`의 선택 prop `autoCloseMs`로 자동 닫기를 켠다. 생략하면 기존 수동 닫기 동작을 유지한다. 입력·팝업 지연 값은 현재 학원 API에서 읽으며 완료 뒤 번호를 비우고 입력에 포커스를 복원한다.
+완료 팝업은 `ActionCompleteModal`의 선택 prop `autoCloseMs`로 자동 닫기를 켠다. 생략하면 기존 수동 닫기 동작을 유지한다. 입력·팝업 지연 값은 현재 학원 API에서 읽으며 완료 뒤 번호를 비운다. 다음 학생은 입력칸을 눌러 기기의 키패드를 연다.
 
 ## 9. 변경·검증·문서 운영
 

@@ -112,7 +112,7 @@ async function respond(view: View, index: number, data: unknown, status = 200) {
 const props = { divisionSlug: "police", divisionName: "검사 학원" };
 const input = (view: View) => view.nodes(node => node.type === "input")[0];
 function pressDigits(view: View, digits: string) {
-  for (const digit of digits) { view.nodes(node => node.type === "button" && node.props["aria-label"] === digit)[0].props.onClick(); view.render(); }
+  for (const digit of digits) { input(view).props.onChange({ target: { value: input(view).props.value + digit } }); view.render(); }
 }
 const kiosk = () => mount("components/arrivals/ArrivalKiosk.tsx", "ArrivalKiosk", props);
 
@@ -131,7 +131,7 @@ test("arrival polling: one request in flight, newest URL wins, hidden pages paus
   assert.equal(view.lateWrites, 0);
 });
 
-test("kiosk preserves zeroes, blocks final-digit/Enter duplicates, waits for HTTP success, never focuses an editable input", async () => {
+test("kiosk uses native numeric input, preserves zeroes, blocks duplicate submission and resets for the next student", async () => {
   const view = kiosk();
   await respond(view, 0, { status: "ready", numberLength: 5, popupMs: 1200 });
   pressDigits(view, "00123");
@@ -145,9 +145,12 @@ test("kiosk preserves zeroes, blocks final-digit/Enter duplicates, waits for HTT
   assert.equal(modal.props.autoCloseMs, 1200);
   modal.props.onClose(); view.render(); view.focus();
   assert.equal(input(view).props.value, ""); assert.equal(view.focusCount, 0);
-  assert.equal(input(view).props.readOnly, true);
-  assert.equal(input(view).props.inputMode, "none");
-  assert.equal(input(view).props.onChange, undefined);
+  assert.equal(input(view).props.readOnly, undefined);
+  assert.equal(input(view).props.inputMode, "numeric");
+  assert.equal(input(view).props.pattern, "[0-9]*");
+  assert.equal(input(view).props.disabled, false);
+  assert.equal(input(view).props.onPointerDown, undefined);
+  assert.equal(view.nodes(node => node.type === "button" && /^\d$/.test(node.props["aria-label"] ?? "")).length, 0);
   pressDigits(view, "00456");
   assert.equal(view.requests.length, 3);
   assert.equal(view.storage.size, 0);

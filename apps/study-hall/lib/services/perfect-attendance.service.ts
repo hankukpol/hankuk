@@ -10,10 +10,17 @@ type Settings = { perfectAttendanceWeeklyPts: number; perfectAttendanceMonthlyPt
 type StoredAward = PerfectAttendanceAward & { id: string; ruleId: string | null };
 function configurationResolver(policy: ManagementPolicy, settings: Settings, periods: Parameters<typeof buildPerfectAttendanceAwards>[0]["periods"], history: AppliedConfiguration[]) {
   const current: { settings: Settings & { managementPolicy: Omit<ManagementPolicy, "optionalEnrollments"> | null }; periods: typeof periods } = { settings: { ...settings, managementPolicy: policy }, periods };
-  return (day: string) => {
+  // 한 번의 재계산에서 날짜별 이력 복원 결과를 공유한다. 다음 저장에는 새로 만든다.
+  const cache = new Map<string, ReturnType<typeof resolve>>();
+  function resolve(day: string) {
     const config = configurationForDate(current, history, day);
     return { policy: config.settings.managementPolicy ? { ...config.settings.managementPolicy, optionalEnrollments: policy.optionalEnrollments } : null,
       periods: config.periods, weeklyPts: config.settings.perfectAttendanceWeeklyPts, monthlyPts: config.settings.perfectAttendanceMonthlyPts };
+  }
+  return (day: string) => {
+    let config = cache.get(day);
+    if (!config) { config = resolve(day); cache.set(day, config); }
+    return config;
   };
 }
 
@@ -82,5 +89,7 @@ export async function syncPeriodicPerfectAttendancePoints(
     if (remove.length) await tx.pointRecord.deleteMany({ where: { student: { divisionId: division.id }, id: { in: remove } } });
     if (create.length) await tx.pointRecord.createMany({ data: create.map(award => ({ ...award, ruleId: null, date: new Date(award.date), recordedById: actorId })) });
     return { grantedCount: create.length, revokedCount: remove.length };
-  });
+  // 기본 5초에는 운영 DB 왕복·잠금 대기만으로도 만료될 수 있다.
+  // 출결 저장 이후 처리인 만큼 API의 30초 예산 안에서 유한하게 기다린다.
+  }, { maxWait: 5_000, timeout: 15_000 });
 }

@@ -77,6 +77,7 @@ test("선택 통제 교시는 신청 학생에게만 의무이며 규정 적용 
 type Service = typeof import("../lib/services/perfect-attendance.service");
 type Point = { id: string; studentId: string; ruleId: string | null; points: number; date: string; notes: string; recordedById?: string };
 function serviceFixture(mock = true) {
+  let configurationReads = 0;
   const state = {
     studentsByDivision: { police: [{ id: "student", status: "ACTIVE", seatId: "seat" }] },
     periodsByDivision: { police: periods },
@@ -102,17 +103,38 @@ function serviceFixture(mock = true) {
     },
   };
   const dependencies: Record<string, unknown> = {
-    "@/lib/academy-configuration-history": configurationHistory,
+    "@/lib/academy-configuration-history": { ...configurationHistory, configurationForDate: (...args: Parameters<typeof configurationHistory.configurationForDate>) => {
+      configurationReads++;
+      return configurationHistory.configurationForDate(...args);
+    } },
     "node:crypto": { randomUUID }, "@/lib/perfect-attendance": meta, "@/lib/management-policy": policyMeta,
     "@/lib/mock-data": { isMockMode: () => mock },
     "@/lib/mock-store": { updateMockState: async (mutate: (s: typeof state) => unknown) => mutate(state) },
     "@/lib/service-helpers": { getPrismaClient: async () => ({ $transaction: async (run: (db: typeof tx) => unknown) => { locked = false; return run(tx); } }) },
   };
   const code = ts.transpileModule(readFileSync("lib/services/perfect-attendance.service.ts", "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-  const module = { exports: {} };
-  new Function("require", "module", "exports", code)((id: string) => { assert.ok(id in dependencies, id); return dependencies[id]; }, module, module.exports);
-  return { state, service: module.exports as Service };
+  const loadedModule = { exports: {} };
+  new Function("require", "module", "exports", code)((id: string) => { assert.ok(id in dependencies, id); return dependencies[id]; }, loadedModule, loadedModule.exports);
+  return { state, service: loadedModule.exports as Service, configurationReads: () => configurationReads };
 }
+
+test("같은 날짜 설정은 학생 수만큼 다시 복원하지 않고 다음 저장에서는 새로 읽는다", async t => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-10-05T22:00:00+09:00") });
+  const fixture = serviceFixture(false);
+  const original = fixture.state.attendanceByDivision.police.slice();
+  for (let i = 1; i < 28; i++) {
+    const id = `student-${i}`;
+    fixture.state.studentsByDivision.police.push({ id, status: "ACTIVE", seatId: id });
+    fixture.state.attendanceByDivision.police.push(...original.map(r => ({ ...r, studentId: id })));
+  }
+  const sync = () => fixture.service.syncPeriodicPerfectAttendancePoints("police", "2026-09-12", "assistant", policy, { perfectAttendanceWeeklyPts: 2, perfectAttendanceMonthlyPts: 2 });
+  await sync();
+  assert.ok(fixture.configurationReads() <= 61, `날짜별 조회가 ${fixture.configurationReads()}회 반복됨`);
+  const reads = fixture.configurationReads();
+  fixture.state.attendanceByDivision.police[0].status = "TARDY";
+  assert.equal((await sync()).revokedCount, 1);
+  assert.equal(fixture.configurationReads(), reads * 2, "캐시는 한 번의 저장 내에서만 공유한다");
+});
 
 for (const mode of ["mock", "DB"] as const) {
   test(`${mode}: 휴원·퇴실 학생에게 신규 개근 상점을 지급하지 않는다`, async t => {

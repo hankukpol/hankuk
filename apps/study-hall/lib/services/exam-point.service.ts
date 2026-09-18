@@ -12,6 +12,11 @@ import { revalidateDivisionOperationalViews } from "@/lib/revalidation";
 
 type MockState = Awaited<ReturnType<typeof readMockState>>;
 const ymd = (value: Date | string | null | undefined) => value == null ? null : (value instanceof Date ? value.toISOString() : value).slice(0,10);
+function manualParticipation(scores: { studentId: string; examTypeId: string; examDate: string | Date; score: number | null }[], types: { id: string; category: string }[]) {
+  const morning = new Set(types.filter(type => type.category === "MORNING").map(type => type.id));
+  return scores.filter(score => morning.has(score.examTypeId) && Number.isFinite(score.score))
+    .map(score => ({ studentId: score.studentId, date: ymd(score.examDate)! }));
+}
 function reconcile(existing: (ExamPointAward & {id:string})[], desired: ExamPointAward[]) {
   const keep = new Set<string>();
   const create: ExamPointAward[] = [];
@@ -21,7 +26,7 @@ function reconcile(existing: (ExamPointAward & {id:string})[], desired: ExamPoin
   }
   return {create,remove:existing.filter(r=>!keep.has(r.id)).map(r=>r.id)};
 }
-export function syncMockExamPoints(state: MockState, slug: string, month: string, actorId: string) {
+export function syncMockExamPoints(state: MockState, slug: string, month: string, actorId: string, syncAttendance = true) {
   const raw = state.divisionSettingsByDivision[slug] as unknown as {examPointAutomation?:unknown;managementPolicy?:unknown};
   const config = parseExamPointAutomation(raw?.examPointAutomation);
   const division = state.divisions.find(d=>d.slug===slug);
@@ -32,6 +37,7 @@ export function syncMockExamPoints(state: MockState, slug: string, month: string
   const students = state.studentsByDivision[slug]??[];
   const source: ExamPointSource = {
     students,
+    manualMorningParticipation: manualParticipation(state.morningExamScoresByDivision?.[slug] ?? [], Array.from(types.values())),
     sessions:sessions.map(s=>({...s,category:types.get(s.examTypeId)!.category,studyTrack:types.get(s.examTypeId)!.studyTrack})),
     participants:(state.examSessionParticipantsByDivision[slug]??[]).filter(p=>p.divisionId===division.id && sessionIds.has(p.sessionId)),
     attendance:state.attendanceByDivision[slug]??[],periods:state.periodsByDivision?.[slug]??[],leave:state.leavePermissionsByDivision[slug]??[],rules:state.pointRulesByDivision[slug]??[],
@@ -41,7 +47,8 @@ export function syncMockExamPoints(state: MockState, slug: string, month: string
   const existing = all.filter(r=>active.has(r.studentId) && r.ruleId && r.notes?.startsWith(examPointPrefix(month))).map(r=>({...r,ruleId:r.ruleId!,notes:r.notes!,date:ymd(r.date)!}));
   const history = (state.academyApplications ?? []).filter(row => row.divisionId === division.id && row.status === "APPLIED");
   const current = {settings:raw,pointRules:source.rules,periods:source.periods ?? [],examTypes:Array.from(types.values())};
-  syncMockExamAttendance(state,slug,current,history,includeManualMorningScores(source,state.morningExamScoresByDivision?.[slug] ?? [],Array.from(types.values())),month,kstDate(),actorId);
+  if (syncAttendance) syncMockExamAttendance(state,slug,current,history,includeManualMorningScores(source,state.morningExamScoresByDivision?.[slug] ?? [],Array.from(types.values())),month,kstDate(),actorId);
+  source.attendance = state.attendanceByDivision[slug] ?? [];
   if(!config.enabled && !history.length) return {grantedCount:0,revokedCount:0};
   const result = reconcile(existing,buildVersionedExamPoints(current,history,source,month,kstDate()));
   const removed = new Set(result.remove);
@@ -49,7 +56,7 @@ export function syncMockExamPoints(state: MockState, slug: string, month: string
   return {grantedCount:result.create.length,revokedCount:result.remove.length};
 }
 // Call within the importing transaction; serialize every exam type in this division.
-export async function syncDbExamPoints(tx: Prisma.TransactionClient, divisionId: string, month: string, actorId: string) {
+export async function syncDbExamPoints(tx: Prisma.TransactionClient, divisionId: string, month: string, actorId: string, syncAttendance = true) {
   const settings = await tx.divisionSettings.findUnique({where:{divisionId},select:{examPointAutomation:true,managementPolicy:true}});
   const config = parseExamPointAutomation(settings?.examPointAutomation);
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`exam-points:${divisionId}`}))`;
@@ -73,21 +80,26 @@ export async function syncDbExamPoints(tx: Prisma.TransactionClient, divisionId:
   const history = historyRows.map(row=>({...row,effectiveFrom:ymd(row.effectiveFrom)!,createdAt:row.createdAt.toISOString(),after:row.after as unknown as import("@/lib/versioned-exam-points").ExamConfigurationHistory["before"],before:row.before as unknown as import("@/lib/versioned-exam-points").ExamConfigurationHistory["before"]}));
   const current = {settings:settings ?? {},pointRules:rules,periods,examTypes:types};
   const manualScores = await tx.morningExamScore.findMany({where:{student:{divisionId},examType:{divisionId},examDate:{gte:from,lt:to}},select:{studentId:true,examTypeId:true,examDate:true,score:true}});
-  await syncDbExamAttendance(tx,divisionId,current,history,includeManualMorningScores(source,manualScores.map(s=>({...s,examDate:ymd(s.examDate)!})),types),month,kstDate(),actorId);
+  source.manualMorningParticipation = manualParticipation(manualScores, types);
+  if (syncAttendance) await syncDbExamAttendance(tx,divisionId,current,history,includeManualMorningScores(source,manualScores.map(s=>({...s,examDate:ymd(s.examDate)!})),types),month,kstDate(),actorId);
+  if (syncAttendance) {
+    const refreshedAttendance = await tx.attendance.findMany({where:{student:{divisionId},date:{gte:from,lt:to}},select:{studentId:true,date:true,status:true,reason:true,periodId:true,checkInTime:true}});
+    source.attendance = refreshedAttendance.map(a=>({...a,date:ymd(a.date)!,checkInTime:a.checkInTime?.toISOString() ?? null}));
+  }
   if(!config.enabled && !history.length) return {grantedCount:0,revokedCount:0};
   const result = reconcile(existing.map(r=>({...r,date:ymd(r.date)!,ruleId:r.ruleId!,notes:r.notes!})),buildVersionedExamPoints(current,history,source,month,kstDate()));
   if(result.remove.length) await tx.pointRecord.deleteMany({where:{student:{divisionId},id:{in:result.remove}}});
   if(result.create.length) await tx.pointRecord.createMany({data:result.create.map(r=>({...r,date:new Date(`${r.date}T00:00:00Z`),recordedById:actorId}))});
   return {grantedCount:result.create.length,revokedCount:result.remove.length};
 }
-export async function syncExamPoints(divisionSlug: string, date: string, actorId: string) {
+export async function syncExamPoints(divisionSlug: string, date: string, actorId: string, syncAttendance = true) {
   const month=date.slice(0,7);
   let result;
-  if(isMockMode()) result=await updateMockState(state=>syncMockExamPoints(state,divisionSlug,month,actorId));
+  if(isMockMode()) result=await updateMockState(state=>syncMockExamPoints(state,divisionSlug,month,actorId,syncAttendance));
   else {
     const prisma=await getPrismaClient();
     const division=await prisma.division.findUniqueOrThrow({where:{slug:divisionSlug},select:{id:true}});
-    result=await prisma.$transaction(tx=>syncDbExamPoints(tx,division.id,month,actorId),{timeout:30000});
+    result=await prisma.$transaction(tx=>syncDbExamPoints(tx,division.id,month,actorId,syncAttendance),{timeout:30000});
   }
   revalidateDivisionOperationalViews(divisionSlug);
   return result;

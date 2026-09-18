@@ -2,6 +2,8 @@ import { AttendancePenaltyReview } from "@/components/attendance/AttendancePenal
 import { getManagementPolicy } from "@/lib/services/management-policy.service";
 import { getDivisionFeatureSettings } from "@/lib/services/settings.service";
 import { headers } from "next/headers";
+import Link from "next/link";
+import { normalizeYmdDate } from "@/lib/date-utils";
 
 import { ResponsiveAttendanceBoard } from "@/components/attendance/ResponsiveAttendanceBoard";
 import { redirectIfDivisionFeatureDisabled } from "@/lib/division-feature-guard";
@@ -37,6 +39,7 @@ function getInitialModeFromUserAgent(userAgent: string | null): "mobile" | "desk
 }
 
 type AdminAttendancePageProps = {
+  searchParams?: { date?: string; period?: string };
   params: {
     division: string;
   };
@@ -44,10 +47,13 @@ type AdminAttendancePageProps = {
 
 type AttendanceRecord = AttendanceSnapshot["records"][number];
 
-export default async function AdminAttendancePage({ params }: AdminAttendancePageProps) {
+export default async function AdminAttendancePage({ params, searchParams }: AdminAttendancePageProps) {
   await redirectIfDivisionFeatureDisabled(params.division, "attendanceManagement");
 
-  const today = getTodayInKst();
+  let today = getTodayInKst();
+  if (searchParams?.date) {
+    try { today = normalizeYmdDate(searchParams.date); } catch { /* Invalid link dates use today. */ }
+  }
   const [snapshot, stats, allSeatRooms, policy, featureSettings] = await Promise.all([
     getAttendanceSnapshot(params.division, today),
     getAttendanceStats(params.division, today, today),
@@ -64,7 +70,8 @@ export default async function AdminAttendancePage({ params }: AdminAttendancePag
   const initialSeatLayout = await getSeatLayout(params.division, seatRooms[0]?.id);
 
   // 쉬는 시간에는 currentPeriod 가 비어 첫 교시로 떨어졌다. 아직 끝나지 않은 교시를 고른다.
-  const mobilePeriodId = selectPeriodForCheck(snapshot.periods, kstMinutesOfDay())?.id ?? null;
+  const requestedPeriod = snapshot.periods.find(period => period.id === searchParams?.period && period.isActive);
+  const mobilePeriodId = requestedPeriod?.id ?? selectPeriodForCheck(snapshot.periods, kstMinutesOfDay())?.id ?? null;
   const initialMode = getInitialModeFromUserAgent(headers().get("user-agent"));
 
   return (
@@ -75,6 +82,7 @@ export default async function AdminAttendancePage({ params }: AdminAttendancePag
           데스크톱에서는 학생 x 교시 매트릭스로 한 번에 확인하고, 모바일에서는 좌석·학생·출결
           표로 현재 교시를 빠르게 체크할 수 있습니다.
         </p>
+        <Link className="admin-text-action" href={`/${params.division}/admin/attendance/import`}>누적시험 응시 여부 가져오기</Link>
       </section>
 
       <ResponsiveAttendanceBoard
@@ -95,13 +103,14 @@ export default async function AdminAttendancePage({ params }: AdminAttendancePag
           initialDate: today,
           initialPeriods: snapshot.periods,
           initialPeriodId: mobilePeriodId,
+          initialPeriodPinned: Boolean(requestedPeriod),
           initialStudents: snapshot.students,
           initialRecords: mobilePeriodId
             ? snapshot.records.filter((record: AttendanceRecord) => record.periodId === mobilePeriodId)
             : [],
         }}
       />
-      {policy && featureSettings.featureFlags.pointManagement && <AttendancePenaltyReview divisionSlug={params.division} effectiveFrom={policy.effectiveFrom} students={snapshot.students} />}
+      {policy && featureSettings.featureFlags.pointManagement && <AttendancePenaltyReview key={today} divisionSlug={params.division} effectiveFrom={policy.effectiveFrom} students={snapshot.students} initialDate={today} />}
     </div>
   );
 }

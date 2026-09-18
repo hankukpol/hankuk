@@ -74,6 +74,8 @@ export type MobileCheckFormProps = {
   initialDate: string;
   initialPeriods: PeriodItem[];
   initialPeriodId: string | null;
+  /** 특정 교시 결과를 확인하는 링크에서는 현재 시간대로 자동 전환하지 않는다. */
+  initialPeriodPinned?: boolean;
   initialStudents: StudentItem[];
   initialRecords: AttendanceRecordItem[];
   /** 좌석 보기용. 넘기지 않으면 표만 보인다. */
@@ -158,6 +160,7 @@ export function MobileCheckForm({
   initialDate,
   initialPeriods,
   initialPeriodId,
+  initialPeriodPinned = false,
   initialStudents,
   initialRecords,
   seatRooms,
@@ -171,7 +174,7 @@ export function MobileCheckForm({
   // 바뀔 때마다 돌아오므로, 화면에서 현재 시각으로 다시 고른다. 손으로 교시를 고른 뒤에는
   // 건드리지 않는다 — 지난 교시를 정정하는 중일 수 있다.
   const [selectedPeriodId, setSelectedPeriodId] = useState(initialPeriodId ?? initialPeriods[0]?.id ?? "");
-  const [pickedByHand, setPickedByHand] = useState(false);
+  const [pickedByHand, setPickedByHand] = useState(initialPeriodPinned);
   const [students, setStudents] = useState(initialStudents);
   const [periods, setPeriods] = useState(initialPeriods);
   const periodRefreshVersion = useRef(0);

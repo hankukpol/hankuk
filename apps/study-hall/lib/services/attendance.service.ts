@@ -1113,13 +1113,14 @@ export async function syncAttendanceDerivedPoints(
   divisionSlug: string,
   date: string,
   actorId: string,
+  syncExamAttendance = true,
 ) {
   const warnings: string[] = [];
   const normalizedDate = normalizeDate(date);
   const policy = await getManagementPolicy(divisionSlug, normalizedDate);
   try {
     const { syncExamPoints } = await import("@/lib/services/exam-point.service");
-    await syncExamPoints(divisionSlug, normalizedDate, actorId);
+    await syncExamPoints(divisionSlug, normalizedDate, actorId, syncExamAttendance);
   } catch (error) {
     logServerError("ExamPoints", error);
     warnings.push("시험 상벌점 자동 계산을 완료하지 못했습니다.");

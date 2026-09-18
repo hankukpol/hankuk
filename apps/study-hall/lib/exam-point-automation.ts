@@ -42,6 +42,9 @@ export type ExamPointStudent = {id: string; status: string; studyTrack?: string 
 export type ExamPointSession = {id: string; examTypeId: string; identityKey: string; examDate: string; category: string; fullScore: number; studyTrack?: string | null};
 export type ExamPointSource = {
   morningPeriodId?: string | null;
+  morningPeriodIdsByDate?: ReadonlyMap<string, string | null>;
+  // Existing manual grades are participation evidence only, never synthetic rank entries.
+  manualMorningParticipation?: { studentId: string; date: string }[];
   students: ExamPointStudent[]; sessions: ExamPointSession[];
   participants: {sessionId: string; studentId: string; totalScore: number; isPartial: boolean}[];
   attendance: {studentId: string; date: string; status: string; reason: string | null; periodId?: string; checkInTime?: string | null}[];
@@ -77,6 +80,28 @@ export function buildExamPointAwards(config: ExamPointAutomation, source: ExamPo
     const notes = `${prefix}[${key}] ${label} (${day})`;
     awards.set(`${studentId}:${notes}`, {studentId,ruleId:r.id,points:r.points,date:day,notes});
   };
+  // Attendance-only cumulative imports must never create a zero score or rank entry.
+  // Only the configured morning period is evidence; afternoon attendance is unrelated.
+  const morningPeriodForDate = (day: string) => source.morningPeriodIdsByDate?.has(day)
+    ? source.morningPeriodIdsByDate.get(day) : source.morningPeriodId;
+  const morningRecords = source.attendance.filter(a => {
+    const periodId = morningPeriodForDate(a.date);
+    return !!periodId && a.periodId === periodId;
+  });
+  const attendedInRegister = (studentId: string, day: string) => morningRecords.some(a =>
+    a.studentId === studentId && a.date === day && ["PRESENT", "TARDY"].includes(a.status));
+  const attendedManually = (studentId: string, day: string) => source.manualMorningParticipation?.some(p => p.studentId === studentId && p.date === day) ?? false;
+  const attendedInGrading = (studentId: string, day: string) => attendedManually(studentId, day) || sessions.some(s =>
+    s.category === "MORNING" && s.examDate === day && source.participants.some(p => p.sessionId === s.id && p.studentId === studentId));
+  for (const record of morningRecords) {
+    const student = active.find(s => s.id === record.studentId);
+    if (record.status !== "ABSENT" || !student || !eligible(student, record.date) ||
+      !record.date.startsWith(month) || record.date > today || !config.morningStartDate ||
+      record.date < config.morningStartDate || record.date < config.effectiveFrom || !expectedDay(record.date)) continue;
+    if (!attendedInRegister(student.id, record.date) && !attendedInGrading(student.id, record.date) &&
+      !isExcusedExamAbsence(source, student.id, record.date, morningPeriodForDate(record.date)))
+      add(student.id, config.morningAbsenceRuleId, record.date, `morning-absent:${record.date}`, "아침모의고사 무단 미참여", true);
+  }
   for (const session of sessions) {
     const candidates = active.filter(s=>eligible(s,session.examDate,session.studyTrack));
     const ids = new Set(candidates.map(s=>s.id));
@@ -86,8 +111,8 @@ export function buildExamPointAwards(config: ExamPointAutomation, source: ExamPo
     const key = `${session.examTypeId}:${session.identityKey}`;
     for (const student of candidates) {
       // Morning nonparticipation is charged once per day across uploaded subjects/types.
-      const attendedToday = morning && sessions.some(s=>s.category==="MORNING" && s.examDate===session.examDate && source.participants.some(p=>p.sessionId===s.id && p.studentId===student.id));
-      if (!present.has(student.id) && !attendedToday && !isExcusedExamAbsence(source,student.id,session.examDate,morning ? source.morningPeriodId : null))
+      const attendedToday = morning && (attendedInRegister(student.id, session.examDate) || attendedInGrading(student.id, session.examDate));
+      if (!present.has(student.id) && !attendedToday && !isExcusedExamAbsence(source,student.id,session.examDate,morning ? morningPeriodForDate(session.examDate) : null))
         add(student.id,morning?config.morningAbsenceRuleId:config.regularAbsenceRuleId,session.examDate,morning?`morning-absent:${session.examDate}`:`absent:${key}`,morning?"아침모의고사 무단 미참여":"정기모의고사 무단 미응시",true);
     }
   }
@@ -142,6 +167,7 @@ export function buildExamPointAwards(config: ExamPointAutomation, source: ExamPo
     for (const student of active) {
       if (!expected.length || !eligible(student,expected[0]) || !eligible(student,expected.at(-1)!)) continue;
       const complete = expected.every(day=>{
+        if (attendedInRegister(student.id, day) || attendedManually(student.id, day)) return true;
         const exams = monthSessions.filter(s=>s.category==="MORNING" && s.examDate===day && (!s.studyTrack || s.studyTrack===student.studyTrack));
         return exams.length>0 && exams.every(s=>source.participants.some(p=>p.sessionId===s.id && p.studentId===student.id));
       });

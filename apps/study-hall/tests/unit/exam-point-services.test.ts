@@ -9,6 +9,7 @@ import * as versionedCalculator from "../../lib/versioned-exam-points";
 import * as calculator from "../../lib/exam-point-automation";
 import { mapPolicy } from "../../scripts/restart-police-policy";
 import * as policy from "../../lib/management-policy";
+import { createAcademyPolicyDraft } from "../../lib/academy-policy-settings";
 
 function fixture() {
   const config=calculator.examPointAutomationSchema.parse({enabled:true,effectiveFrom:"2026-09-01",morningStartDate:"2026-09-14",morningWeekdays:[1,2,3,4,5],morningAbsenceRuleId:"police-absence",morningFirstRuleId:"police-first"});
@@ -39,12 +40,57 @@ function fixture() {
   function load<T>(name:string):T {
     if(name==="exam-point-settings") dependencies["@/lib/services/exam-point.service"]=load("exam-point");
     const code=ts.transpileModule(readFileSync(`lib/services/${name}.service.ts`,"utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
-    const module={exports:{}};
-    new Function("require","module","exports",code)((id:string)=>{assert.ok(id in dependencies,id);return dependencies[id];},module,module.exports);
-    return module.exports as T;
+    const loaded={exports:{}};
+    new Function("require","module","exports",code)((id:string)=>{assert.ok(id in dependencies,id);return dependencies[id];},loaded,loaded.exports);
+    return loaded.exports as T;
   }
   return {state,config,load,setToday:(value:string)=>{today=value;}};
 }
+
+test("grading correction recalculates absence from refreshed attendance, not removed auto records", async () => {
+  const f = fixture();
+  const periods = [{ id: "morning", name: "아침시험", startTime: "08:00", endTime: "08:30", isActive: true }];
+  const managementPolicy = { ...createAcademyPolicyDraft("2026-09-14", periods), enabled: true,
+    morningExam: { periodId: "morning", weekdays: [1, 2, 3, 4, 5], syncAttendance: true } };
+  Object.assign(f.state.divisionSettingsByDivision.police, { managementPolicy });
+  Object.assign(f.state, { periodsByDivision: { police: periods, fire: [] } });
+  const service = f.load<typeof import("../../lib/services/exam-point.service")>("exam-point");
+  await service.syncExamPoints("police", "2026-09-14", "admin");
+  assert.equal(f.state.attendanceByDivision.police.some(a => a.studentId === "student"), true);
+  f.state.examSessionParticipantsByDivision.police = [];
+  await service.syncExamPoints("police", "2026-09-14", "admin");
+  assert.equal(f.state.attendanceByDivision.police.some(a => a.studentId === "student"), false);
+  assert.equal(f.state.pointRecordsByDivision.police.some(a => a.studentId === "student" && a.points === -1), true);
+});
+test("existing manual morning grades including zero prevent false absence without creating score ranks", async () => {
+  for (const syncAttendance of [false, true]) {
+    for (const score of [0, 80, null]) {
+      const f = fixture();
+      const periods = [{ id: "morning", name: "아침시험", startTime: "08:00", endTime: "08:30", isActive: true }];
+      Object.assign(f.state.divisionSettingsByDivision.police, { managementPolicy: {
+        ...createAcademyPolicyDraft("2026-09-14", periods), enabled: true,
+        morningExam: { periodId: "morning", weekdays: [1, 2, 3, 4, 5], syncAttendance: true },
+      } });
+      f.state.examSessionsByDivision.police = [];
+      f.state.examSessionParticipantsByDivision.police = [];
+      const manual = [{ studentId: "student", examTypeId: "type", examDate: "2026-09-14", score },
+        { studentId: "absent", examTypeId: "foreign-type", examDate: "2026-09-14", score: 100 }];
+      Object.assign(f.state, { periodsByDivision: { police: periods, fire: [] }, morningExamScoresByDivision: { police: manual, fire: [] } });
+      f.state.attendanceByDivision.police.push(Object.assign({ studentId: "student", date: "2026-09-14", status: "ABSENT", reason: "확인" }, { periodId: "morning" }));
+      f.state.attendanceByDivision.police.push(Object.assign({ studentId: "absent", date: "2026-09-14", status: "ABSENT", reason: "확인" }, { periodId: "morning" }));
+      const service = f.load<typeof import("../../lib/services/exam-point.service")>("exam-point");
+      await service.syncExamPoints("police", "2026-09-14", "admin", syncAttendance);
+      assert.equal(f.state.pointRecordsByDivision.police.some(p => p.studentId === "student"), score === null);
+      assert.equal(f.state.pointRecordsByDivision.police.some(p => p.studentId === "absent"), true, "Foreign exam types cannot prove attendance");
+      f.setToday("2026-10-01");
+      await service.syncExamPoints("police", "2026-09-14", "admin", syncAttendance);
+      assert.equal(f.state.pointRecordsByDivision.police.some(p => p.notes.includes("rank-month")), false);
+      assert.equal(f.state.examSessionsByDivision.police.length, 0);
+      assert.equal(f.state.examSessionParticipantsByDivision.police.length, 0);
+      assert.equal(manual[0].score, score);
+    }
+  }
+});
 test("repeated synchronization preserves point IDs; attendance correction revokes absence only",async()=>{
   const f=fixture(), service=f.load<typeof import("../../lib/services/exam-point.service")>("exam-point");
   const foreign=JSON.stringify(f.state.pointRecordsByDivision.fire);
@@ -141,10 +187,9 @@ test("historical template policy drives automatic absence points and exemption r
   const {createAcademyPolicyDraft}=await import("../../lib/academy-policy-settings");
   const periods=[{id:"exam",name:"아침시험",startTime:"08:30",endTime:"09:00",isActive:true}];
   const draft=createAcademyPolicyDraft("2026-09-14",periods);
-  const managementPolicy:any={...draft,enabled:true,morningExam:{periodId:"exam",weekdays:[1],syncAttendance:true}};
-  delete managementPolicy.optionalEnrollments;
-  const after:any={settings:{examPointAutomation:f.config,managementPolicy},periods,examTypes:f.state.examTypesByDivision.police,pointRules:f.state.pointRulesByDivision.police};
-  const before=structuredClone(after);delete before.settings.managementPolicy.morningExam.syncAttendance;
+  const managementPolicy={...draft,enabled:true,morningExam:{periodId:"exam",weekdays:[1],syncAttendance:true}};
+  const after={settings:{examPointAutomation:f.config,managementPolicy},periods,examTypes:f.state.examTypesByDivision.police,pointRules:f.state.pointRulesByDivision.police};
+  const before={...structuredClone(after),settings:{...after.settings,managementPolicy:{...managementPolicy,morningExam:{periodId:"exam",weekdays:[1]}}}};
   Object.assign(f.state,{academyApplications:[{divisionId:"police-id",effectiveFrom:"2026-09-14",createdAt:"2026-09-15T00:00:00Z",status:"APPLIED",before,after}],periodsByDivision:{police:periods}});
   Object.assign(f.state.divisionSettingsByDivision.police,{managementPolicy});
   assert.deepEqual(await service.syncExamPoints("police","2026-09-14","admin"),{grantedCount:1,revokedCount:0});

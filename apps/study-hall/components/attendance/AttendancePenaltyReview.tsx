@@ -5,13 +5,14 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { kstDate, type AttendancePenaltyCandidate } from "@/lib/management-policy";
 
-export function AttendancePenaltyReview({ divisionSlug, effectiveFrom, students }: {
+export function AttendancePenaltyReview({ divisionSlug, effectiveFrom, students, initialDate }: {
   divisionSlug: string;
   effectiveFrom: string;
+  initialDate?: string;
   students: { id: string; name: string; studentNumber: string }[];
 }) {
   const router = useRouter();
-  const [date, setDate] = useState(kstDate());
+  const [date, setDate] = useState(initialDate ?? kstDate());
   const [candidates, setCandidates] = useState<AttendancePenaltyCandidate[] | null>(null);
   const [pending, setPending] = useState(false);
   const names = useMemo(() => new Map(students.map((s) => [s.id, `${s.name} (${s.studentNumber})`])), [students]);

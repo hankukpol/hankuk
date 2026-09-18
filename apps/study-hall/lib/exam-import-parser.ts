@@ -24,14 +24,14 @@ function number(v: unknown, percentage = false): number | null {
   if (!/^\d+(\.\d+)?%?$/.test(s) || (!percentage && s.endsWith("%"))) fail("INVALID_NUMBER");
   const n = Number(s.replace(/%$/, "")); if (!Number.isFinite(n) || (percentage && n > 100)) fail("INVALID_NUMBER"); return n;
 }
-function workbook(buffer: Buffer): XLSX.WorkBook {
+export function workbook(buffer: Buffer): XLSX.WorkBook {
   if (!Buffer.isBuffer(buffer) || !buffer.length || buffer.length > EXAM_IMPORT_LIMITS.fileBytes) fail("FILE_SIZE");
   // Only binary Excel and zipped OOXML; do not silently accept HTML/CSV as a workbook.
   if (!(buffer.subarray(0, 8).equals(Buffer.from([208,207,17,224,161,177,26,225])) || buffer.subarray(0, 2).toString() === "PK")) fail("FILE_FORMAT");
   try { return XLSX.read(buffer, { type: "buffer", cellFormula: true, cellHTML: false, cellText: true, sheetRows: EXAM_IMPORT_LIMITS.rows + 1 }); }
   catch { return fail("WORKBOOK_READ"); }
 }
-function rows(wb: XLSX.WorkBook, name: string): unknown[][] {
+export function rows(wb: XLSX.WorkBook, name: string): unknown[][] {
   const ws = wb.Sheets[name]; if (!ws || !ws["!ref"]) fail("MISSING_SHEET", `${name} 시트 없음`);
   const range = XLSX.utils.decode_range(ws["!fullref"] || ws["!ref"]!);
   if (range.e.r >= EXAM_IMPORT_LIMITS.rows || range.e.c >= EXAM_IMPORT_LIMITS.columns) fail("SHEET_SIZE");

@@ -46,6 +46,7 @@ test("check forms: navigation, draft recovery and deferred saving", async (t) =>
   const { CheckDraftSafety, CheckDraftOwner } = await import("../components/ui/CheckDraftSafety");
   const { requestCheckNavigation, hasPendingCheckChanges } = await import("../lib/check-navigation");
   const { MobileCheckForm } = await import("../components/attendance/MobileCheckForm");
+  const { AttendancePenaltyReview } = await import("../components/attendance/AttendancePenaltyReview");
   const { AdminAttendanceBoard } = await import("../components/attendance/AdminAttendanceBoard");
   const { PhoneCheckForm } = await import("../components/phones/PhoneCheckForm");
   const { PhoneWorkspaceTabs } = await import("../components/phones/PhoneWorkspaceTabs");
@@ -82,6 +83,26 @@ test("check forms: navigation, draft recovery and deferred saving", async (t) =>
     };
   };
   try {
+    await t.test("imported attendance keeps its linked period when the mobile page becomes visible", async (t) => {
+      const view = mount();
+      t.mock.method(globalThis, "fetch", async () => Response.json({ students, records: [] }));
+      try {
+        await view.render(h(MobileCheckForm, { ...attendanceProps, initialPeriodId: "p2", initialPeriodPinned: true }));
+        assert.equal(button("2교시").getAttribute("aria-selected"), "true");
+        await act(async () => document.dispatchEvent(new Event("visibilitychange")));
+        assert.equal(button("2교시").getAttribute("aria-selected"), "true");
+      } finally { await view.destroy(); }
+    });
+    await t.test("penalty review starts with and requests the imported attendance date", async (t) => {
+      const view = mount(); const requests: string[] = [];
+      t.mock.method(globalThis, "fetch", async (url: unknown) => { requests.push(String(url)); return Response.json({ candidates: [] }); });
+      try {
+        await view.render(h(AttendancePenaltyReview, { divisionSlug: "police", effectiveFrom: "2020-01-01", initialDate: "2020-01-03", students }));
+        assert.equal(document.querySelector<HTMLInputElement>('input[type="date"]')?.value, "2020-01-03");
+        await click(button("벌점 후보 조회"));
+        assert.deepEqual(requests, ["/api/police/management-policy?date=2020-01-03"]);
+      } finally { await view.destroy(); }
+    });
     await t.test("phone workspace keeps a dirty check panel visible when history is selected", async () => {
       const view = mount();
       try {

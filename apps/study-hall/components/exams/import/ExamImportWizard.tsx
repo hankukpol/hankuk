@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import type { ExamImportPreview, ExamImportResult, ExamImportSelection } from "@/lib/exam-import-types";
 import { ExamImportHistory } from "@/components/exams/import/ExamImportHistory";
 
@@ -179,6 +180,7 @@ export function ExamImportWizard({ divisionSlug, category, examTypes, onImported
 
   return (
     <div className="admin-flat-page" aria-busy={busy}>
+      {category === "MORNING" && <p className="admin-help">누적모의고사는 점수를 가져오지 않고 출석만 반영합니다. <Link className="admin-text-action" href={`/${divisionSlug}/admin/attendance/import`}>누적시험 응시 여부 가져오기</Link></p>}
       <section className="admin-section">
         <h2 className="admin-section-title">채점 파일 가져오기</h2>
         <p className="admin-help">같은 시험의 채점표와 문항분석표를 함께 선택하세요. 시험은 파일의 시험일자로 구분하며, 미리보기로 확인한 뒤 확정해야 성적에 반영됩니다.</p>

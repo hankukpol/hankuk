@@ -470,3 +470,104 @@ test("report styles never draw a thick left accent bar on rows or callouts", () 
   assert.doesNotMatch(css, /border-(left|inline-start):\s*[2-9]px/);
   assert.match(css, /\.currentStudent > :is\(td, th\) \{ background: var\(--admin-accent-soft\)/);
 });
+
+test("regular personal report: five tabs, one visible panel, headline and fail-cutoff verdicts", () => {
+  const stub = () => null;
+  const { RegularPersonalReport } = load("components/exams/preview/RegularPersonalReport.tsx", {
+    "./LearningViews": { TopicLearning: stub, ReviewWorkbench: stub, ExamTimeEntry: stub, LearningPriorities: stub },
+    "./RegularLongitudinal": { RegularLongitudinal: stub },
+    "./ReferenceSummary": { ReferenceSubjectRadar: stub },
+    "./ReferenceItemTable": { ReferenceItemTable: stub },
+    "./PreviewCharts": { PreviewTrend: stub },
+    "./PreviewPrintButton": { PreviewPrintButton: () => React.createElement("button", null, "인쇄") },
+    "./ReviewQueue": { ReviewQueue: stub },
+    "./WrongRateTopFive": { WrongRateTopFive: stub },
+    "./ReportPaging": { PagedRows: ({ rows, children }: { rows: unknown[]; children: (rows: unknown[]) => React.ReactNode }) => children(rows) },
+    "./LearningProvider": { useLearning: () => null },
+    "@/components/ui/SlideOver": { SlideOver: ({ open, children }: { open: boolean; children: React.ReactNode }) => open ? children : null },
+    "@/components/ui/AdminTabs": { AdminTabs: ({ items, activeId }: { items: { id: string; label: string }[]; activeId: string }) =>
+      React.createElement("div", { role: "tablist" }, items.map(i => React.createElement("button", { key: i.id, role: "tab", "aria-selected": i.id === activeId }, i.label))) },
+    "@/components/student-view/StudentPortalUi": { PortalMetricCard: ({ label, value }: { label: string; value: string }) => React.createElement("div", null, `${label} ${value}`) },
+  });
+  const subject = (subjectId: string, name: string, my: number, grade: "우수" | "보통" | "취약") => ({ ...report.stats.subjects[0], subjectId, name, my, fullScore: 100, scoreRate: my, externalAvg: 60, externalRank: 3, grade });
+  const regular = { ...report,
+    myScore: { total: 120, subjectScores: { a: 30, b: 90 }, isPartial: false },
+    ranks: { ...report.ranks, external: { rank: 3, count: 12, topPercent: 25, percentile: 75 } },
+    stats: { ...report.stats, external: { ...report.stats.external, average: 110, top30Avg: 150 }, subjects: [subject("a", "과목 A", 30, "보통"), subject("b", "과목 B", 90, "우수")] },
+    session: { ...report.session, fullScore: 200 },
+    flags: [{ kind: "targetGap" as const, detail: "목표 점수보다 30점 낮습니다." }] };
+  const data = { kind: "regular", scope: "student", examType: { id: "type", name: "정기 시험" }, student: { id: "student", name: "학생", studentNumber: "90***" },
+    range: { from: "2026-03-01", to: "2026-09-08" }, dates: ["2026-09-08"], subjects: [{ id: "a", name: "과목 A" }, { id: "b", name: "과목 B" }],
+    comparisons: [], items: [], easyThreshold: 70, failCutoffPercent: 40, records: [], regular,
+    legacyResults: [{ id: "legacy", date: "2026-08-16", total: 65, rank: null, notes: "수기", scores: {} }] };
+  const html = renderToStaticMarkup(React.createElement(RegularPersonalReport, { data, mode: "student" }));
+  const tabs = Array.from(html.matchAll(/role="tab"[^>]*>([^<]+)</g)).map(m => m[1]);
+  assert.deepEqual(tabs, ["요약", "취약점", "석차", "추이", "문항"]);
+  assert.doesNotMatch(html, /정기 분석 바로가기/, "학생도 섹션 바로가기 대신 탭을 쓴다");
+  const panels = Array.from(html.matchAll(/<section id="regular-(\w+)"[^>]*?(hidden="")?[^>]*>/g)).map(m => ({ id: m[1], hidden: m[0].includes('hidden=""') }));
+  assert.deepEqual(panels.filter(p => !p.hidden).map(p => p.id), ["summary"], "처음에는 요약 탭만 보인다");
+  assert.equal(panels.length, 5);
+  assert.match(html, /class="admin-notice admin-notice-danger" data-headline="true">총점 120\/200점 · 12명 중 3위\(상위 25%\) · 과락 과목 A · 과목 A에서 70점을 가장 많이 잃었습니다\.</);
+  assert.match(html, /<td class="text-admin-danger">과락<\/td>/);
+  assert.match(html, /<td class="text-admin-success">우수<\/td>/);
+  assert.ok(html.indexOf("직접 입력 성적") > html.indexOf("과목별 성적"), "옛 수기 기록은 첫 화면이 아니라 추이 탭 안");
+  assert.match(html, /<details class="admin-disclosure"><summary>직접 입력 성적 1건<\/summary>/);
+  // 목표 미달만으로는 하락 경고가 아니다(총점·석차 하락만 경고).
+  const calm = renderToStaticMarkup(React.createElement(RegularPersonalReport, { data: { ...data, regular: { ...regular, stats: { ...regular.stats, subjects: [subject("b", "과목 B", 90, "우수")] } } }, mode: "student" }));
+  assert.match(calm, /class="admin-notice" data-headline="true">/);
+  const falling = renderToStaticMarkup(React.createElement(RegularPersonalReport, { data: { ...data, regular: { ...regular, stats: { ...regular.stats, subjects: [subject("b", "과목 B", 90, "우수")] }, flags: [{ kind: "rankDrop" as const, detail: "석차 하락" }] } }, mode: "student" }));
+  assert.match(falling, /class="admin-notice admin-notice-warning" data-headline="true">/);
+});
+
+test("morning personal report: five tabs, weekly grid in template order, headline and below-cutoff cells", () => {
+  const stub = () => null;
+  const { MorningPersonalReport } = load("components/exams/preview/MorningPersonalReport.tsx", {
+    "./LearningViews": { TopicLearning: stub, ReviewWorkbench: stub, ExamTimeEntry: stub },
+    "./MorningProgress": { MorningProgress: stub },
+    "./PreviewCharts": { PreviewTrend: stub },
+    "./PreviewPrintButton": { PreviewPrintButton: () => React.createElement("button", null, "인쇄") },
+    "./ReviewQueue": { ReviewQueue: stub },
+    "./WrongRateTopFive": { WrongRateTopFive: stub },
+    "./ReportPaging": { PagedRows: ({ rows, children }: { rows: unknown[]; children: (rows: unknown[]) => React.ReactNode }) => children(rows), ReferenceItemBrowser: stub },
+    "@/components/ui/AdminTabs": { AdminTabs: ({ items, activeId }: { items: { id: string; label: string }[]; activeId: string }) =>
+      React.createElement("div", { role: "tablist" }, items.map(i => React.createElement("button", { key: i.id, role: "tab", "aria-selected": i.id === activeId }, i.label))) },
+    "@/components/student-view/StudentPortalUi": { PortalMetricCard: ({ label, value }: { label: string; value: string }) => React.createElement("div", null, `${label} ${value}`) },
+  });
+  const c = (date: string, subjectId: string, subjectName: string, my: number | null) => ({ sessionId: `${date}-${subjectId}`, date, subjectId, subjectName, topic: "진도", fullScore: 100, my, internal: 60, external: 60, top10: null, top30: null, internalCount: 20, externalCount: 200, externalFileCount: 200, internalRank: 3, externalRank: 30 });
+  // 템플릿 순서: 헌법 → 형소법 → 형법 → 누적(점수 없음) → 경찰학
+  const subjects = [{ id: "a", name: "헌법" }, { id: "b", name: "형소법" }, { id: "c", name: "형법" }, { id: "d", name: "누적" }, { id: "e", name: "경찰학" }];
+  const data = { kind: "morning", scope: "student", examType: { id: "m", name: "아침 모의고사" }, student: { id: "s", name: "학생", studentNumber: "90***" },
+    range: { from: "2026-08-01", to: "2026-09-25" }, dates: [], subjects, items: [], easyThreshold: 70, failCutoffPercent: 40, records: [],
+    comparisons: [c("2026-09-14", "a", "헌법", 80), c("2026-09-21", "a", "헌법", 90), c("2026-09-22", "b", "형소법", 70), c("2026-09-23", "c", "형법", 35), c("2026-09-25", "e", "경찰학", null)],
+    morning: { subjects: [], summary: { average: 68.8, externalGap: 8.8, internalGap: 0, attendanceRatePercent: 80, thisWeekRank: 5, rankDelta: 2, attended: 4, expected: 5 }, weeklyRanks: [] } };
+  const html = renderToStaticMarkup(React.createElement(MorningPersonalReport, { data, mode: "student" }));
+  assert.deepEqual(Array.from(html.matchAll(/role="tab"[^>]*>([^<]+)</g)).map(m => m[1]), ["요약", "취약점", "석차", "추이", "문항"]);
+  assert.equal((html.match(/role="tablist"/g) ?? []).length, 1, "탭 줄은 하나");
+  const panels = Array.from(html.matchAll(/<section id="morning-(\w+)"[^>]*>/g)).map(m => ({ id: m[1], hidden: m[0].includes('hidden=""') }));
+  assert.deepEqual(panels.filter(p => !p.hidden).map(p => p.id), ["summary"]);
+  assert.match(html, /data-headline="true">최근 주\(9\/21 주\) 3회 평균 65점\(시험 응시자 평균 대비 \+5점\) · 과락선 미만 1회\(형법\)\.</);
+  assert.match(html, /class="admin-notice admin-notice-danger" data-headline/);
+  const grid = html.slice(html.indexOf('aria-label="주간 성적표"'));
+  assert.deepEqual(Array.from(grid.matchAll(/aria-label="([^"]+) 취약점 보기"/g)).map(m => m[1]), ["헌법", "형소법", "형법", "누적", "경찰학"], "템플릿 과목 순서 그대로");
+  assert.match(grid, /<th scope="col">9\/14 주<\/th><th scope="col">9\/21 주<\/th>/);
+  assert.match(grid, /class="admin-table-amount text-admin-danger">35</, "과락선 미만 칸");
+  assert.match(grid, />결시</, "시험은 있었고 점수 없음");
+});
+
+test("admin cohort weakness table: risk order, fail cells, summary and personal links", () => {
+  const { CohortWeaknessTable } = load("components/exams/preview/CohortWeaknessTable.tsx");
+  const subjects = [{ id: "a", name: "헌법", fullScore: 100, itemCount: 20, alternateGroup: null }, { id: "b", name: "형법", fullScore: 100, itemCount: 20, alternateGroup: null }];
+  const row = (studentId: string, a: number, b: number, rank: number, flags: { kind: string; detail: string }[] = []) => ({ studentId, name: `학생${studentId}`, studentNumber: `9000${studentId}`, totalScore: a + b, subjectScores: { a, b }, isPartial: false, externalRank: null, externalTopPercent: null, internalRank: rank, delta: null, flags });
+  const data = { kind: "regular", scope: "cohort", failCutoffPercent: 40, isPreview: false,
+    regularCohort: { subjects, ranking: [row("1", 95, 90, 1), row("2", 90, 30, 3), row("3", 80, 70, 2, [{ kind: "rankDrop", detail: "석차 하락" }])] } };
+  const html = renderToStaticMarkup(React.createElement(CohortWeaknessTable, { data, division: "police", query: "kind=regular" }));
+  assert.deepEqual(Array.from(html.matchAll(/aria-label="(학생\d) 개인 분석"/g)).map(m => m[1]), ["학생2", "학생3", "학생1"], "과락 → 하락 → 점수 낮은 순");
+  assert.match(html, /3명 · 과락 1명 \(형법 1명\) · 하락 1명/);
+  assert.match(html, /class="admin-table-amount text-admin-danger">30</);
+  assert.match(html, /text-admin-danger">과락 형법 · 최대 손실 형법 70점</);
+  assert.match(html, /text-admin-warning">과락 없음 · 최대 손실 형법 30점 · 석차 하락</);
+  assert.match(html, /href="\/police\/admin\/exams\/students\/2\?kind=regular"/);
+  assert.match(html, /aria-pressed="true"[^>]*>전체 3</);
+  const empty = renderToStaticMarkup(React.createElement(CohortWeaknessTable, { data: { ...data, regularCohort: { subjects, ranking: [] } }, division: "police", query: "" }));
+  assert.equal(empty, "", "자료가 없으면 아무것도 그리지 않는다");
+});

@@ -1,8 +1,10 @@
 'use client';
-import { Children, useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { TopicLearning, ReviewWorkbench, ExamTimeEntry } from './LearningViews';
 import { MorningProgress } from './MorningProgress';
 import { RegularPersonalReport } from './RegularPersonalReport';
+import { MorningPersonalReport } from './MorningPersonalReport';
+import { CohortWeaknessTable } from './CohortWeaknessTable';
 import { AdminTabs } from '@/components/ui/AdminTabs';
 import { PreviewPrintButton } from './PreviewPrintButton';
 import { average, pairedComparison, reviewGroups } from '@/lib/exam-preview/metrics';
@@ -14,15 +16,13 @@ import { PagedRows, ReferenceItemBrowser, type ItemFocusRequest } from './Report
 import { ReviewQueue, type ReviewSelection } from './ReviewQueue';
 import { WrongRateTopFive } from './WrongRateTopFive';
 
-export const number = (n:number|null|undefined, suffix='') => n == null ? '자료 없음' : `${Number(n.toFixed(1)).toLocaleString('ko-KR')}${suffix}`;
+export { number } from './ReportTable';
+import { number, Table, ComparisonTable } from './ReportTable';
 const sections = [{id:'overview',label:'성적 요약'},{id:'diagnosis',label:'복습할 문항'},{id:'items',label:'오답·문항 분석'},{id:'trend',label:'성적 변화'},{id:'rank',label:'응시 현황·순위'},{id:'subjects',label:'과목 비교'},{id:'records',label:'성적 기록'}] as const;
 type Section = typeof sections[number]['id'];
-function Table({heads,children,label}:{heads:(string|{label:string;className:string})[];children:ReactNode;label:string}) { if(!Children.toArray(children).length) return <p className="admin-empty-state">{label}: 선택한 기간에 표시할 기록이 없습니다.</p>; return <div className="admin-table-frame"><table aria-label={label}><thead><tr>{heads.map(h=><th key={typeof h==='string'?h:h.label} className={typeof h==='string'?undefined:h.className} scope="col">{typeof h==='string'?h:h.label}</th>)}</tr></thead><tbody>{children}</tbody></table></div>; }
-function ComparisonTable({rows,personal}:{rows:Comparison[];personal:boolean}) { return <Table label="회차별 성적 비교" heads={['시험일',...(personal?['내 점수']:[]),'만점','시험 응시자 평균','우리 학원 평균','상위 30%','상위 10%','시험 / 우리 학원 인원']}>
-  {rows.map(r=><tr key={`${r.sessionId}-${r.subjectId}`}><td>{r.date}</td>{personal&&<td className="admin-table-amount">{r.my===null?'미응시 / 점수 없음':number(r.my)}</td>}<td>{number(r.fullScore)}</td><td className="admin-table-amount">{number(r.external)}</td><td className="admin-table-amount">{number(r.internal)}</td><td className="admin-table-amount">{number(r.top30)}</td><td className="admin-table-amount">{number(r.top10)}</td><td>{number(r.externalCount)} / {r.internalCount}명</td></tr>)}
- </Table>; }
 export function PreviewReport(props:{data:PreviewData;mode:'admin'|'student';division:string;query:string}) {
- return props.data.kind==='regular'&&props.data.scope==='student'?<RegularPersonalReport data={props.data} mode={props.mode}/>:<StandardReport {...props}/>;
+ if(props.data.scope==='student') return props.data.kind==='regular'?<RegularPersonalReport data={props.data} mode={props.mode}/>:<MorningPersonalReport data={props.data} mode={props.mode}/>;
+ return <StandardReport {...props}/>;
 }
 function StandardReport({data,mode,division,query}:{data:PreviewData;mode:'admin'|'student';division:string;query:string}) {
  const personal = data.scope === 'student';
@@ -63,6 +63,7 @@ function StandardReport({data,mode,division,query}:{data:PreviewData;mode:'admin
   <div id="morning-subject-panel" role={data.kind==='morning'?'tabpanel':undefined} aria-labelledby={data.kind==='morning'?`morning-subject-${selected}`:undefined} className="admin-flat-page">
 
   <div id="preview-main-panel-results" role={mode==='admin'?'tabpanel':undefined} aria-labelledby={mode==='admin'?'preview-main-results':undefined} hidden={mode==='admin'&&active!=='results'} data-report-panel className="admin-flat-page">
+   {!personal&&<CohortWeaknessTable data={data} division={division} query={query}/>}
    {panel('overview',data.kind==='morning'?'기간 평균 비교':'점수 비교',!rows.length?<p className="admin-empty-state">선택한 기간에 가져온 분석 자료가 없습니다. 입력 성적은 회차별 누적 성적에서 확인하세요.</p>:<>
     <div data-learning-summary><ReferenceScoreStrip rows={rows} personal={personal}/><p className="admin-help mt-2">{mixed?'회차별 만점이 달라 통합 평균을 표시하지 않습니다.':personal?`시험 응시자 평균 대비 ${number(external?.gap,'점')} / ${external?.count}회 대응 비교`:`${rows.length}회 시험 / 우리 학원 평균은 해당 과목 응시자 기준`}</p></div>
     {personal&&morningSubject&&<Table label="아침시험 응시 현황" heads={['응시 / 예정','응시율','성적 추이 분석']}><tr><td>{morningSubject.attended} / {morningSubject.expected}회</td><td>{number(morningSubject.attendanceRatePercent,'%')}</td><td className={styles.wrapCell}>{morningSubject.insufficientSample?`자료 부족 · 최소 ${morningSubject.requiredSessions}회 필요`:'분석 가능'}</td></tr></Table>}
@@ -78,14 +79,6 @@ function StandardReport({data,mode,division,query}:{data:PreviewData;mode:'admin
      {options.map(s=>{const selectedRows=data.comparisons.filter(r=>r.subjectId===s.id&&(data.kind==='morning'||r.date===data.range.to));const taken=personal?selectedRows.filter(r=>r.my!==null):selectedRows;const uniform=new Set(taken.map(r=>r.fullScore)).size<=1;return <tr key={s.id}><th scope="row">{s.name}</th><td>{number(uniform?average(taken.map(r=>personal?r.my:r.internal)):null)}</td><td>{number(uniform?(personal?pairedComparison(selectedRows,'external').benchmark:average(taken.map(r=>r.external))):null)}</td><td>{uniform?number(taken[0]?.fullScore):'회차별 상이'}</td><td>{taken.length}회</td></tr>;})}
     </Table><p className="admin-help mt-2">그래프는 과목별 만점 대비 득점률입니다. 문항별 단원 정보가 없어 단원별 정답률은 제공하지 않습니다.</p></div></div>
 
-   </>)}
-   {!personal&&panel('rank',data.kind==='morning'?'응시 현황과 순위':'순위와 목표',<>
-    <Table label="학생별 분석 이동" heads={['학생','점수 / 평균','기존 진단','개인 분석']}>
-     {data.regularCohort?.ranking.map(r=><tr key={r.studentId}><td>{r.name}<br/>{r.studentNumber}</td><td>{r.totalScore}점 / {r.internalRank}위{r.isPartial?' (부분 응시)':''}</td><td className={styles.wrapCell}>{r.flags.map(f=>f.detail).join(' ')||'해당 없음'}</td><td><a className="admin-text-action" href={`/${division}/admin/exams${data.isPreview?'/preview':''}/students/${r.studentId}?${query}`}>개인 분석</a></td></tr>)}
-     {data.morningCohort?.studentSubjects.filter(r=>r.subjectId===selected).map(r=><tr key={r.studentId}><td>{r.name}<br/>{r.studentNumber}</td><td>{number(r.average,'점')} / {r.attended}회</td><td className={styles.wrapCell}>{r.flags.map(f=>f.detail).join(' ')||'해당 없음'}</td><td><a className="admin-text-action" href={`/${division}/admin/exams${data.isPreview?'/preview':''}/students/${r.studentId}?${query}`}>개인 분석</a></td></tr>)}
-    </Table>
-
-    <p className="admin-help">시험 응시자 순위는 가져온 성적 파일의 응시자 중 내 위치, 우리 학원 순위는 같은 과목을 응시한 학원생 중 내 위치입니다. 동점은 같은 순위로 표시합니다. 과목 순위와 총점 순위는 구분하며 순위를 합격 확률로 해석하지 않습니다.</p>
    </>)}
 
 

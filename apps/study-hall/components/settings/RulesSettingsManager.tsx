@@ -948,6 +948,15 @@ export function RulesSettingsManager({
             <h4 className="admin-label mt-4">공통 문항·과목 기준</h4>
             <div className="mt-2 grid gap-4 md:grid-cols-2">
               <label className="block">
+                <span className="admin-label mb-2 block">과락 기준 (%)</span>
+                <input className="w-full" type="number" required min={0} max={100} step={0.1}
+                  value={Number.isFinite(form.examAnalysis.common.failCutoffPercent) ? form.examAnalysis.common.failCutoffPercent : ""}
+                  onChange={(event) => setForm((current) => ({ ...current, examAnalysis: { ...current.examAnalysis,
+                    common: { ...current.examAnalysis.common, failCutoffPercent: event.target.value === "" ? Number.NaN : Number(event.target.value) },
+                  } }))} />
+                <span className="admin-help mt-2 block">과목 점수가 만점 대비 이 비율 미만이면 과락으로 표시합니다. 0이면 과락을 판정하지 않습니다. 합격 판정이 아닙니다.</span>
+              </label>
+              <label className="block">
                 <span className="admin-label mb-2 block">취약 과목 성취율 (%)</span>
                 <input className="w-full" type="number" required min={0} max={100} step={0.1}
                   value={Number.isFinite(form.examAnalysis.common.weakSubjectRatePercent) ? form.examAnalysis.common.weakSubjectRatePercent : ""}

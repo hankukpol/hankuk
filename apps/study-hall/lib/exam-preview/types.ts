@@ -20,6 +20,8 @@ export type PreviewData = {
   range: { from: string; to: string }; dates: string[];
   subjects: { id: string; name: string }[]; comparisons: Comparison[]; items: PreviewItem[];
   easyThreshold: number;
+  /** 학원 설정의 과락 기준(과목 만점 대비 %). 0 이면 과락을 판정하지 않는다. */
+  failCutoffPercent: number;
   legacyResults?: {id:string;date:string|null;total:number|null;rank:number|null;notes:string|null;scores:Record<string,number|null>}[];
   totalHistory?: ReturnType<typeof import('./total-history').totalHistory>;
   regular?: RegularStudentReport;

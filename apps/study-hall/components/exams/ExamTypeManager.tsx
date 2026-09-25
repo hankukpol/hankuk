@@ -4,7 +4,7 @@ import { MobileWorkspaceTools } from "@/components/ui/MobileWorkspaceTools";
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Copy, GripVertical, LoaderCircle, Plus, RefreshCcw, Save, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Copy, GripVertical, LoaderCircle, Plus, RefreshCcw, Save, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useId, useMemo, useState } from "react";
 import { toast } from "@/lib/sonner";
 
@@ -271,6 +271,16 @@ export function ExamTypeManager({ divisionSlug, initialExamTypes, studyTrackOpti
     }));
   }
 
+  // 과목 순서는 시험을 치르는 순서다. 성적 분석의 주간 성적표가 이 순서로 과목을 나열한다.
+  // 저장은 과목 id 를 유지하고 목록 위치만 displayOrder 로 쓰므로, 이미 가져온 성적과의 연결은 바뀌지 않는다.
+  function moveSubject(localId: string, step: -1 | 1) {
+    setForm((current) => {
+      const from = current.subjects.findIndex((subject) => subject.localId === localId), to = from + step;
+      if (from < 0 || to < 0 || to >= current.subjects.length) return current;
+      return { ...current, subjects: arrayMove(current.subjects, from, to) };
+    });
+  }
+
   async function refreshExamTypes(showToast = false) {
     setIsRefreshing(true);
     try {
@@ -459,6 +469,8 @@ export function ExamTypeManager({ divisionSlug, initialExamTypes, studyTrackOpti
                       <p className="admin-label">과목 {index + 1}</p>
                       <div className="flex items-center gap-2">
                         <label className="admin-label flex items-center gap-2"><input type="checkbox" checked={subject.isActive} onChange={(event) => setForm((current) => ({ ...current, subjects: current.subjects.map((item) => item.localId === subject.localId ? { ...item, isActive: event.target.checked } : item) }))} />활성</label>
+                        <button type="button" onClick={() => moveSubject(subject.localId, -1)} disabled={index === 0} className="admin-button admin-button-compact w-11 px-0" aria-label={`${subject.name.trim() || `과목 ${index + 1}`} 위로 이동`}><ArrowUp className="h-4 w-4" /></button>
+                        <button type="button" onClick={() => moveSubject(subject.localId, 1)} disabled={index === form.subjects.length - 1} className="admin-button admin-button-compact w-11 px-0" aria-label={`${subject.name.trim() || `과목 ${index + 1}`} 아래로 이동`}><ArrowDown className="h-4 w-4" /></button>
                         <button type="button" onClick={() => setForm((current) => ({ ...current, subjects: current.subjects.length > 1 ? current.subjects.filter((item) => item.localId !== subject.localId) : current.subjects }))} disabled={form.subjects.length <= 1} className="admin-button admin-button-compact admin-button-danger-outline w-11 px-0" aria-label="과목 삭제"><Trash2 className="h-4 w-4" /></button>
                       </div>
                     </div>

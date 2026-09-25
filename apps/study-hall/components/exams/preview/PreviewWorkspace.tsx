@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { AdminTabs } from "@/components/ui/AdminTabs";
 import { StudentSearchCombobox } from "@/components/ui/StudentSearchCombobox";
 import { MobileDisclosure } from "@/components/ui/MobileDisclosure";
-import { defaultMorningAnalysisRange } from "@/lib/morning-exam-analysis-schemas";
+import { recentMorningAnalysisRange } from "@/lib/morning-exam-analysis-schemas";
 import type { PreviewData } from "@/lib/exam-preview/types";
 import { PreviewReport } from "./PreviewReport";
 import styles from "./preview.module.css";
@@ -35,7 +35,7 @@ export function PreviewWorkspace({
   const [typeId, setTypeId] = useState(initial.examTypeId ?? "");
   const [date, setDate] = useState(initial.examDate ?? "");
   const [range, setRange] = useState({
-    ...defaultMorningAnalysisRange(),
+    ...recentMorningAnalysisRange(),
     ...(initial.from && initial.to
       ? { from: initial.from, to: initial.to }
       : {}),
@@ -101,22 +101,6 @@ export function PreviewWorkspace({
       : studentId
         ? `/${division}/admin/exams/students/${studentId}?${navigation}`
         : `/${division}/admin/exams?${new URLSearchParams({ tab: kind, view: "analysis", examTypeId: selected?.id ?? "", ...(kind === "morning" ? range : { examDate: selectedDate }) })}`;
-  function shortcutRange(which: "today" | "week" | "month") {
-    const today = defaultMorningAnalysisRange().to;
-    const d = new Date(`${today}T00:00:00Z`);
-    const weekday = d.getUTCDay() || 7;
-    return {
-      from:
-        which === "today"
-          ? today
-          : which === "month"
-            ? `${today.slice(0, 7)}-01`
-            : new Date(d.getTime() - (weekday - 1) * 86400000)
-                .toISOString()
-                .slice(0, 10),
-      to: today,
-    };
-  }
   return (
     <LearningProvider
       key={division + studentId}
@@ -163,9 +147,33 @@ export function PreviewWorkspace({
             )}
           </div>
         </div>
-        {!embeddedKind && (
+        {/* 학생 화면은 1차 학생 메뉴 아래에 분석 항목 2차 탭이 오므로, 시험 구분까지 탭이면
+            2차 탭 줄이 두 겹이 된다(DESIGN.md §5.5). 학생은 선택 칩, 관리자는 1차 폴더 탭을 쓴다. */}
+        {!embeddedKind && mode === "student" && (
+          <div className="admin-choice-group" aria-label="시험 구분">
+            {([
+              { id: "regular", label: "정기 모의고사" },
+              { id: "morning", label: "아침 모의고사" },
+            ] as const).map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                className="admin-choice-button admin-choice-button-auto"
+                aria-pressed={kind === option.id}
+                onClick={() => {
+                  setKind(option.id);
+                  setTypeId("");
+                  setDate("");
+                }}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        )}
+        {!embeddedKind && mode === "admin" && (
           <AdminTabs
-            variant={mode === "student" ? "secondary" : "primary"}
+            variant="primary"
             label="시험 구분"
             idPrefix="preview-kind"
             panelId="preview-result"
@@ -308,18 +316,18 @@ export function PreviewWorkspace({
                 <fieldset className={styles.quickPeriod}>
                   <legend className="admin-label">빠른 기간</legend>
                   <div className={styles.segmented}>
-                    {(["today", "week", "month"] as const).map((v, i) => {
-                      const target = shortcutRange(v);
+                    {([4, 8, 12] as const).map((weeks) => {
+                      const target = recentMorningAnalysisRange(weeks);
                       return (
                         <button
-                          key={v}
+                          key={weeks}
                           type="button"
                           aria-pressed={
                             range.from === target.from && range.to === target.to
                           }
                           onClick={() => setRange(target)}
                         >
-                          {["오늘", "이번 주", "이번 달"][i]}
+                          최근 {weeks}주
                         </button>
                       );
                     })}

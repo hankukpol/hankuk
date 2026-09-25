@@ -21,6 +21,7 @@ import { getExamAnalysisSettings } from "@/lib/services/settings.service";
 import {
   defaultMorningAnalysisRange,
   morningAnalysisRangeSchema,
+  recentMorningAnalysisRange,
 } from "@/lib/morning-exam-analysis-schemas";
 import { enrichSessions, ymd } from "./metrics";
 import type { PreviewData } from "./types";
@@ -84,8 +85,8 @@ export async function getExamPreview(
     kind === "regular"
       ? regularHistoryRange(examDate)
       : morningAnalysisRangeSchema.parse({
-          from: query.from ?? today.from,
-          to: query.to ?? today.to,
+          from: query.from ?? recentMorningAnalysisRange().from,
+          to: query.to ?? recentMorningAnalysisRange().to,
         });
   if (kind === "regular" && !/^\d{4}-\d{2}-\d{2}$/.test(examDate))
     throw badRequest("시험 날짜를 확인해주세요.");
@@ -118,6 +119,7 @@ export async function getExamPreview(
       (i) => kind === "morning" || i.date === examDate,
     ),
     easyThreshold: settings.common.easyMissedRatePercent,
+    failCutoffPercent: settings.common.failCutoffPercent,
     records: [],
   };
   const current = sessions.find((s) => ymd(s.examDate) === examDate);

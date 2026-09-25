@@ -15,6 +15,7 @@ test("admin setting drawers preserve drafts, form submission and list updates", 
   let staff: DivisionStaffAccount[] = [{ id: "assistant", userId: "user", email: "qa@example.test", name: "테스트 조교", role: "ASSISTANT", isActive: true, createdAt: "" }];
   const schedule: ExamScheduleItem = { id: "schedule", divisionId: "division", name: "필기 시험", type: "WRITTEN", examDate: "2026-10-10", description: "", isActive: true, dDayValue: 26, dDayLabel: "D-26", createdById: "qa", createdAt: "", updatedAt: "" };
   const template: ExamTypeItem = { id: "template", divisionId: "division", name: "정기 시험", category: "REGULAR", studyTrack: null, isActive: true, displayOrder: 0, createdAt: "", updatedAt: "", subjects: [{ id: "subject", examTypeId: "template", name: "과목", totalItems: 20, pointsPerItem: 5, maxScore: 100, displayOrder: 0, isActive: true }] };
+  let currentExamTypes: ExamTypeItem[] = [template];
   const writes: Array<{ url: string; method: string; body: Record<string, unknown> }> = [];
   const room = { id: "room", divisionId: "division", name: "자습실 A", columns: 3, rows: 2, aisleColumns: [], isActive: true, displayOrder: 0, seatsCount: 6, assignedStudentsCount: 0, createdAt: "", updatedAt: "" };
   const layout = { room, columns: 3, rows: 2, aisleColumns: [], seats: [] };
@@ -26,7 +27,7 @@ test("admin setting drawers preserve drafts, form submission and list updates", 
     requestAnimationFrame: (callback: FrameRequestCallback) => setTimeout(callback, 0), cancelAnimationFrame: clearTimeout,
     fetch: async (url: string, init?: RequestInit) => {
       if (url.endsWith("settings/templates")) {
-        const current = { periods: [], rooms: [], pointRules: [], examTypes: [template] };
+        const current = { periods: [], rooms: [], pointRules: [], examTypes: currentExamTypes };
         if (!init?.method) return new Response(JSON.stringify({ current, today: "2026-09-15", earliestCalculationDate: "2026-09-15" }));
         const body = JSON.parse(String(init.body)); writes.push({url,method:init.method,body});
         if (body.action === "preview") return new Response(JSON.stringify({ revision:"review", after:body.value.payload, changes:[{section:"설정",name:"name",before:"이전",after:"변경"}] }));
@@ -149,6 +150,30 @@ test("admin setting drawers preserve drafts, form submission and list updates", 
       assert.notEqual((body.subjects as Array<{ id?: string }>)[0].id, template.subjects[0].id);
       assert.equal(document.querySelector(".admin-drawer"), null);
     });
+    await t.test("template subject arrows reorder subjects and keep their IDs", async () => {
+      const ordered: ExamTypeItem = { ...template, subjects: [
+        { ...template.subjects[0], id: "constitution", name: "헌법", displayOrder: 0 },
+        { ...template.subjects[0], id: "criminal", name: "형법", displayOrder: 1 },
+        { ...template.subjects[0], id: "procedure", name: "형사소송법", displayOrder: 2 },
+      ] };
+      currentExamTypes = [ordered];
+      await act(async () => root.render(React.createElement(ExamTypeManager, { key: "ordered", divisionSlug: "police", initialExamTypes: [ordered], studyTrackOptions: [] })));
+      await tick();
+      await click(button("정기 시험"));
+      assert.equal(button("헌법 위로 이동", drawer()).disabled, true);
+      assert.equal(button("형사소송법 아래로 이동", drawer()).disabled, true);
+      await click(button("형사소송법 위로 이동", drawer()));
+      assert.equal(button("형사소송법 위로 이동", drawer()).disabled, false);
+      assert.equal(button("형법 아래로 이동", drawer()).disabled, true);
+      await submit("시험 템플릿 저장");
+      await click(button("변경 미리보기"));
+      await click(button("변경 적용"));
+      const body = (writes.at(-1)!.body as any).value.payload.examTypes.find((item: { id?: string }) => item.id === "template");
+      assert.deepEqual((body.subjects as Array<{ id?: string; name: string }>).map((subject) => [subject.id, subject.name]), [["constitution", "헌법"], ["procedure", "형사소송법"], ["criminal", "형법"]]);
+      assert.deepEqual((body.subjects as Array<{ displayOrder: number }>).map((subject) => subject.displayOrder), [0, 1, 2]);
+      currentExamTypes = [template];
+    });
+
     await t.test("student form reports draft state to its enclosing drawer", async () => {
       let state = { isDirty: false, isSaving: false };
       const onStateChange = (next: typeof state) => { state = next; };

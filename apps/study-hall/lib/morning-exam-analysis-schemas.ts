@@ -18,6 +18,17 @@ export function defaultMorningAnalysisRange(now = new Date()) {
   return { from: today, to: today };
 }
 
+/**
+ * 오늘까지 최근 N주(7N일). 성적 분석 화면의 기본 기간이다.
+ * 아침 모의고사는 과목을 한 주에 한 번씩 돌아가며 치르므로, 오늘 하루나 ‘이번 달’로는
+ * 과목별 회차가 추세 판단 최소 회수(movingAverageSessions)에 못 미친다(운영자 확인 2026-09-25).
+ */
+export function recentMorningAnalysisRange(weeks = 8, now = new Date()) {
+  const { to } = defaultMorningAnalysisRange(now);
+  const from = new Date(Date.parse(`${to}T00:00:00Z`) - (weeks * 7 - 1) * 86400000).toISOString().slice(0, 10);
+  return { from, to };
+}
+
 export const morningAnalysisRangeSchema = z.object({ from: dateSchema, to: dateSchema }).refine(value => {
   const span = Date.parse(value.to) - Date.parse(value.from);
   return span >= 0 && span <= 92 * 86400000;

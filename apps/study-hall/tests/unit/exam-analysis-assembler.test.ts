@@ -218,3 +218,33 @@ test("student history external rank is owned, division scoped, and distinct from
  assert.equal(assembleRegularSessions(bundle,"e","s1").find(row=>row.sessionId==="now")?.externalRank,null);
  assert.deepEqual(assembleRegularSessions(bundle,"e","missing"),[]);
 });
+
+test("인접 순위 비교는 위아래 5명씩 대칭이고, 끝자리에서는 있는 만큼만 주며 실명을 싣지 않는다", () => {
+  const bundle = fixture();
+  bundle.sessions = bundle.sessions.filter(row => row.id === "now");
+  // 13명을 100점부터 5점 간격으로 세운다. s07 이 정확히 가운데(7위)다.
+  const base = bundle.participants[0];
+  bundle.participants = Array.from({ length: 13 }, (_, i) => ({ ...base, sessionId: "now",
+    studentId: `s${String(i + 1).padStart(2, "0")}`, totalScore: 100 - i * 5, subjectScores: { a: 10, c: 10 } }));
+  bundle.students = bundle.participants.map((row, i) => ({ id: row.studentId, divisionId: "d",
+    name: `실명${i + 1}`, studentNumber: `9${String(i).padStart(4, "0")}` }));
+  bundle.responses = [];
+  bundle.targets = [];
+  const viewer = (studentId: string) => ({ role: "STUDENT" as const, studentId });
+  const ranksOf = (studentId: string) =>
+    assembleRegularStudentReport(bundle, studentId, viewer(studentId)).competitors.map(c => c.rank).sort((a, b) => a - b);
+
+  // 가운데 학생은 위 5명 + 아래 5명.
+  const middle = ranksOf("s07");
+  assert.deepEqual(middle, [2, 3, 4, 5, 6, 8, 9, 10, 11, 12]);
+  assert.equal(middle.filter(rank => rank < 7).length, 5, "위 5명");
+  assert.equal(middle.filter(rank => rank > 7).length, 5, "아래 5명");
+
+  // 1위는 위가 없고, 꼴찌는 아래가 없다. 반대쪽을 더 채워 주지는 않는다.
+  assert.deepEqual(ranksOf("s01"), [2, 3, 4, 5, 6]);
+  assert.deepEqual(ranksOf("s13"), [8, 9, 10, 11, 12]);
+
+  const report = assembleRegularStudentReport(bundle, "s07", viewer("s07"));
+  assert.ok(!JSON.stringify(report).includes("실명"), "비교 대상의 실명은 나가지 않는다");
+  for (const competitor of report.competitors) assert.match(competitor.studentNumber, /^\d{2}\*+$/);
+});

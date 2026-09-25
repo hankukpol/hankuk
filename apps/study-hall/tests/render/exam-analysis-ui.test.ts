@@ -137,6 +137,12 @@ function load(file: string, overrides: Record<string, unknown> = {}, globals: Re
       if (name === "recharts") return new Proxy({}, { get: () => ({ children }: { children: React.ReactNode }) => React.createElement("div", null, children) });
       if (name === "@/components/exams/ExamScoreChart") return { ExamScoreChart: () => React.createElement("p", null, "성적 추이 차트") };
       if (name === "@/components/ui/SlideOver") return { SlideOver: ({ open, children }: { open: boolean; children: React.ReactNode }) => open ? children : null };
+      // node 내장과 외부 패키지는 실제 구현을 그대로 쓴다. 아래 로컬 해석기에 맡기면
+      // lib/zod.ts, lib/node:crypto.ts 를 찾다 ENOENT 로 죽는다.
+      // (이 require 는 객체 메서드라 자기 이름을 가리지 않으므로 node 의 require 가 잡힌다.)
+      if (!name.startsWith("@/") && !name.startsWith(".") && !name.startsWith("/")) return require(name);
+      // CSS 모듈에서 읽는 값은 클래스 이름뿐이다. 이름을 그대로 돌려주면 className 검증이 그대로 통한다.
+      if (name.endsWith(".css")) return { default: new Proxy({}, { get: (_target, key) => String(key) }) };
       const local = name.startsWith("@/") ? name.slice(2) : path.relative(root, path.resolve(path.dirname(filename), name));
       return load(fs.existsSync(path.resolve(root, `${local}.tsx`)) ? `${local}.tsx` : `${local}.ts`, overrides, globals, cache);
     },
@@ -274,63 +280,64 @@ test("secondary tabs: both analyses are enabled and import busy state still guar
   assert.match(source, /disabled: busy/);
 });
 
-test("student SSR: requests own viewer, rejects unknown session selection and preserves morning and legacy results", async () => {
-  const calls: unknown[][] = [];
-  const sessionCalls: unknown[][] = [];
-  let scenario = "participated";
-  const empty = () => null;
+test("student SSR: 학생은 세션의 본인만 보고, 주입한 studentId 와 학생 명단은 화면에 닿지 않는다", async () => {
   const pass = ({ children }: { children: React.ReactNode }) => children;
-  const exam = { id: "legacy", examTypeId: "type", examTypeName: "정기 시험", examRound: 1, examDate: "2026-09-08", totalScore: 50, rankInClass: 1, subjects: [], notes: null };
-  const Component = load("app/[division]/student/exams/page.tsx", {
-    "next/dynamic": { default: () => empty },
-    "next/navigation": { notFound: () => { throw new Error("404"); }, redirect: () => { throw new Error("redirect"); } },
-    "lucide-react": { ChartNoAxesColumn: empty, SlidersHorizontal: empty, X: empty, Printer: empty },
-    "@/components/exams/ExamScoreChartLoader": { ExamScoreChartLoader: empty },
-    "@/components/exams/ExamTabLayout": { ExamTabLayout: ({ morningContent, regularContent }: { morningContent: React.ReactNode; regularContent: React.ReactNode }) => React.createElement("main", null, morningContent, regularContent) },
-    "@/components/exams/MorningExamStudentView": { MorningExamStudentView: () => React.createElement("p", null, "아침 기존 기록") },
-    "@/components/student-view/StudentPortalFrame": { StudentPortalFrame: pass },
-    "@/components/student-view/StudentPortalUi": { PortalEmptyState: empty, PortalMetricCard: empty, PortalSectionHeader: empty, portalInsetClass: "", portalSectionClass: "" },
-    "@/lib/auth": { requireDivisionStudentAccess: async () => ({ studentId: "own-id" }) },
-    "@/lib/errors": { isNotFoundError: (error: { status?: number }) => error.status === 404 },
-    "@/lib/services/exam.service": { listExamTypes: async () => [{ id: "type", name: "정기 시험", category: "REGULAR", isActive: true }], listStudentExamResults: async () => [exam] },
-    "@/lib/services/exam-analysis.service": {
-      listRegularSessions: async (...args: unknown[]) => {
-        sessionCalls.push(args);
-        // A manual score at the same type/date is not participation. Without
-        // the student filter this simulates the shared imported session listing.
-        return scenario === "manual" && args[2] === "own-id" ? [] : [{ sessionId: "own-session", examDate: "2026-09-08", participantCount: 8 }];
-      },
-      getRegularStudentReport: async (...args: unknown[]) => {
-        calls.push(args);
-        if (scenario === "missing" || scenario === "manual") throw Object.assign(new Error("missing analysis"), { status: 404 });
-        if (scenario === "forbidden") throw Object.assign(new Error("forbidden"), { status: 403 });
-        return report;
-      },
+  let workspace: Record<string, any> = {}; // eslint-disable-line @typescript-eslint/no-explicit-any
+  let guard: unknown[] = [];
+  let adminChecks = 0;
+  let gate = true;
+  // null 이면 호출 자체가 잘못이다. 학생 화면은 명단을 읽어서도 안 된다.
+  let roster: { id: string; name: string; studentNumber: string }[] | null = null;
+  const { PreviewPage } = load("components/exams/preview/PreviewPage.tsx", {
+    "next/navigation": { notFound: () => { throw new Error("page404"); } },
+    "@/lib/exam-preview/gate": { isExamPreviewEnabled: () => gate },
+    "@/lib/auth": {
+      requireDivisionStudentAccess: async () => ({ studentId: "own-id" }),
+      requireDivisionAdminAccess: async () => { adminChecks++; },
     },
-    "@/lib/services/morning-exam.service": { listStudentMorningExamWeeks: async () => [] },
-    "@/lib/services/score-target.service": { listScoreTargets: async () => [] },
-    "@/lib/services/settings.service": { getDivisionTheme: async () => ({}), getDivisionFeatureSettings: async () => ({ featureFlags: { examManagement: true } }) },
-    "@/lib/services/student.service": { getStudentDetail: async () => ({}) },
-  }).default;
-  const html = renderToStaticMarkup(await Component({ params: { division: "test" }, searchParams: { analysisSession: "type:2026-09-09" } }));
-  assert.equal(calls.length, 1);
-  assert.deepEqual(sessionCalls[0], ["test", "type", "own-id"]);
-  assert.deepEqual(JSON.parse(JSON.stringify(calls[0])), ["test", "type", "2026-09-08", "own-id", { role: "STUDENT", studentId: "own-id" }]);
-  assert.ok(html.includes("아침 기존 기록")); assert.ok(html.includes("시험 메모가 없습니다"));
-  assert.ok(!html.includes('value="type:2026-09-09"'));
-  scenario = "manual";
-  calls.length = 0;
-  const manual = renderToStaticMarkup(await Component({ params: { division: "test" }, searchParams: { analysisSession: "type:2026-09-08" } }));
-  assert.equal(calls.length, 0);
-  assert.ok(manual.includes("가져온 문항 분석 자료가 없습니다"));
-  assert.ok(manual.includes("시험 메모가 없습니다"));
-  assert.ok(manual.includes("아침 기존 기록"));
-  scenario = "missing";
-  const missing = renderToStaticMarkup(await Component({ params: { division: "test" } }));
-  assert.ok(missing.includes("선택한 시험일의 문항 분석 자료가 없습니다"));
-  assert.ok(missing.includes("시험 메모가 없습니다"));
-  scenario = "forbidden";
-  await assert.rejects(Component({ params: { division: "test" } }), /forbidden/);
+    "@/lib/division-feature-guard": { redirectIfDivisionFeatureDisabled: async (...args: unknown[]) => { guard = args; } },
+    "@/lib/services/exam.service": { listExamTypes: async () => [{ id: "type", name: "정기 시험", category: "REGULAR", isActive: true }] },
+    "@/lib/services/student.service": {
+      getStudentDetail: async () => ({ id: "own-id", name: "본인" }),
+      listStudents: async () => { if (!roster) throw new Error("학생 화면에서 명단을 읽으면 안 된다"); return roster; },
+    },
+    "@/lib/services/settings.service": {
+      getDivisionTheme: async () => ({}),
+      getDivisionFeatureSettings: async () => ({ featureFlags: { examManagement: true, attendanceManagement: true, pointManagement: true } }),
+    },
+    "@/components/student-view/StudentPortalFrame": { StudentPortalFrame: pass },
+    "./PreviewWorkspace": { PreviewWorkspace: (props: Record<string, any>) => { workspace = props; return React.createElement("p", null, "분석 작업창"); } }, // eslint-disable-line @typescript-eslint/no-explicit-any
+  });
+
+  // params·searchParams 로 남의 studentId 를 넣어도 인증 세션의 학생이 이긴다.
+  const html = renderToStaticMarkup(await PreviewPage({
+    params: { division: "test", studentId: "attacker-id" },
+    searchParams: { studentId: "attacker-id", analysisSession: "type:2026-09-08", morningType: "morning", morningFrom: "2026-06-17" },
+    mode: "student", previewOnly: false,
+  }));
+  assert.equal(workspace.studentId, "own-id");
+  assert.ok(!html.includes("attacker-id"));
+  assert.deepEqual(JSON.parse(JSON.stringify(workspace.students)), []);
+  assert.equal(workspace.preview, false);
+  assert.equal(adminChecks, 0);
+  assert.deepEqual(guard, ["test", "examManagement"]);
+  assert.ok(html.includes("분석 작업창"));
+  // searchParams 는 초기 선택으로 정규화되고, morning* 가 있으면 morning 이 이긴다.
+  assert.deepEqual(JSON.parse(JSON.stringify(workspace.initial)), { kind: "morning", examTypeId: "morning", examDate: "2026-09-08", from: "2026-06-17" });
+
+  // 관리자 화면은 관리자 인증을 거치고 명단을 받으며, 학생 포털 껍데기를 쓰지 않는다.
+  roster = [{ id: "s1", name: "학생 1", studentNumber: "P-2026-001" }];
+  const admin = renderToStaticMarkup(await PreviewPage({
+    params: { division: "test", studentId: "s1" }, searchParams: {}, mode: "admin", previewOnly: false,
+  }));
+  assert.equal(adminChecks, 1);
+  assert.equal(workspace.studentId, "s1");
+  assert.deepEqual(JSON.parse(JSON.stringify(workspace.students)), roster);
+  assert.equal(admin, "<p>분석 작업창</p>");
+
+  // 미리보기 전용 화면은 기능이 꺼져 있으면 404 다.
+  gate = false;
+  await assert.rejects(PreviewPage({ params: { division: "test" }, searchParams: {}, mode: "student", previewOnly: true }), /page404/);
 });
 
 test("cohort request: stale reply and unmount are ignored; error has retry and old results are cleared", async () => {

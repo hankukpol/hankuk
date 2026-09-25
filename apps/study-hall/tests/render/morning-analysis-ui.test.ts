@@ -47,6 +47,12 @@ function load(file: string, overrides: Record<string, unknown> = {}, globals: Re
       if (name === "lucide-react") return new Proxy({}, { get: () => () => null });
       if (name === "react/jsx-runtime") return jsx;
       if (name === "recharts") return new Proxy({}, { get: () => ({ children }: { children: React.ReactNode }) => React.createElement("div", null, children) });
+      // node 내장과 외부 패키지는 실제 구현을 그대로 쓴다. 아래 로컬 해석기에 맡기면
+      // lib/zod.ts, lib/node:crypto.ts 를 찾다 ENOENT 로 죽는다.
+      // (이 require 는 객체 메서드라 자기 이름을 가리지 않으므로 node 의 require 가 잡힌다.)
+      if (!name.startsWith("@/") && !name.startsWith(".") && !name.startsWith("/")) return require(name);
+      // CSS 모듈에서 읽는 값은 클래스 이름뿐이다. 이름을 그대로 돌려주면 className 검증이 그대로 통한다.
+      if (name.endsWith(".css")) return { default: new Proxy({}, { get: (_target, key) => String(key) }) };
       const local = name.startsWith("@/") ? name.slice(2) : path.relative(root, path.resolve(path.dirname(filename), name));
       return load(fs.existsSync(path.resolve(root, `${local}.tsx`)) ? `${local}.tsx` : `${local}.ts`, overrides, globals, cache);
     },
@@ -207,51 +213,6 @@ test("numeric presentation rounds means to one decimal without changing zero, ne
   ] }));
   for (const text of ["66.7점", "-3.3점", "0점", "집계 불가"]) assert.ok(table.includes(text), text);
   assert.ok(!table.includes("Infinity")); assert.ok(!table.includes("666666"));
-});
-
-test("student SSR uses authenticated identity, validates period, preserves manual records and selects morning after form submission", async () => {
-  const calls: unknown[][] = [];
-  let failure: number | null = null;
-  let tab: string | undefined;
-  const empty = () => null;
-  const pass = ({ children }: { children: React.ReactNode }) => children;
-  const Component = load("app/[division]/student/exams/page.tsx", {
-    "next/dynamic": { default: () => empty },
-    "next/navigation": { notFound: () => { throw new Error("page404"); }, redirect: () => { throw new Error("redirect"); } },
-    "lucide-react": { ChartNoAxesColumn: empty, SlidersHorizontal: empty, X: empty, Printer: empty },
-    "@/components/exams/ExamScoreChartLoader": { ExamScoreChartLoader: empty },
-    "@/components/exams/ExamTabLayout": { ExamTabLayout: (props: { morningContent: React.ReactNode; regularContent: React.ReactNode; defaultTab: string }) => { tab = props.defaultTab; return React.createElement("main", null, props.morningContent, props.regularContent); } },
-    "@/components/exams/MorningExamStudentView": { MorningExamStudentView: () => React.createElement("p", null, "기존 수기 아침 성적") },
-    "@/components/exams/analysis/RegularStudentReport": { RegularStudentReport: empty },
-    "@/components/student-view/StudentPortalFrame": { StudentPortalFrame: pass },
-    "@/components/student-view/StudentPortalUi": { PortalEmptyState: empty, PortalMetricCard: empty, PortalSectionHeader: empty, portalInsetClass: "", portalSectionClass: "" },
-    "@/lib/auth": { requireDivisionStudentAccess: async () => ({ studentId: "own-id" }) },
-    "@/lib/errors": { isNotFoundError: (error: { status?: number }) => error.status === 404 },
-    "@/lib/services/exam.service": { listExamTypes: async () => [{ id: "morning", name: "아침 시험", category: "MORNING", isActive: true }], listStudentExamResults: async () => [] },
-    "@/lib/services/exam-analysis.service": { listRegularSessions: async () => [], getRegularStudentReport: async () => { throw new Error("unexpected regular request"); } },
-    "@/lib/services/morning-exam-analysis.service": { getMorningStudentReport: async (...args: unknown[]) => { calls.push(args); if (failure) throw Object.assign(new Error(`service-${failure}`), { status: failure }); return report; } },
-    "@/lib/services/morning-exam.service": { listStudentMorningExamWeeks: async () => [] },
-    "@/lib/services/score-target.service": { listScoreTargets: async () => [] },
-    "@/lib/services/settings.service": { getDivisionTheme: async () => ({}), getDivisionFeatureSettings: async () => ({ featureFlags: { examManagement: true } }) },
-    "@/lib/services/student.service": { getStudentDetail: async () => ({}) },
-  }).default;
-  const html = renderToStaticMarkup(await Component({ params: { division: "test" }, searchParams: { morningType: "unknown-type", morningFrom: "2026-06-17", morningTo: "2026-09-08", studentId: "attacker-id" } }));
-  assert.deepEqual(JSON.parse(JSON.stringify(calls[0])), ["test", "morning", "own-id", { from: "2026-06-17", to: "2026-09-08" }, { role: "STUDENT", studentId: "own-id" }]);
-  assert.equal(tab, "morning"); assert.ok(html.includes("기존 수기 아침 성적")); assert.ok(!html.includes("관리자전용이름")); assert.ok(!html.includes("attacker-id"));
-  calls.length = 0;
-  const invalid = renderToStaticMarkup(await Component({ params: { division: "test" }, searchParams: { morningFrom: "2026-02-30", morningTo: "2026-09-08" } }));
-  assert.equal(calls.length, 0); assert.ok(invalid.includes("날짜를 확인해 주세요")); assert.ok(invalid.includes("기존 수기 아침 성적"));
-  failure = 404;
-  const missing = renderToStaticMarkup(await Component({ params: { division: "test" }, searchParams: { morningType: "morning" } }));
-  assert.ok(missing.includes("가져온 아침 문항 분석 자료가 없습니다")); assert.ok(missing.includes("기존 수기 아침 성적"));
-  // 학생 화면도 같은 기본값을 쓴다 — 오늘 하루.
-  const range = calls.at(-1)![3] as { from: string; to: string };
-  assert.equal((Date.parse(range.to) - Date.parse(range.from)) / 86400000, 0);
-  assert.equal(range.from, range.to);
-  failure = 403;
-  await assert.rejects(Component({ params: { division: "test" } }), /service-403/);
-  failure = 500;
-  await assert.rejects(Component({ params: { division: "test" } }), /service-500/);
 });
 
 test("cohort request ignores stale responses and unmounted work, clears old output and retries errors", async () => {

@@ -55,6 +55,8 @@ function mount(category = "MORNING") {
     require: (name: string) => {
       if (name === "react") return hooks;
       if (name === "next/navigation") return { useRouter: () => ({ refresh: () => refreshes++ }) };
+      // esModuleInterop 없이 transpile 하므로 기본 import 는 default 를 읽는다.
+      if (name === "next/link") return { default: "link" };
       if (name === "@/components/exams/import/ExamImportHistory") return { ExamImportHistory: "history" };
       if (name === "react/jsx-runtime") return {
         Fragment: "fragment",

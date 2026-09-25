@@ -188,7 +188,7 @@ export function assembleRegularStudentReport(bundle: RegularRawBundle, studentId
       advice: buildAdvice(subjectStats.map(s => ({ name: s.name, my: s.my, fullScore: s.fullScore, avg: s.externalAvg ?? s.my, grade: s.grade })), balance) },
     distribution: distribution(p.hist, p.session.fullScore, me.totalScore),
     items: itemDiagnostics(p.diagnosticItems.filter(row => Object.hasOwn(me.subjectScores, row.subjectId)), p.responses.filter(row => row.studentId === studentId), bundle.settings.common),
-    competitors: ordered.slice(Math.max(0, index - 5), index).concat(ordered.slice(index + 1, index + 5)).map(row => ({ studentNumber: mask(p.students.get(row.studentId)!.studentNumber), rank: p.ranks.get(row.studentId)!, total: row.totalScore, subjectScores: { ...row.subjectScores } })),
+    competitors: ordered.slice(Math.max(0, index - 5), index).concat(ordered.slice(index + 1, index + 6)).map(row => ({ studentNumber: mask(p.students.get(row.studentId)!.studentNumber), rank: p.ranks.get(row.studentId)!, total: row.totalScore, subjectScores: { ...row.subjectScores } })),
     // Explicit projection prevents accidental extra student fields leaking from trend dependencies.
     trend: (bundle.trend ?? []).filter(row => row.examTypeId === bundle.examTypeId).map(row => ({ id: row.id, examTypeId: row.examTypeId, examTypeName: row.examTypeName, examDate: row.examDate, totalScore: row.totalScore, rankInClass: row.rankInClass,
       notes: viewer.role === "STUDENT" ? null : row.notes, subjects: row.subjects.map(s => ({ subjectId: s.subjectId, name: s.name, totalItems: s.totalItems, alternateGroup: s.alternateGroup, pointsPerItem: s.pointsPerItem, maxScore: s.maxScore, score: s.score })) })),

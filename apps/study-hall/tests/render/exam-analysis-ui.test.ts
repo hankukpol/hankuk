@@ -453,3 +453,20 @@ test('personal report exposes six monthly slots and explains missing months', ()
  assert.ok(html.includes('0 / 100'));
  assert.ok(html.includes('25%'));
 });
+
+test("print-only text stays hidden across the whole report screen, not only inside wrap cells", () => {
+  // 인쇄 팝업은 자체 스타일로 다시 켠다. 화면에서 .wrapCell 밖에 두면 버튼 글자와 두 번 찍힌다.
+  const css = fs.readFileSync(path.join(root, "components/exams/preview/preview.module.css"), "utf8");
+  assert.match(css, /\.reportTables :global\(\.preview-print-only\)\s*\{\s*display: none;/);
+  assert.doesNotMatch(css, /\.wrapCell :global\(\.preview-print-only\)/);
+  const print = fs.readFileSync(path.join(root, "components/exams/preview/PreviewPrintButton.tsx"), "utf8");
+  assert.match(print, /\.preview-print-only \{ display: inline; \}/);
+});
+
+test("report styles never draw a thick left accent bar on rows or callouts", () => {
+  // DESIGN.md §5.8: 본인·현재 행은 accent-soft 배경과 문구로만, 안내 상자는 1px accent-line 테두리로 알린다.
+  const css = fs.readFileSync(path.join(root, "components/exams/preview/preview.module.css"), "utf8");
+  assert.doesNotMatch(css, /box-shadow:\s*inset\s+[2-9]px\s+0/);
+  assert.doesNotMatch(css, /border-(left|inline-start):\s*[2-9]px/);
+  assert.match(css, /\.currentStudent > :is\(td, th\) \{ background: var\(--admin-accent-soft\)/);
+});

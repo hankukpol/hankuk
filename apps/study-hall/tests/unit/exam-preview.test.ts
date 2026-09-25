@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { enrichSessions, pairedComparison, reviewGroups, topWrongBySession } from '../../lib/exam-preview/metrics';
+import { enrichSessions, pairedComparison, reviewGroups, topWrongBySession, visibleDistributionBins } from '../../lib/exam-preview/metrics';
 import { isExamPreviewEnabled } from '../../lib/exam-preview/gate';
 import type { RegularRawSource } from '../../lib/exam-analysis-types';
 
@@ -73,4 +73,15 @@ test('canonical reports preserve legacy student query links and ignore array inp
  assert.deepEqual(normalizeAnalysisSelection({analysisSession:'archived:2026-05-16'}),{kind:'regular',examTypeId:'archived',examDate:'2026-05-16'});
  assert.deepEqual(normalizeAnalysisSelection({morningType:'morning',morningFrom:'2026-09-01',morningTo:'2026-09-30'}),{kind:'morning',examTypeId:'morning',from:'2026-09-01',to:'2026-09-30'});
  assert.deepEqual(normalizeAnalysisSelection({examTypeId:['foreign'],analysisSession:'invalid'}),{});
+});
+
+test('점수 분포는 앞뒤 빈 구간을 잘라내고 내 구간과 사이의 빈 구간은 남긴다',()=>{
+ const bins=[0,0,2,0,7,3,0,0].map(count=>({count}));
+ assert.deepEqual(visibleDistributionBins(bins,4).map(r=>r.index),[2,3,4,5]);
+ // 내 구간이 끝쪽 빈 구간이어도 남긴다.
+ assert.deepEqual(visibleDistributionBins(bins,7).map(r=>r.index),[2,3,4,5,6,7]);
+ assert.deepEqual(visibleDistributionBins(bins,0).map(r=>r.index),[0,1,2,3,4,5]);
+ // 원래 번호를 돌려줘야 마지막 구간의 ‘점 이하’ 판정이 틀어지지 않는다.
+ assert.equal(visibleDistributionBins(bins,null).at(-1)!.index,5);
+ assert.deepEqual(visibleDistributionBins([{count:0},{count:0}],null),[]);
 });

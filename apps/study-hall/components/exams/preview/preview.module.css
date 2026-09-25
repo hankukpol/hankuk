@@ -23,7 +23,9 @@
 .radar { height: 384px; width: 100%; }
 .wrapCell { white-space: normal !important; overflow-wrap: anywhere; }
 .wrapCell button { white-space: normal; }
-.wrapCell :global(.preview-print-only) { display: none; }
+/* 인쇄 전용 글자는 화면 어디서도 보이면 안 된다. 인쇄 팝업은 자체 스타일로 다시 켠다(PreviewPrintButton).
+   .wrapCell 안에서만 숨기면 그 밖의 표(과목별 학습 우선순위 등)에서 버튼 글자와 두 번 찍힌다. */
+.reportTables :global(.preview-print-only) { display: none; }
 @media (max-width: 767px) { .radar { height: 320px; } }
 
 .quickPeriod { border: 0; margin: 0; padding: 0; min-width: 0; }
@@ -47,8 +49,8 @@
 
 /* Report body rows share the existing control-height token; headers retain their own layout. */
 .reportTables tbody > tr > :is(td, th) { height: var(--admin-control-height); }
+/* 본인·현재 행은 accent-soft 배경과 문구('본인', '내 점수 구간')로만 알린다. 왼쪽 굵은 막대는 쓰지 않는다(DESIGN.md §5.8). */
 .reportTables .currentStudent > :is(td, th) { background: var(--admin-accent-soft); color: var(--admin-accent); font-weight: 600; }
-.reportTables .currentStudent > :first-child { box-shadow: inset 3px 0 var(--admin-accent); }
 .reportTables table tbody > tr > :is(td, th) :global(button.admin-table-link) { min-height: 0; padding: 0; font: inherit; color: var(--admin-accent); font-weight: 600; background: none; border: 0; }
 .reportTables :global(.admin-table-frame) table > tbody > tr.currentStudent > :is(td, th) { background: var(--admin-accent-soft); color: var(--admin-accent); }
 .reportTables .items table tbody > tr > td :global(button.admin-table-link) { min-height: var(--admin-control-height); min-width: var(--admin-control-height); padding: 0; border: 0 !important; background: none; }
@@ -72,7 +74,7 @@
 .itemTabs :global(.admin-subtab[data-active="true"]) { background: var(--admin-accent-soft); color: var(--admin-accent); }
 .mainTabs { overflow: visible; }
 .mainTabs :global(.admin-subtab) { white-space: normal; word-break: keep-all; }
-.selectionContext { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 16px; background: var(--admin-accent-soft); border-left: 4px solid var(--admin-accent); }
+.selectionContext { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 16px; background: var(--admin-accent-soft); border: 1px solid var(--admin-accent-line); }
 @media screen and (max-width: 767px) {
  .desktopCell { display: none !important; }
  .mobileCell { display: block; margin-top: 8px; font-weight: 400; }

@@ -87,3 +87,11 @@ export function topWrongBySession(items: PreviewItem[]) {
   return sessions.flatMap(sessionId => items.filter(item => item.sessionId === sessionId && item.externalRate !== null && Number.isFinite(item.externalRate) && item.externalRate >= 0 && item.externalRate <= 100)
     .sort((a, b) => a.externalRate! - b.externalRate! || a.itemNo - b.itemNo).slice(0, 5));
 }
+
+/** Drop the empty bins before the first and after the last occupied one. My own bin always stays; empty bins between stay as real gaps. */
+export function visibleDistributionBins<T extends { count: number }>(bins: T[], myIndex: number | null) {
+  const kept = bins.flatMap((bin, index) => (bin.count > 0 || index === myIndex ? [index] : []));
+  if (!kept.length) return [];
+  const first = Math.min(...kept), last = Math.max(...kept);
+  return bins.slice(first, last + 1).map((bin, offset) => ({ bin, index: first + offset }));
+}

@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { configurationForDate } from "@/lib/academy-configuration-history";
-import { examAttendancePeriod } from "@/lib/exam-attendance";
+import { cumulativeAttendancePeriod } from "@/lib/exam-attendance";
 import { kstDate } from "@/lib/management-policy";
 import { normalizeYmdDate } from "@/lib/date-utils";
 import { badRequest, conflict, notFound } from "@/lib/errors";
@@ -57,13 +57,13 @@ export async function importCumulativeAttendance(slug: string, actorId: string, 
   if (date > kstDate()) throw badRequest("아직 치르지 않은 시험은 출석에 반영할 수 없습니다.");
   const digest = createHash("sha256").update(files.score).update(files.analysis ?? Buffer.alloc(0)).digest("hex");
   function preview(context: Context): ParticipationPreview {
-    const periodId = examAttendancePeriod(context.configuration.settings, date);
+    const periodId = cumulativeAttendancePeriod(context.configuration.settings, date);
     const period = context.configuration.periods.find(p => p.id === periodId && p.isActive);
-    if (!periodId || !period) throw badRequest("이 시험일에 적용된 아침모의고사 출석 교시가 없습니다. 운영 규칙의 아침시험 시작일·요일·휴강일과 출석 연동 교시를 확인해주세요.");
+    if (!periodId || !period) throw badRequest("이 시험일에 적용된 아침모의고사 출석 교시가 없습니다. 운영 규칙의 관리규정·휴대폰 → 교시·출결에서 아침 교시의 관리 요일·출석 연동을, 자동 상벌점에서 시작일·휴강일을 확인해주세요.");
     const result = participationRows(file, context.students, context.attendance, date, periodId);
     result.rows.sort((a, b) => a.studentNumber.localeCompare(b.studentNumber));
     const existing = context.attendance.filter(a => a.date === date && a.periodId === periodId).sort((a, b) => a.studentId.localeCompare(b.studentId));
-    const value = { date, periodId, periodName: period.name, fileCount: file.students.length, ...result };
+    const value = { date, periodId, periodName: period.name, fileCount: file.students.length, ...(file.ignoredIdentifierCount ? { ignoredIdentifierCount: file.ignoredIdentifierCount } : {}), ...result };
     const token = createHash("sha256").update(JSON.stringify({ slug, digest, value, existing, settings: context.configuration.settings })).digest("hex");
     return { ...value, token };
   }

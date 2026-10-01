@@ -106,7 +106,9 @@ test("student attendance calendar derives class and ordinary excused labels and 
   }
 });
 
-test("student detail separates class from ordinary excused in weekly cells and history", () => {
+test("student detail separates class from ordinary excused in weekly cells and history", (t) => {
+  // Keep the current-month filter aligned with this test's September fixtures.
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-09-14T12:00:00+09:00") });
   const html = renderWithRouter(
     React.createElement(StudentDetailTabs, {
       divisionSlug: "police",

@@ -9,6 +9,17 @@ export function examAttendancePeriod(settings: { managementPolicy?: unknown; exa
   return parsed.data.morningExam.periodId || null;
 }
 
+/** Explicit attendance-only imports use the academy's attendance schedule.
+ * A cumulative exam need not be a graded/automatic-penalty exam weekday. */
+export function cumulativeAttendancePeriod(settings: { managementPolicy?: unknown; examPointAutomation?: unknown }, day: string) {
+  const parsed = managementPolicySchema.safeParse(settings.managementPolicy);
+  if (!parsed.success || !isPolicyEffective(parsed.data, day) || !parsed.data.morningExam.syncAttendance) return null;
+  const config = parseExamPointAutomation(settings.examPointAutomation);
+  const weekday = new Date(`${day}T00:00:00Z`).getUTCDay();
+  if (!config.morningStartDate || day < config.morningStartDate || config.morningExcludedDates.includes(day) || !parsed.data.morningExam.weekdays.includes(weekday)) return null;
+  return parsed.data.morningExam.periodId || null;
+}
+
 /** Only a persisted, matched grading participant proves attendance, including zero scores. */
 export function desiredExamAttendance(source: ExamPointSource, day: string) {
   const sessions = source.sessions.filter(s => s.category === "MORNING" && s.examDate === day);

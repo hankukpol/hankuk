@@ -8,7 +8,7 @@ import { CohortWeaknessTable } from './CohortWeaknessTable';
 import { AdminTabs } from '@/components/ui/AdminTabs';
 import { PreviewPrintButton } from './PreviewPrintButton';
 import { average, pairedComparison, reviewGroups } from '@/lib/exam-preview/metrics';
-import type { Comparison, PreviewData, PreviewItem } from '@/lib/exam-preview/types';
+import type { PreviewData, PreviewItem } from '@/lib/exam-preview/types';
 import { PreviewTrend } from './PreviewCharts';
 import { ReferenceScoreStrip, ReferenceSubjectRadar } from './ReferenceSummary';
 import styles from './preview.module.css';

@@ -74,6 +74,7 @@ export function CumulativeAttendanceImport({ divisionSlug }: { divisionSlug: str
       {preview && <>
         <h2 className="admin-section-title">{preview.date} · {preview.periodName}</h2>
         <p className="admin-help">파일 {preview.fileCount}명 / 학원 미매칭 {preview.unmatchedCount}명 제외 / 선택 {count}명</p>
+        {!!preview.ignoredIdentifierCount && <p className="admin-notice admin-notice-warning" role="status">수험번호가 없는 답안 {preview.ignoredIdentifierCount}건은 학생을 확인할 수 없어 제외했습니다. 해당 답안은 원본 채점 프로그램에서 수험번호를 확인해주세요.</p>}
         <p className="admin-help">답안이 있으면 0점이어도 응시입니다. 답안이 비었거나 파일에 없는 학생은 응시·미응시를 직접 선택하세요. 기존 응시·사유 미응시·휴가는 보존하며, 기존 미응시를 바꾸려면 해당 학생을 선택하세요.</p>
         {preview.unmatchedCount === preview.fileCount && <p className="admin-notice admin-notice-warning">학원 학생과 일치하는 수험번호가 없어 반영할 수 없습니다.</p>}
         <div className="admin-table-frame" role="region" aria-label="누적시험 응시 반영 미리보기" tabIndex={0}>

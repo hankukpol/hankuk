@@ -11,7 +11,7 @@ if (!base || !/^http:\/\/127\.0\.0\.1:\d+$/.test(base) || process.env.MOCK_MODE 
   throw new Error("A dedicated isolated mock runtime is required.");
 
 test("attendance-only HTTP import preserves scores, protects leave, rejects stale/foreign requests and survives reload", async () => {
-  const day = "2026-09-14";
+  const day = "2026-09-17"; // Thursday: attendance enabled, grading automation excluded.
   let periodId = "";
   const ids: string[] = [];
   await updateMockState(state => {
@@ -19,7 +19,7 @@ test("attendance-only HTTP import preserves scores, protects leave, rejects stal
     const periods = state.periodsByDivision[slug]; periodId = periods[0].id;
     const policy = { ...createAcademyPolicyDraft(day, periods), enabled: true, morningExam: { periodId, weekdays: [1, 2, 3, 4, 5], syncAttendance: true } };
     Object.assign(state.divisionSettingsByDivision[slug], { managementPolicy: policy });
-    state.divisionSettingsByDivision[slug].examPointAutomation = parseExamPointAutomation({ enabled: false, morningStartDate: day, morningWeekdays: [1, 2, 3, 4, 5] });
+    state.divisionSettingsByDivision[slug].examPointAutomation = parseExamPointAutomation({ enabled: false, morningStartDate: day, morningWeekdays: [1, 2, 3, 5] });
     state.academyApplications = state.academyApplications.filter(a => a.divisionId !== divisionId);
     state.studentsByDivision[slug].slice(0, 5).forEach((student, index) => {
       student.studentNumber = String(90001 + index); student.name = `출석검증${index + 1}`;
@@ -36,6 +36,9 @@ test("attendance-only HTTP import preserves scores, protects leave, rejects stal
   assert.equal(login.status, 200);
   const cookie = login.headers.getSetCookie().map(value => value.split(";")[0]).join("; ");
   const fixture = morningObjectiveFixture(); fixture.score[0][5] = "헌법/범죄학"; fixture.errata[8].fill(null, 5);
+  fixture.moon[1][1] = day;
+  fixture.score.push(["", "UNIDENTIFIED", 0, "R", "", 0, 0]);
+  fixture.errata.push(["", "UNIDENTIFIED", 0, "R", "", "1"], [null, null, null, null, null, "2"], [null, null, null, null, null, "X"]);
   const files = fixture.files();
   async function call(mode: "preview" | "confirm", options: { slug?: string; cookie?: string; token?: string; selection?: unknown[]; date?: string; origin?: string } = {}) {
     const form = new FormData(); form.set("mode", mode);
@@ -52,6 +55,7 @@ test("attendance-only HTTP import preserves scores, protects leave, rejects stal
   assert.equal((await call("preview", { date: "2026-09-18" })).status, 400);
   let response = await call("preview"); assert.equal(response.status, 200, await response.clone().text());
   let preview = (await response.json()).preview as ParticipationPreview;
+  assert.equal(preview.ignoredIdentifierCount, 1);
   assert.equal(preview.rows.find(row => row.studentId === ids[1])?.protected, true);
   assert.equal(preview.rows.find(row => row.studentId === ids[2])?.suggested, null);
   assert.equal(preview.rows.find(row => row.studentId === ids[3])?.evidence, "MISSING");

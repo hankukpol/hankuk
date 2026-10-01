@@ -14,6 +14,7 @@ export type ParticipationRow = {
 export type ParticipationPreview = {
   token: string; date: string; periodId: string; periodName: string;
   fileCount: number; unmatchedCount: number; rows: ParticipationRow[];
+  ignoredIdentifierCount?: number;
 };
 export type ParticipationSelection = { studentId: string; status: ParticipationStatus };
 export type ParticipationStudent = {

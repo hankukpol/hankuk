@@ -22,3 +22,14 @@
 
 사용자의 이번 요청으로 커밋/푸시/운영 배포 승인됨. main의 기존 성적 분석 관련 커밋 3개를 포함한 현재 소스가 배포 기준이며, 다른 미커밋 문서/출결 테스트/인접 앱 변경은 이번 커밋에서 제외한다.
 배포 ID와 운영 확인 결과는 완료 후 추가한다.
+
+## 운영 배포 및 실제 파일 검증 완료
+
+- 코드 커밋: 9e17bfac56dbb583567f0802dbc53abd4145f87d, main 푸시 완료.
+- Vercel production: dpl_DySe3oUncFKjyqJsVg9sBiHZAUm8, READY. https://study-hall-six.vercel.app 별칭 연결 확인.
+- 배포 URL: https://study-hall-8uq5acx9a-ikma-4087s-projects.vercel.app
+- 배포 후 운영 UI에서 2026-10-01 원본 채점표와 문항분석표를 첨부해 미리보기 성공. 학원 일치 응시 27명 모두 기존 기록 유지, 파일에 없는 1명 반영 안 함, 식별번호 누락 2건 제외 안내 확인. 선택 0명이며 저장 버튼 비활성으로 중복 반영 방지 확인.
+- 운영 API POST /api/police/attendance/cumulative-import: 200. 배포 ID로 조회한 최근 15분 error 로그 없음(이 조회 기간/배포 범위에 한함).
+- 이미 반영된 오늘 출석을 다시 저장하거나 성적·설정·다른 날짜 원장을 변경하지 않았다.
+- 다음 사용: 관리자 출석 관리 → 누적시험 응시 여부 가져오기 → 파일 첨부 → 미리보기 → 대상 확인 후 출석 반영. 학원별 관리 요일/시작일/휴강일 설정이 적용되며 누락 식별번호는 운영자가 원본에서 확인한다.
+- 재현 증거: .local/cumulative-release-tests.log, .local/runtime-743c6f5f/integration.log, .local/cumulative-production-deploy.log, .local/cumulative-deployed-preview-20261001.png (개인정보 포함 증거는 Git 제외).

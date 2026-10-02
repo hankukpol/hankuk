@@ -77,7 +77,7 @@ export type CohortCell = { value: number | null; below: number };
 export type CohortStudent = {
   studentId: string; name: string; studentNumber: string;
   cells: Record<string, CohortCell>;
-  failed: string[]; declining: string[];
+  failed: string[]; declining: string[]; belowAverage?: string[]; evidence?: Array<{subject: string; label: string; detail: string}>;
   score: number | null; rank: number | null; partial: boolean; summary: string;
 };
 type CohortSubject = { id: string; name: string; fullScore: number };
@@ -112,25 +112,32 @@ export function regularCohortRisk(
 }
 
 export function morningCohortRisk(
-  rows: Array<{ studentId: string; name: string; studentNumber: string; subjectId: string; subjectName: string; average: number | null; attended: number; expected: number; flags: Array<{ kind: string }>; series: Array<{ score: number }> }>,
+  rows: Array<{ studentId: string; name: string; studentNumber: string; subjectId: string; subjectName: string; average: number | null; attended: number; expected: number; flags: Array<{ kind: string; detail?: string }>; series: Array<{ score: number; date?: string }> }>,
   subjects: CohortSubject[], cutoffPercent: number,
 ): CohortStudent[] {
   const students = new Map<string, typeof rows>();
   for (const row of rows) students.set(row.studentId, [...(students.get(row.studentId) ?? []), row]);
   return Array.from(students.values()).map((mine) => {
     const cells: Record<string, CohortCell> = {};
-    const failed: string[] = [], declining: string[] = [], averages: number[] = [];
+    const failed: string[] = [], declining: string[] = [], belowAverage: string[] = [], averages: number[] = [];
+    const evidence: NonNullable<CohortStudent["evidence"]> = [];
     for (const subject of subjects) {
       const row = mine.find((r) => r.subjectId === subject.id);
       const below = row ? row.series.filter((p) => isBelowFailCutoff(p.score, subject.fullScore, cutoffPercent) === true).length : 0;
       cells[subject.id] = { value: row?.average ?? null, below };
       if (below) failed.push(`${subject.name}(${below}회)`);
       if (row?.average !== null && row?.average !== undefined) averages.push(row.average);
-      if (row?.flags.some((f) => f.kind === "consecutiveDrops" || f.kind === "ownAverageDrop" || f.kind === "classGap")) declining.push(subject.name);
+      if (row?.flags.some((f) => f.kind === "consecutiveDrops" || f.kind === "ownAverageDrop")) declining.push(subject.name);
+      if (row?.flags.some(f => f.kind === "classGap")) belowAverage.push(subject.name);
+      for (const flag of row?.flags ?? []) {
+        const label = flag.kind === "classGap" ? "학원 평균보다 낮음" : flag.kind === "consecutiveDrops" ? "연속 점수 하락" : flag.kind === "ownAverageDrop" ? "이전보다 평균 하락" : flag.kind === "lowAttendance" ? "응시 부족 · 판단 보류" : null;
+        if (label) evidence.push({subject:subject.name,label,detail:flag.detail ?? "비교 근거 없음"});
+      }
     }
     const summary = [cutoffPercent > 0 ? (failed.length ? `과락선 미만 ${failed.join(", ")}` : "과락선 미만 없음") : null,
-      declining.length ? `하락 ${declining.join(", ")}` : null].filter(Boolean).join(" · ");
-    return { studentId: mine[0].studentId, name: mine[0].name, studentNumber: mine[0].studentNumber, cells, failed, declining,
+      declining.length ? `점수 하락: ${declining.join(", ")}` : null,
+      belowAverage.length ? `학원 평균보다 낮음: ${belowAverage.join(", ")}` : null].filter(Boolean).join(" · ");
+    return { belowAverage, evidence, studentId: mine[0].studentId, name: mine[0].name, studentNumber: mine[0].studentNumber, cells, failed, declining,
       score: averages.length ? averages.reduce((a, b) => a + b, 0) / averages.length : null, rank: null, partial: false, summary };
   }).sort(byRisk);
 }

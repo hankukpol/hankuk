@@ -539,7 +539,7 @@ test("morning personal report: five tabs, weekly grid in template order, headlin
   const data = { kind: "morning", scope: "student", examType: { id: "m", name: "아침 모의고사" }, student: { id: "s", name: "학생", studentNumber: "90***" },
     range: { from: "2026-08-01", to: "2026-09-25" }, dates: [], subjects, items: [], easyThreshold: 70, failCutoffPercent: 40, records: [],
     comparisons: [c("2026-09-14", "a", "헌법", 80), c("2026-09-21", "a", "헌법", 90), c("2026-09-22", "b", "형소법", 70), c("2026-09-23", "c", "형법", 35), c("2026-09-25", "e", "경찰학", null)],
-    morning: { subjects: [], summary: { average: 68.8, externalGap: 8.8, internalGap: 0, attendanceRatePercent: 80, thisWeekRank: 5, rankDelta: 2, attended: 4, expected: 5 }, weeklyRanks: [] } };
+    morning: { subjects: [], dailyItems: [], topics: [], summary: { average: 68.8, externalGap: 8.8, internalGap: 0, attendanceRatePercent: 80, thisWeekRank: 5, rankDelta: 2, attended: 4, expected: 5 }, weeklyRanks: [] } };
   const html = renderToStaticMarkup(React.createElement(MorningPersonalReport, { data, mode: "student" }));
   assert.deepEqual(Array.from(html.matchAll(/role="tab"[^>]*>([^<]+)</g)).map(m => m[1]), ["요약", "취약점", "석차", "추이", "문항"]);
   assert.equal((html.match(/role="tablist"/g) ?? []).length, 1, "탭 줄은 하나");
@@ -552,6 +552,11 @@ test("morning personal report: five tabs, weekly grid in template order, headlin
   assert.match(grid, /<th scope="col">9\/14 주<\/th><th scope="col">9\/21 주<\/th>/);
   assert.match(grid, /class="admin-table-amount text-admin-danger">35</, "과락선 미만 칸");
   assert.match(grid, />결시</, "시험은 있었고 점수 없음");
+  data.comparisons.push(c("2026-09-24", "c", "형법", 65));
+  const repeatedWeek = renderToStaticMarkup(React.createElement(MorningPersonalReport, {data,mode:"student"}));
+  assert.match(repeatedWeek,/09-23 · <\/span>35/);
+  assert.match(repeatedWeek,/09-24 · <\/span>65/);
+
 });
 
 test("admin cohort weakness table: risk order, fail cells, summary and personal links", () => {
@@ -570,4 +575,29 @@ test("admin cohort weakness table: risk order, fail cells, summary and personal 
   assert.match(html, /aria-pressed="true"[^>]*>전체 3</);
   const empty = renderToStaticMarkup(React.createElement(CohortWeaknessTable, { data: { ...data, regularCohort: { subjects, ranking: [] } }, division: "police", query: "" }));
   assert.equal(empty, "", "자료가 없으면 아무것도 그리지 않는다");
+});
+
+test("learning overview compares the same exams and separates withheld judgement from review actions", () => {
+  const Component = load("components/exams/preview/LearningOverview.tsx", {
+    "@/lib/exam-learning-plan": { morningLearningPlan: () => [{ subjectId: "a", withheld: false, requiredSessions: 1 }, { subjectId: "b", withheld: true }] },
+  }).LearningOverview;
+  const comparison = (subjectId: string, my: number | null, external: number | null, fullScore = 100) => ({sessionId: subjectId, date:"2026-10-02",subjectId,subjectName:subjectId,topic:"시험 범위",my,external,fullScore});
+  const data = {morning:{},subjects:[{id:"a",name:"헌법"},{id:"b",name:"형법"}],range:{from:"2026-09-01",to:"2026-10-02"},easyThreshold:70,
+    comparisons:[comparison("a",80,60),comparison("a",10,null),comparison("b",20,30,50)],
+    items:[{id:"wrong",sessionId:"b",subjectId:"b",date:"2026-10-02",itemNo:1,correct:false,answer:"1",externalRate:90,points:5},{id:"hard",sessionId:"b",subjectId:"b",date:"2026-10-02",itemNo:2,correct:false,answer:"1",externalRate:20,points:5},{id:"missing",subjectId:"b",correct:null,externalRate:90}]};
+  const html = renderToStaticMarkup(React.createElement(Component,{data,onSubject:()=>{},onReview:()=>{}}));
+  assert.match(html,/aria-label="과목별 성적"/);
+  assert.doesNotMatch(html,/잘하고 있는 과목|먼저 확인할 범위|바로 시작할 복습/);
+  assert.match(html,/>80<\/td><td[^>]*>60<\/td>/);
+  assert.match(html,/>40<\/td><td[^>]*>60<\/td>/);
+  assert.match(html,/판단 보류/);
+  assert.match(html,/오답 2개 보기/);
+  assert.doesNotMatch(html,/오답 3개 보기/);
+  const selections: {ids:string[]}[]=[];
+  const tree=Component({data,onSubject:()=>{},onReview:(v:{ids:string[]})=>selections.push(v)});
+  const visit=(node:any):any[]=>!node||typeof node!=='object'?[]:[node,...React.Children.toArray(node.props?.children).flatMap(visit)];
+  const buttons=visit(tree).filter(node=>node.type==='button');
+  buttons.find(node=>React.Children.toArray(node.props.children).join('')==='우선 복습 1개').props.onClick();
+  buttons.find(node=>React.Children.toArray(node.props.children).join('')==='오답 2개 보기').props.onClick();
+  assert.deepEqual(selections.map(s=>s.ids),[['wrong'],['wrong','hard']]);
 });

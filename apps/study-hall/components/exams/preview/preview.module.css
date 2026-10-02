@@ -162,3 +162,8 @@
  .reportTables :is(.facts, .topicTable, .sessionTable) :is(td,th) { border: 0; background: var(--admin-surface); }
  .reportTables .topicTable th { background: var(--admin-accent-soft); }
 }
+
+
+.reportTables :global(.score-row-detail) { text-align: left; }
+.reportTables :global(.score-row-detail > summary) { cursor: pointer; white-space: nowrap; }
+.reportTables :global(.score-row-detail[open] > div) { padding-top: 12px; max-width: 320px; white-space: normal; }

@@ -127,7 +127,7 @@ test("반 분석 아침: 과목 평균, 과락선 미만 회수, 하락 과목",
     average: scores.reduce((x, y) => x + y, 0) / scores.length, attended: scores.length, expected: scores.length, flags: flags.map((kind) => ({ kind })), series: scores.map((score) => ({ score })) });
   const rows = morningCohortRisk([s("가", "a", [80, 90]), s("가", "c", [30, 35, 60], ["consecutiveDrops"]), s("나", "a", [70, 75]), s("나", "c", [65, 70], ["lowAttendance"])], subjects, 40);
   assert.deepEqual(rows.map((x) => x.studentId), ["가", "나"]);
-  assert.equal(rows[0].summary, "과락선 미만 형법(2회) · 하락 형법");
+  assert.equal(rows[0].summary, "과락선 미만 형법(2회) · 점수 하락: 형법");
   assert.deepEqual(rows[0].cells.c, { value: 125 / 3, below: 2 });
   assert.equal(rows[1].summary, "과락선 미만 없음", "응시율 부족 진단은 하락이 아니다");
   assert.equal(rows[1].score, 70);
@@ -158,4 +158,17 @@ test("경찰 정기 250점(헌법 50·형사법 100·경찰학 100): 과목 만�
     subjects: report.stats.subjects.map((s) => ({ name: s.name, my: s.my, fullScore: s.fullScore, grade: s.grade })), failCutoffPercent: 40, easyWrong: 0, repeatedTopic: null, wrong: 0, declining: false });
   // 헌법 50점 중 32점, 경찰학 100점 중 30점을 잃었다. 총점에서 빠진 점수가 큰 과목을 고른다.
   assert.match(headline.text, /^총점 168\/250점 · 2명 중 1위\(상위 50%\) · 과락 헌법 · 헌법에서 32점을 가장 많이 잃었습니다\.$/);
+});
+
+
+test("학원 평균 격차는 하락과 분리하고 원래 비교 근거를 유지한다", () => {
+ const base={studentId:'s',name:'학생',studentNumber:'1',subjectId:'a',subjectName:'헌법',average:70,attended:4,expected:4,series:[{score:60},{score:65},{score:70},{score:85}]};
+ const [r]=morningCohortRisk([{...base,flags:[{kind:'classGap',detail:'최근 4회 평균이 같은 응시일의 반 평균보다 15점 낮습니다.'}]}],[{id:'a',name:'헌법',fullScore:100}],40);
+ assert.deepEqual(r.declining,[]);
+ assert.deepEqual(r.belowAverage,['헌법']);
+ assert.doesNotMatch(r.summary,/하락/);
+ assert.match(r.evidence![0].detail,/15점/);
+ const [both]=morningCohortRisk([{...base,flags:[{kind:'classGap'},{kind:'ownAverageDrop'}]}],[{id:'a',name:'헌법',fullScore:100}],40);
+ assert.deepEqual(both.declining,['헌법']);
+ assert.deepEqual(both.belowAverage,['헌법']);
 });

@@ -115,38 +115,27 @@ export function PreviewWorkspace({
             {preview ? " 미리보기" : ""}
           </h1>
         )}
-        <div className="admin-workspace-toolbar">
-          {preview && <p className="admin-help">로컬 테스트 데이터</p>}
-          <div className="flex flex-wrap gap-4">
-            {preview ? (
-              <a className="admin-text-action" href={old}>
-                성적 분석 보기
-              </a>
-            ) : (
-              mode === "admin" && (
-                <a
-                  className="admin-text-action"
-                  href={`/${division}/admin/exams?tab=${kind}`}
-                >
-                  성적 입력·가져오기
-                </a>
-              )
+        {preview && <p className="admin-help">로컬 테스트 데이터</p>}
+        {mode === "admin" ? (
+          <nav className="admin-subtabs admin-subtabs-scroll" aria-label="성적 메뉴">
+            <a className="admin-subtab" href={`/${division}/admin/exams?tab=${kind}`}>
+              성적 입력·가져오기
+            </a>
+            <a className="admin-subtab" href={`${cohortRoot}?${navigation}`}
+              aria-current={!studentId ? "page" : undefined}>
+              전체 분석
+            </a>
+            {studentId && (
+              <a className="admin-subtab" href={`${root}/students/${encodeURIComponent(studentId)}?${navigation}`}
+                aria-current="page">개인 분석</a>
             )}
-            {mode === "admin" && (
-              <a className="admin-text-action" href={`${root}/learning`}>
-                진도·학습 분석 설정
-              </a>
-            )}
-            {mode === "admin" && studentId && (
-              <a
-                className="admin-text-action"
-                href={`${cohortRoot}?${navigation}`}
-              >
-                전체 분석
-              </a>
-            )}
-          </div>
-        </div>
+            <a className="admin-subtab" href={`${root}/learning`}>
+              진도·학습 분석 설정
+            </a>
+          </nav>
+        ) : preview ? (
+          <a className="admin-text-action" href={old}>성적 분석 보기</a>
+        ) : null}
         {/* 학생 화면은 1차 학생 메뉴 아래에 분석 항목 2차 탭이 오므로, 시험 구분까지 탭이면
             2차 탭 줄이 두 겹이 된다(DESIGN.md §5.5). 학생은 선택 칩, 관리자는 1차 폴더 탭을 쓴다. */}
         {!embeddedKind && mode === "student" && (
@@ -279,11 +268,16 @@ export function PreviewWorkspace({
             ) : (
               <>
                 <label className="admin-label">
-                  조회 월
+                  월별 선택
                   <input
                     type="month"
                     aria-label="아침 모의고사 조회 월"
-                    value={range.to.slice(0, 7)}
+                    value={
+                      range.from === `${range.to.slice(0, 7)}-01` &&
+                      range.to === `${range.to.slice(0, 7)}-${new Date(Date.UTC(Number(range.to.slice(0, 4)), Number(range.to.slice(5, 7)), 0)).getUTCDate()}`
+                        ? range.to.slice(0, 7)
+                        : ""
+                    }
                     onChange={(e) => {
                       const value = e.target.value;
                       if (!/^\d{4}-\d{2}$/.test(value)) return;

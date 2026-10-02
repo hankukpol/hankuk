@@ -1,11 +1,12 @@
 'use client';
 import { useEffect, useState, type ReactNode } from 'react';
 import { TopicLearning, ReviewWorkbench, ExamTimeEntry } from './LearningViews';
+import { LearningOverview } from './LearningOverview';
 import { MorningProgress } from './MorningProgress';
 import { AdminTabs } from '@/components/ui/AdminTabs';
 import { PreviewPrintButton } from './PreviewPrintButton';
 import { reviewGroups } from '@/lib/exam-preview/metrics';
-import { morningHeadline, weekLabel, weekStart, weeklyScoreGrid } from '@/lib/exam-preview/report-summary';
+import { isBelowFailCutoff, morningHeadline, weekLabel, weekStart, weeklyScoreGrid } from '@/lib/exam-preview/report-summary';
 import type { PreviewData, PreviewItem } from '@/lib/exam-preview/types';
 import { PreviewTrend } from './PreviewCharts';
 import { PagedRows, ReferenceItemBrowser, type ItemFocusRequest } from './ReportPaging';
@@ -66,6 +67,8 @@ export function MorningPersonalReport({data,mode}:{data:PreviewData;mode:'admin'
   <div data-report-navigation><AdminTabs variant="secondary" className={styles.mainTabs} idPrefix="morning-analysis" panelId={`morning-${tab}`} label="아침 성적 분석" items={[{id:'summary',label:'요약'},{id:'weak',label:'취약점'},{id:'peers',label:'석차'},{id:'history',label:'추이'},{id:'items',label:'문항'}]} activeId={tab} onChange={id=>setTab(id as MorningTab)}/></div>
 
   {section('summary','성적 요약',<>
+   <LearningOverview data={data} onSubject={id=>{setSubject(id);setTab('weak');focusPanel('morning-weak');}} onReview={selection=>{const item=data.items.find(i=>selection.ids.includes(i.id));if(item)setSubject(item.subjectId);openItems(selection);}}/>
+   <details className="admin-disclosure" open={printing}><summary>점수·응시·주간 성적 자세히 보기</summary><div className="admin-disclosure-body">
    <p className={`admin-notice${headline.tone==='danger'?' admin-notice-danger':headline.tone==='warning'?' admin-notice-warning':''}`} data-headline>{headline.text}</p>
    {report&&<div className="admin-portal-summary" data-score-strip>
     <PortalMetricCard label="기간 평균" value={number(report.summary.average,'점')} caption={`${data.range.from.slice(5)} ~ ${data.range.to.slice(5)}`}/>
@@ -73,9 +76,10 @@ export function MorningPersonalReport({data,mode}:{data:PreviewData;mode:'admin'
     <PortalMetricCard label="시험 응시자 평균 대비" value={number(report.summary.externalGap,'점')} caption="조회 기간 전체"/>
     <PortalMetricCard label="이번 주 석차" value={report.summary.thisWeekRank===null?'자료 없음':`${report.summary.thisWeekRank}위`} caption={report.summary.rankDelta===null?undefined:report.summary.rankDelta>0?`지난주보다 ${report.summary.rankDelta}계단 상승`:report.summary.rankDelta<0?`지난주보다 ${-report.summary.rankDelta}계단 하락`:'지난주와 같음'}/>
    </div>}
-   {grid.weeks.length?<><Table label="주간 성적표" heads={['과목',...grid.weeks.map(weekLabel),'기간 평균']}>{grid.rows.map(r=><tr key={r.subjectId}><th scope="row"><button type="button" data-report-navigation className="admin-table-link" aria-label={`${r.name} 취약점 보기`} onClick={()=>{setSubject(r.subjectId);setTab('weak');focusPanel('morning-weak');}}>{r.name}</button><span className="preview-print-only">{r.name}</span></th>{r.cells.map((c,i)=><td key={grid.weeks[i]} className={`admin-table-amount${c?.below?' text-admin-danger':''}`}>{c===null?'—':c.my===null?'결시':number(c.my)}</td>)}<td className="admin-table-amount">{r.attended?number(r.average):'—'}</td></tr>)}</Table>
-   <p className="admin-help">칸은 그 주 내 점수입니다. —는 그 주에 시험이 없었거나 점수를 가져오지 않는 과목(누적 등)입니다. {cutoffNote}과목을 누르면 취약점으로 이동합니다.</p></>
+   {grid.weeks.length?<><Table label="주간 성적표" heads={['과목',...grid.weeks.map(weekLabel),'기간 평균']}>{grid.rows.map(r=><tr key={r.subjectId}><th scope="row"><button type="button" data-report-navigation className="admin-table-link" aria-label={`${r.name} 취약점 보기`} onClick={()=>{setSubject(r.subjectId);setTab('weak');focusPanel('morning-weak');}}>{r.name}</button><span className="preview-print-only">{r.name}</span></th>{r.cells.map((c,i)=>{const attempts=rows.filter(row=>row.subjectId===r.subjectId&&weekStart(row.date)===grid.weeks[i]).sort((a,b)=>a.date.localeCompare(b.date));return <td key={grid.weeks[i]} className={`admin-table-amount${attempts.length===1&&c?.below?' text-admin-danger':''}`}>{attempts.length>1?attempts.map(attempt=><div key={attempt.date} className={attempt.my!==null&&attempt.fullScore!==null&&isBelowFailCutoff(attempt.my,attempt.fullScore,data.failCutoffPercent)?'text-admin-danger':undefined}><span className="admin-help">{attempt.date.slice(5)} · </span>{attempt.my===null?'점수 없음':number(attempt.my)}</div>):c===null?'—':c.my===null?'결시':number(c.my)}</td>;})}<td className="admin-table-amount">{r.attended?number(r.average):'—'}</td></tr>)}</Table>
+   <p className="admin-help">같은 주에 여러 번 응시한 과목은 시험일별 점수를 모두 표시합니다. —는 그 주에 시험이 없었거나 점수를 가져오지 않는 과목(누적 등)입니다. {cutoffNote}과목을 누르면 취약점으로 이동합니다.</p></>
    :<p className="admin-empty-state">선택한 기간에 가져온 아침 모의고사 성적이 없습니다. 조회 조건에서 기간을 늘려 보세요.</p>}
+   </div></details>
   </>)}
 
   {section('weak','취약점',<>

@@ -25,7 +25,6 @@ import {
   ShieldAlert,
   Trash2,
   Upload,
-  Users,
   X,
 } from "lucide-react";
 import { toast } from "@/lib/sonner";
@@ -37,9 +36,7 @@ import { StudentStatusBadge, TuitionExemptBadge, WarningStageBadge } from "@/com
 import {
   STUDENT_STATUS_OPTIONS,
   WARNING_STAGE_OPTIONS,
-  getStudentStatusLabel,
   toDemeritPoints,
-  getWarningStageLabel,
 } from "@/lib/student-meta";
 import type { SeatOptionItem } from "@/lib/services/seat.service";
 import type { StudentListItem } from "@/lib/services/student.service";
@@ -455,10 +452,11 @@ export function StudentListManager({
             </div>
           </div>
 
-          {/* DESIGN.md 5.7 — 검색은 최대 320px, 조건 선택은 뒤로 이어 붙인다. */}
-          <div className="mt-6 flex flex-wrap items-center gap-3">
-            <label className="relative block w-full md:w-[var(--admin-search-width)] md:shrink-0">
-              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          {/* 조회 조건은 한 줄 필터 바 하나. 상태는 표 바로 위 탭(건수 포함)으로 고른다 — 같은 조건을 두 번 두지 않는다. */}
+          <div className="admin-filter-bar mt-6">
+            <label className="relative block w-full md:w-[var(--admin-search-width)] md:flex-none">
+              <span className="sr-only">학생 검색</span>
+              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-admin-text-muted" />
               <input
                 value={search}
                 onChange={(event) => {
@@ -470,182 +468,119 @@ export function StudentListManager({
               {search ? (
                 <button
                   type="button"
+                  aria-label="검색어 지우기"
                   onClick={() => {
                     setSearch("");
                     updateListQuery({ q: null });
                   }}
-                  className="admin-icon-button absolute right-3 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition hover:bg-white hover:text-slate-700"
+                  className="admin-icon-button absolute right-3 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-admin-text-muted hover:text-admin-text"
                 >
                   <X className="h-4 w-4" />
                 </button>
               ) : null}
             </label>
 
-            <select
-              value={statusFilter}
-              onChange={(event) => {
-                setStatusFilter(event.target.value as StatusFilterValue);
-                updateListQuery({ status: event.target.value });
-              }}
-              className="w-auto min-w-[160px] flex-1 basis-[160px]"
-            >
-              <option value="ALL">상태 전체</option>
-              {STUDENT_STATUS_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <label className="admin-label">
+              <span className="sr-only">경고 단계</span>
+              <select
+                value={warningFilter}
+                onChange={(event) => {
+                  setWarningFilter(event.target.value as WarningFilterValue);
+                  updateListQuery({ warning: event.target.value });
+                }}
+              >
+                <option value="ALL">경고 단계 전체</option>
+                {WARNING_STAGE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {warningLabels?.[option.value] ?? option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-            <select
-              value={warningFilter}
-              onChange={(event) => {
-                setWarningFilter(event.target.value as WarningFilterValue);
-                updateListQuery({ warning: event.target.value });
-              }}
-              className="w-auto min-w-[160px] flex-1 basis-[160px]"
-            >
-              <option value="ALL">경고 단계 전체</option>
-              {WARNING_STAGE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {warningLabels?.[option.value] ?? option.label}
-                </option>
-              ))}
-            </select>
+            {allTrackOptions.length > 1 ? (
+              <label className="admin-label">
+                <span className="sr-only">직렬</span>
+                <select
+                  value={trackFilter}
+                  onChange={(event) => {
+                    setTrackFilter(event.target.value);
+                    updateListQuery({ track: event.target.value === "ALL" ? null : event.target.value });
+                  }}
+                >
+                  <option value="ALL">직렬 전체</option>
+                  {allTrackOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
 
-            <select
-              value={sortBy}
-              onChange={(event) => {
-                const nextValue = event.target.value as (typeof sortOptions)[number]["value"];
-                setSortBy(nextValue);
-                updateListQuery({ sort: nextValue });
+            <label className="admin-label">
+              <span className="sr-only">정렬</span>
+              <select
+                value={sortBy}
+                onChange={(event) => {
+                  const nextValue = event.target.value as (typeof sortOptions)[number]["value"];
+                  setSortBy(nextValue);
+                  updateListQuery({ sort: nextValue });
+                }}
+              >
+                {sortOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <button
+              type="button"
+              onClick={() => {
+                const next = !expiringFilter;
+                setExpiringFilter(next);
+                updateListQuery({ expiring: next ? "true" : null });
               }}
-              className="w-auto min-w-[160px] flex-1 basis-[160px]"
+              className="admin-choice-button admin-choice-button-auto"
+              aria-pressed={expiringFilter}
             >
-              {sortOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+              <CalendarX className="h-4 w-4" />
+              수강 만료 임박
+            </button>
           </div>
 
-          <div className="mt-4">
-            <p className="admin-label">상태 필터</p>
-            <div className="admin-choice-group mt-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setStatusFilter("ALL");
-                  updateListQuery({ status: null });
-                }}
-                className="admin-choice-button" data-active={statusFilter === "ALL"} aria-pressed={statusFilter === "ALL"}
-              >
-                전체
-              </button>
-              {STUDENT_STATUS_OPTIONS.map((option) => (
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+            <nav className="admin-subtabs admin-subtabs-scroll" aria-label="학생 상태">
+              {[{ value: "ALL" as StatusFilterValue, label: "전체", count: initialStudents.length }, ...STUDENT_STATUS_OPTIONS.map((option) => ({ value: option.value as StatusFilterValue, label: option.label, count: initialStudents.filter((student) => student.status === option.value).length }))].map((option) => (
                 <button
                   key={option.value}
                   type="button"
                   onClick={() => {
                     setStatusFilter(option.value);
-                    updateListQuery({ status: option.value });
+                    updateListQuery({ status: option.value === "ALL" ? null : option.value });
                   }}
-                  className="admin-choice-button" data-active={statusFilter === option.value} aria-pressed={statusFilter === option.value}
+                  className="admin-subtab"
+                  aria-pressed={statusFilter === option.value}
                 >
                   {option.label}
+                  <span className="ml-2 tabular-nums text-admin-text-muted">{option.count}</span>
                 </button>
               ))}
-            </div>
-            <p className="admin-label mt-3">빠른 필터</p>
-            <div className="admin-choice-group mt-3">
-              <button
-                type="button"
-                onClick={() => {
-                  const next = !expiringFilter;
-                  setExpiringFilter(next);
-                  updateListQuery({ expiring: next ? "true" : null });
-                }}
-                className={`inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition ${ expiringFilter ? "bg-admin-danger text-white" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50" }`}
-              >
-                <CalendarX className="h-3.5 w-3.5" />
-                수강 만료 임박
-              </button>
-            </div>
-            <p className="admin-label mt-3">직렬 필터</p>
-            <div className="admin-choice-group mt-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setTrackFilter("ALL");
-                  updateListQuery({ track: null });
-                }}
-                className="admin-choice-button" data-active={trackFilter === "ALL"} aria-pressed={trackFilter === "ALL"}
-              >
-                전체 직렬
-              </button>
-              {allTrackOptions.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => {
-                    setTrackFilter(option);
-                    updateListQuery({ track: option });
-                  }}
-                  className="admin-choice-button" data-active={trackFilter === option} aria-pressed={trackFilter === option}
-                >
-                  {option}
+            </nav>
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-[15px] font-semibold tabular-nums">{filteredStudents.length}명</span>
+              {activeFilterCount > 0 ? (
+                <button type="button" onClick={resetFilters} className="admin-button admin-button-compact">
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  필터 초기화
                 </button>
-              ))}
+              ) : null}
             </div>
           </div>
 
-          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3">
-            <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
-              <Users className="h-4 w-4" />
-              <span>{filteredStudents.length}명 표시 중</span>
-              {search.trim() ? (
-                <span className="rounded-lg bg-white px-3 py-1 text-xs font-medium text-slate-700">
-                  검색어 {search.trim()}
-                </span>
-              ) : null}
-              {statusFilter !== "ALL" ? (
-                <span className="rounded-lg bg-white px-3 py-1 text-xs font-medium text-slate-700">
-                  {getStudentStatusLabel(statusFilter)}
-                </span>
-              ) : null}
-              {warningFilter !== "ALL" ? (
-                <span className="rounded-lg bg-white px-3 py-1 text-xs font-medium text-slate-700">
-                  {warningLabels?.[warningFilter] ?? getWarningStageLabel(warningFilter)}
-                </span>
-              ) : null}
-              {trackFilter !== "ALL" ? (
-                <span className="rounded-lg bg-white px-3 py-1 text-xs font-medium text-slate-700">
-                  {trackFilter}
-                </span>
-              ) : null}
-              {expiringFilter ? (
-                <span className="rounded-lg bg-admin-danger-soft px-3 py-1 text-xs font-medium text-admin-danger">
-                  만료 임박
-                </span>
-              ) : null}
-            </div>
-
-            {activeFilterCount > 0 ? (
-              <button
-                type="button"
-                onClick={resetFilters}
-                className="admin-button admin-button-compact"
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-                필터 초기화
-              </button>
-            ) : (
-              <p className="admin-help">필터 없이 전체 학생을 보고 있습니다.</p>
-            )}
-          </div>
-
-          <div className="admin-table-frame mt-6 hidden lg:block">
+          <div className="admin-table-frame mt-4 hidden lg:block">
             <table className="min-w-full">
               <thead>
                 <tr>

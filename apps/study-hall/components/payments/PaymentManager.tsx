@@ -464,7 +464,7 @@ export function PaymentManager({
       <div className="admin-flat-page">
         <AdminTabs items={PAYMENT_VIEW_TABS} activeId={viewTab} onChange={setViewTab} label="수납 화면" idPrefix="payment-view" />
         <MobileWorkspaceTools title="수납 등록" icon={Plus}>
-        <div className="admin-workspace-toolbar">
+        <div className="admin-workspace-toolbar justify-end">
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"

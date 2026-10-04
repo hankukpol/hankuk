@@ -53,7 +53,7 @@ export function AcademyPolicySettings({ divisionSlug, initial }: Props) {
       {boolean("학원 운영 규정 사용", form.enabled !== false, enabled => update("enabled", enabled))}
       <Link href={`/${divisionSlug}/admin/settings`} className="admin-text-action">전체 설정</Link>
     </div>
-    <AdminTabs items={tabs} activeId={tab} onChange={id => setTab(id as Tab)} label="학원 규정 설정" idPrefix="academy-policy" variant="secondary" scrollable />
+    <AdminTabs items={tabs} activeId={tab} onChange={id => setTab(id as Tab)} label="학원 규정 설정" idPrefix="academy-policy" variant="secondary" scrollable className="admin-subtabs-underline" />
     <form onSubmit={e => { e.preventDefault(); void save(); }}>
       <fieldset disabled={pending} className="min-w-0 space-y-4">
         <div className="admin-panel" role="tabpanel" id="academy-policy-panel-general" aria-labelledby="academy-policy-tab-general" hidden={tab !== "general"}>

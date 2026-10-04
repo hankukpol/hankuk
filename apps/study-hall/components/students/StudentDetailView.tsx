@@ -7,7 +7,7 @@ import { MobileWorkspaceTools } from "@/components/ui/MobileWorkspaceTools";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useState } from "react";
-import { Ban, CircleAlert, LoaderCircle, Pencil, Save, RotateCcw, SlidersHorizontal, Trash2 } from "lucide-react";
+import { BarChart3, Ban, CircleAlert, FileText, LoaderCircle, Pencil, Save, RotateCcw, SlidersHorizontal, Trash2 } from "lucide-react";
 import { toast } from "@/lib/sonner";
 
 import { PaymentMethodSelect } from "@/components/payments/PaymentMethodSelect";
@@ -421,30 +421,41 @@ export function StudentDetailView({
   return (
     <div className="admin-flat-page">
       <section className="admin-section">
-        <div className="admin-workspace-toolbar">
-          <div><h1 className="admin-page-title">{initialStudent.name}</h1><p className="admin-help mt-2">{initialStudent.studentNumber} · {initialStudent.studyTrack || "직렬 미지정"} · {initialStudent.seatDisplay || "좌석 미배정"}</p></div>
-          <MobileWorkspaceTools title={`${initialStudent.name} 학생 상태`}>
-          <a className="admin-button md:hidden" href={`/${divisionSlug}/admin/students`}>학생 명단으로 돌아가기</a>
-          <div className="flex flex-wrap items-center gap-2">
-            <StudentStatusBadge status={initialStudent.status} />
-            <WarningStageBadge stage={initialStudent.warningStage} label={initialStudent.warningStageLabel} />
-            {initialStudent.tuitionExempt ? <TuitionExemptBadge reason={initialStudent.tuitionExemptReason} /> : null}
-            {canEdit && warningManagementEnabled && pointManagementEnabled && initialStudent.demeritPoints === undefined ? <button type="button" onClick={() => { setSelectedWarnTarget(initialStudent.warningStage); setIsWarnAdjustOpen(true); }} className="admin-text-action inline-flex items-center gap-2"><SlidersHorizontal className="h-4 w-4" />경고 조정</button> : null}
+        {/* 학생 머리: 이름·상태 배지 / 신원 한 줄 · 오른쪽에 이 학생으로 하는 작업 (DESIGN.md 0절) */}
+        <div className="admin-workspace-toolbar items-start">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="admin-page-title">{initialStudent.name}</h1>
+              <StudentStatusBadge status={initialStudent.status} />
+              <WarningStageBadge stage={initialStudent.warningStage} label={initialStudent.warningStageLabel} />
+              {initialStudent.tuitionExempt ? <TuitionExemptBadge reason={initialStudent.tuitionExemptReason} /> : null}
+            </div>
+            <p className="admin-page-description">{initialStudent.studentNumber} · {initialStudent.studyTrack || "직렬 미지정"} · {initialStudent.seatDisplay || "좌석 미배정"}</p>
           </div>
-        </MobileWorkspaceTools>
+          <MobileWorkspaceTools title={`${initialStudent.name} 학생 작업`}>
+            <a className="admin-button md:hidden" href={`/${divisionSlug}/admin/students`}>학생 명단으로 돌아가기</a>
+            <div className="flex flex-wrap items-center gap-2">
+              {canEdit && warningManagementEnabled && pointManagementEnabled && initialStudent.demeritPoints === undefined ? <button type="button" onClick={() => { setSelectedWarnTarget(initialStudent.warningStage); setIsWarnAdjustOpen(true); }} className="admin-button"><SlidersHorizontal className="h-4 w-4" />경고 조정</button> : null}
+              {examManagementEnabled ? <a className="admin-button" href={`/${divisionSlug}/admin/exams/students/${encodeURIComponent(initialStudent.id)}`}><BarChart3 className="h-4 w-4" />성적 분석</a> : null}
+              <a className="admin-button admin-button-primary" href={`/${divisionSlug}/admin/students/${encodeURIComponent(initialStudent.id)}/report`}><FileText className="h-4 w-4" />상담 자료 인쇄</a>
+            </div>
+          </MobileWorkspaceTools>
         </div>
         <div className="admin-metric-strip">
           {[["누적 벌점", currentDemeritPoints + "점"], ["등록 플랜", initialStudent.tuitionPlanName || "직접 입력"], ["연락처", initialStudent.phone || "미등록"], ["퇴실일", formatDate(initialStudent.withdrawnAt)]].map(([label, value]) => <div key={label} className="admin-metric-box"><p className="admin-metric-box-label">{label}</p><p className={label === "누적 벌점" ? "admin-metric-box-value" : "admin-metric-box-value admin-metric-box-status"}>{value}</p></div>)}
         </div>
         {initialStudent.tuitionExempt ? <p className="admin-notice">수납 면제: {initialStudent.tuitionExemptReason || "사유 미등록"}</p> : null}
-        <div className="admin-workspace-toolbar">
-          <div className="min-w-0"><p className="admin-label">메모</p><p className="admin-help mt-2 whitespace-pre-wrap break-words">{memo || "등록된 메모가 없습니다."}</p></div>
-          {canEdit ? <button type="button" onClick={() => { setMemoDraft(memo); setIsEditingMemo(true); }} className="admin-text-action inline-flex shrink-0 items-center gap-2"><Pencil className="h-4 w-4" />메모 수정</button> : null}
-        </div>
+        <section className="admin-panel" aria-label="메모">
+          <div className="admin-panel-header">
+            <h2 className="admin-section-title">메모</h2>
+            {canEdit ? <button type="button" onClick={() => { setMemoDraft(memo); setIsEditingMemo(true); }} className="admin-button admin-button-compact"><Pencil className="h-4 w-4" />메모 수정</button> : null}
+          </div>
+          <p className={`whitespace-pre-wrap break-words px-5 py-4 ${memo ? "" : "admin-help"}`}>{memo || "등록된 메모가 없습니다."}</p>
+        </section>
       </section>
 
       {initialStudent.status === "WITHDRAWN" ? (
-        <section className="rounded-lg border border-slate-200 bg-white px-5 py-4 text-sm leading-6 text-admin-danger">
+        <section className="admin-notice admin-notice-danger text-[15px]">
           <div className="flex items-start gap-3">
             <CircleAlert className="mt-1 h-5 w-5 shrink-0" />
             <div className="flex-1">
@@ -522,8 +533,8 @@ export function StudentDetailView({
             </div>
           </div>
 
-          <div className="admin-panel mt-6">
-            {[["수험번호", initialStudent.studentNumber], ["이름", initialStudent.name], ["직렬", initialStudent.studyTrack || "미지정"], ["연락처", initialStudent.phone || "미등록"], ["좌석", initialStudent.seatDisplay || "미배정"], ["등록 플랜", initialStudent.tuitionPlanName || "직접 입력"], ["등록 금액", formatCurrency(initialStudent.tuitionAmount)], ["수납 면제", initialStudent.tuitionExempt ? initialStudent.tuitionExemptReason || "면제" : "해당 없음"], ["등록 시작일", formatDate(initialStudent.courseStartDate)], ["등록 종료일", formatDate(initialStudent.courseEndDate)]].map(([label, value]) => <div key={label} className="admin-form-row"><span className="admin-form-row-label">{label}</span><span className="admin-form-row-control w-full break-words md:w-auto">{value}</span></div>)}
+          <div className="admin-panel">
+            {[["수험번호", initialStudent.studentNumber], ["이름", initialStudent.name], ["직렬", initialStudent.studyTrack || "미지정"], ["연락처", initialStudent.phone || "미등록"], ["좌석", initialStudent.seatDisplay || "미배정"], ["등록 플랜", initialStudent.tuitionPlanName || "직접 입력"], ["등록 금액", formatCurrency(initialStudent.tuitionAmount)], ["수납 면제", initialStudent.tuitionExempt ? initialStudent.tuitionExemptReason || "면제" : "해당 없음"], ["등록 시작일", formatDate(initialStudent.courseStartDate)], ["등록 종료일", formatDate(initialStudent.courseEndDate)]].map(([label, value]) => <div key={label} className="admin-panel-row"><span className="admin-label w-32 shrink-0">{label}</span><span className="min-w-0 break-words">{value}</span></div>)}
           </div>
         </section>
         <section className="admin-section" hidden={activePageTab !== "operations"} role="tabpanel" id="student-detail-panel-operations" aria-labelledby="student-detail-operations">

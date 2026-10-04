@@ -270,7 +270,7 @@ export function WarningStudentsManager({
             현재 단계 안내 완료 숨기기
           </label>
 
-          <span className="admin-notice">
+          <span className="text-[15px] font-semibold tabular-nums">
             {filteredStudents.length}명 표시
             {notifiedCount > 0 ? ` · 안내 완료 ${notifiedCount}명` : ""}
           </span>
@@ -376,9 +376,9 @@ export function WarningStudentsManager({
             </table>
           </div>
         ) : (
-          <div className="admin-help mt-5 px-5 py-8 text-center max-md:mt-0" data-list-empty>
-            <TriangleAlert className="mx-auto h-5 w-5 text-slate-400" />
-            <p className="mt-3 text-sm font-medium text-slate-700">
+          <div className="admin-empty-state mt-5 max-md:mt-0" data-list-empty>
+            <TriangleAlert className="mx-auto h-5 w-5 text-admin-text-muted" />
+            <p className="mt-3">
               {notifiedCount > 0 && hideNotified
                 ? "남은 대상자가 없습니다. 안내 완료 학생을 보려면 필터를 해제하세요."
                 : "조건에 맞는 경고 대상자가 없습니다."}

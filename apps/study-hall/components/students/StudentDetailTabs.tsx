@@ -828,6 +828,7 @@ export function StudentDetailTabs({
           <div className="flex items-center gap-2 text-slate-600">
             <Target className="h-4 w-4" />
             <span className="text-sm font-medium">성적</span>
+            <a className="admin-text-action ml-3" href={`/${divisionSlug}/admin/exams/students/${encodeURIComponent(studentId)}`}>성적 분석 보기</a>
           </div>
           {examTypeNames.length > 0 && (
             <select

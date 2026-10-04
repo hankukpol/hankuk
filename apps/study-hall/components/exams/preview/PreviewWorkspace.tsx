@@ -1,9 +1,10 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AdminTabs } from "@/components/ui/AdminTabs";
 import { StudentSearchCombobox } from "@/components/ui/StudentSearchCombobox";
 import { MobileDisclosure } from "@/components/ui/MobileDisclosure";
 import { recentMorningAnalysisRange } from "@/lib/morning-exam-analysis-schemas";
+import { defaultKindDecision } from "@/lib/exam-preview/selection";
 import type { PreviewData } from "@/lib/exam-preview/types";
 import { PreviewReport } from "./PreviewReport";
 import styles from "./preview.module.css";
@@ -77,6 +78,20 @@ export function PreviewWorkspace({
     return () => abort.abort();
   }, [division, kind, params, key, selected, preview]);
   const current = response?.key === key ? response : undefined;
+  // 주소에 시험 구분이 없으면 성적이 있는 시험을 먼저 연다. 정기 성적이 없는 학원에서 첫 화면이 비지 않게 한다.
+  const autoKind = useRef(!embeddedKind && !initial.kind);
+  useEffect(() => {
+    if (!autoKind.current) return;
+    if (kind !== "regular") { autoKind.current = false; return; }
+    const decision = defaultKindDecision({
+      hasMorningType: types.some((t) => t.category === "MORNING"),
+      hasRegularType: Boolean(selected),
+      regular: { loaded: Boolean(current), error: Boolean(current?.error), examDates: current?.data?.dates.length ?? 0 },
+    });
+    if (decision === "wait") return;
+    autoKind.current = false;
+    if (decision === "morning") setKind("morning");
+  }, [kind, types, selected, current]);
   const selectedDate = current?.data?.range.to ?? date;
   const availableDates = current?.data?.dates ?? [];
   const months = Array.from(new Set(availableDates.map((d) => d.slice(0, 7))))
@@ -184,7 +199,7 @@ export function PreviewWorkspace({
             아래에서 학생을 선택하세요.
           </p>
         )}
-        <MobileDisclosure title="시험·학생 조회 조건">
+        <MobileDisclosure title={mode === "admin" ? "시험·학생 조회 조건" : "조회 조건"}>
           <div className={`admin-filter-bar ${styles.filterFrame}`}>
             {mode === "admin" && (
               <label className="admin-label">

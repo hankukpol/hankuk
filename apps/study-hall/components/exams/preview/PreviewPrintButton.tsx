@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { formatPrintDocument, reportDocumentStyle } from "../analysis/print-document";
 
 /** Copies only the selected report; no API or student data is sent elsewhere. */
-export function PreviewPrintButton({ prepare, wholeExam = false }: { prepare: () => () => void; wholeExam?: boolean }) {
+export function PreviewPrintButton({ prepare, wholeExam = false, single = false }: { prepare: () => () => void; wholeExam?: boolean; single?: boolean }) {
   const anchor = useRef<HTMLDivElement>(null);
   const preparing = useRef(false);
   const [isPreparing, setIsPreparing] = useState(false);
@@ -178,8 +178,9 @@ export function PreviewPrintButton({ prepare, wholeExam = false }: { prepare: ()
     }
   }
   return <div ref={anchor} data-report-print className="flex flex-wrap items-center gap-2">
+    {single ? <button type="button" disabled={isPreparing} className="admin-button" onClick={() => openPrint()}>성적표 인쇄</button> : <>
     <button type="button" disabled={isPreparing} className="admin-button" onClick={() => openPrint()}>{wholeExam?'전과목':'선택 과목'} A4 인쇄 / PDF 저장</button>
-    <button type="button" disabled={isPreparing} className="admin-button" onClick={() => openPrint(true)}>{wholeExam?'종합 성적':'선택 과목 학습'} 요약 인쇄</button>
+    <button type="button" disabled={isPreparing} className="admin-button" onClick={() => openPrint(true)}>{wholeExam?'종합 성적':'선택 과목 학습'} 요약 인쇄</button></>}
     {error && <p role="alert" className="admin-help">{error}</p>}
   </div>;
 }

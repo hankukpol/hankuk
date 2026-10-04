@@ -21,7 +21,7 @@ import { number, Table, ComparisonTable } from './ReportTable';
 const sections = [{id:'overview',label:'성적 요약'},{id:'diagnosis',label:'복습할 문항'},{id:'items',label:'오답·문항 분석'},{id:'trend',label:'성적 변화'},{id:'rank',label:'응시 현황·순위'},{id:'subjects',label:'과목 비교'},{id:'records',label:'성적 기록'}] as const;
 type Section = typeof sections[number]['id'];
 export function PreviewReport(props:{data:PreviewData;mode:'admin'|'student';division:string;query:string}) {
- if(props.data.scope==='student') return props.data.kind==='regular'?<RegularPersonalReport data={props.data} mode={props.mode}/>:<MorningPersonalReport data={props.data} mode={props.mode}/>;
+ if(props.data.scope==='student') return props.data.kind==='regular'?<RegularPersonalReport data={props.data} mode={props.mode} division={props.division}/>:<MorningPersonalReport data={props.data} mode={props.mode} division={props.division}/>;
  return <StandardReport {...props}/>;
 }
 function StandardReport({data,mode,division,query}:{data:PreviewData;mode:'admin'|'student';division:string;query:string}) {

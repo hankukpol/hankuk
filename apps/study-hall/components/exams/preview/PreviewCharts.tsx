@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { CartesianGrid, Line, ComposedChart, Area, ResponsiveContainer, Tooltip, XAxis, YAxis, Legend, ReferenceLine } from 'recharts';
 import type { Comparison } from '@/lib/exam-preview/types';
 
-export function PreviewTrend({rows, personal, externalOnly = false,targetScore,percentile=false}: {rows:Comparison[]; personal:boolean; externalOnly?:boolean;targetScore?:number|null;percentile?:boolean}) {
+export function PreviewTrend({rows, personal, externalOnly = false,targetScore,percentile=false,externalLabel='시험 응시자 평균'}: {rows:Comparison[]; personal:boolean; externalOnly?:boolean;targetScore?:number|null;percentile?:boolean;externalLabel?:string}) {
   const [extra,setExtra] = useState(false);
   const different = new Set(rows.map(r=>r.fullScore)).size > 1;
   const chart = rows.map(row => ({...row, ...Object.fromEntries(['my','internal','external','top10','top30'].map(key => {
@@ -19,7 +19,7 @@ export function PreviewTrend({rows, personal, externalOnly = false,targetScore,p
         {targetScore!=null&&!different&&!percentile&&<ReferenceLine y={targetScore} stroke="var(--admin-chart-4)" strokeDasharray="4 4" ifOverflow="extendDomain" label={{value:`목표 ${targetScore}점`,position:"insideTopRight",fill:"var(--admin-text-secondary)",fontSize:13}}/>}
         <Area isAnimationActive={false} type="linear" dataKey={personal?'my':'internal'} stroke="none" fill="var(--admin-accent)" fillOpacity={0.06} legendType="none" tooltipType="none" connectNulls={false}/>
         {personal && <Line isAnimationActive={false} type="linear" dataKey="my" name={percentile?'상위 비율 (%)':'내 점수'} stroke="var(--admin-accent)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" dot={{r:4,fill:'var(--admin-surface)',strokeWidth:2}} activeDot={{r:6}} connectNulls={false}/>}
-        {rows.some(r=>r.external!==null)&&<Line isAnimationActive={false} type="linear" dataKey="external" name="시험 응시자 평균" stroke="var(--admin-chart-2)" strokeWidth={2} strokeDasharray="5 5" dot={false} activeDot={{r:4}} connectNulls={false}/> }
+        {rows.some(r=>r.external!==null)&&<Line isAnimationActive={false} type="linear" dataKey="external" name={externalLabel} stroke="var(--admin-chart-2)" strokeWidth={2} strokeDasharray="5 5" dot={false} activeDot={{r:4}} connectNulls={false}/> }
         {(!externalOnly && (!personal || extra)) && <Line isAnimationActive={false} type="linear" dataKey="internal" name="우리 학원 평균" stroke="var(--admin-chart-3)" connectNulls={false}/>}
         {extra && <Line isAnimationActive={false} type="linear" dataKey="top30" name="상위 30% 평균" stroke="var(--admin-chart-4)" connectNulls={false}/>}
         {extra && <Line isAnimationActive={false} type="linear" dataKey="top10" name="상위 10% 평균" stroke="var(--admin-chart-5)" connectNulls={false}/>}

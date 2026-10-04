@@ -93,7 +93,7 @@ function RegularExport({ base, examTypeId }: { base: string; examTypeId: string 
   if (!sessions.length) return <p className="admin-empty-state">가져온 정기 시험이 없습니다. 성적 관리에서 채점표와 문항분석표를 먼저 가져와 주세요.</p>;
   const selected = sessions.find((entry) => entry.examDate === date) ?? sessions[0];
   const query = new URLSearchParams({ kind: "regular", examTypeId, examDate: selected.examDate });
-  return <div className="space-y-4"><div className="admin-filter-bar"><label className="admin-label" htmlFor={id}>시험 날짜</label><select id={id} value={selected.examDate} onChange={(event) => setDate(event.target.value)}>{sessions.map((entry) => <option key={entry.sessionId} value={entry.examDate}>{entry.examDate} · 반 {entry.participantCount}명</option>)}</select></div><DownloadFile key={query.toString()} url={`${base}/reports/exam-analysis?${query}`} filename={`정기_성적분석_${selected.examDate}.xlsx`} /></div>;
+  return <div className="space-y-4"><div className="grid items-center gap-x-4 gap-y-2 md:grid-cols-[120px_minmax(0,22rem)]"><label className="admin-label" htmlFor={id}>시험 날짜</label><select id={id} value={selected.examDate} onChange={(event) => setDate(event.target.value)}>{sessions.map((entry) => <option key={entry.sessionId} value={entry.examDate}>{entry.examDate} · 반 {entry.participantCount}명</option>)}</select></div><DownloadFile key={query.toString()} url={`${base}/reports/exam-analysis?${query}`} filename={`정기_성적분석_${selected.examDate}.xlsx`} /></div>;
 }
 
 function MorningExport({ base, examTypeId }: { base: string; examTypeId: string }) {
@@ -101,7 +101,7 @@ function MorningExport({ base, examTypeId }: { base: string; examTypeId: string 
   const [range, setRange] = useState(defaultMorningAnalysisRange);
   const valid = morningAnalysisRangeSchema.safeParse(range).success;
   const query = new URLSearchParams({ kind: "morning", examTypeId, ...range });
-  return <div className="space-y-4"><div className="admin-filter-bar"><label className="admin-label" htmlFor={`${id}-from`}>시작일</label><input id={`${id}-from`} type="date" required value={range.from} max={range.to} onChange={(event) => setRange({ ...range, from: event.target.value })} /><label className="admin-label" htmlFor={`${id}-to`}>종료일</label><input id={`${id}-to`} type="date" required value={range.to} min={range.from} onChange={(event) => setRange({ ...range, to: event.target.value })} /></div>
+  return <div className="space-y-4"><div className="grid items-center gap-x-4 gap-y-2 md:grid-cols-[120px_minmax(0,22rem)]"><label className="admin-label" htmlFor={`${id}-from`}>시작일</label><input id={`${id}-from`} type="date" required value={range.from} max={range.to} onChange={(event) => setRange({ ...range, from: event.target.value })} /><label className="admin-label" htmlFor={`${id}-to`}>종료일</label><input id={`${id}-to`} type="date" required value={range.to} min={range.from} onChange={(event) => setRange({ ...range, to: event.target.value })} /></div>
     <p className="admin-help">기본은 오늘 하루입니다. 시작일과 종료일의 차이는 최대 92일까지 선택할 수 있습니다.</p>
     {!valid && <p role="alert" className="admin-notice admin-notice-danger">날짜를 확인해 주세요. 시작일부터 종료일까지 날짜 차이 92일 이내로 선택해 주세요.</p>}
     <DownloadFile key={query.toString()} disabled={!valid} url={`${base}/reports/exam-analysis?${query}`} filename={`아침_성적분석_${range.from}_${range.to}.xlsx`} />
@@ -117,11 +117,11 @@ function ExportSelection({ base, kind }: { base: string; kind: Kind }) {
   const types = request.data.examTypes.filter((type) => type.category === (kind === "regular" ? "REGULAR" : "MORNING"));
   const selected = types.find((type) => type.id === typeId) ?? types[0];
   if (!selected) return <p className="admin-empty-state">내보낼 {kind === "regular" ? "정기" : "아침"} 시험 종류가 없습니다.</p>;
-  return <div className="space-y-4"><div className="admin-filter-bar"><label className="admin-label" htmlFor={id}>시험 종류</label><select id={id} value={selected.id} onChange={(event) => setTypeId(event.target.value)}>{types.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</select></div>{kind === "regular" ? <RegularExport key={selected.id} base={base} examTypeId={selected.id} /> : <MorningExport key={selected.id} base={base} examTypeId={selected.id} />}</div>;
+  return <div className="space-y-4"><div className="grid items-center gap-x-4 gap-y-2 md:grid-cols-[120px_minmax(0,22rem)]"><label className="admin-label" htmlFor={id}>시험 종류</label><select id={id} value={selected.id} onChange={(event) => setTypeId(event.target.value)}>{types.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</select></div>{kind === "regular" ? <RegularExport key={selected.id} base={base} examTypeId={selected.id} /> : <MorningExport key={selected.id} base={base} examTypeId={selected.id} />}</div>;
 }
 
 export function ExamAnalysisExport({ divisionSlug }: { divisionSlug: string }) {
   const id = useId();
   const [kind, setKind] = useState<Kind>("regular");
-  return <section className="admin-section"><h2 className="admin-section-title">성적 분석 내보내기</h2><p className="admin-help">정기는 시험 날짜별, 아침은 조회 기간별 분석을 엑셀로 내려받습니다.</p><div className="admin-filter-bar"><label className="admin-label" htmlFor={id}>분석 구분</label><select id={id} value={kind} onChange={(event) => setKind(event.target.value as Kind)}><option value="regular">정기 모의고사</option><option value="morning">아침 모의고사</option></select></div><ExportSelection key={`${divisionSlug}:${kind}`} base={`/api/${encodeURIComponent(divisionSlug)}`} kind={kind} /></section>;
+  return <section className="space-y-4 border-t border-admin-line-soft pt-5"><div><h3 className="admin-section-title">성적 분석 내보내기</h3><p className="admin-help mt-1">정기는 시험 날짜별, 아침은 조회 기간별 분석을 엑셀로 내려받습니다.</p></div><div className="grid items-center gap-x-4 gap-y-2 md:grid-cols-[120px_minmax(0,22rem)]"><label className="admin-label" htmlFor={id}>분석 구분</label><select id={id} value={kind} onChange={(event) => setKind(event.target.value as Kind)}><option value="regular">정기 모의고사</option><option value="morning">아침 모의고사</option></select></div><ExportSelection key={`${divisionSlug}:${kind}`} base={`/api/${encodeURIComponent(divisionSlug)}`} kind={kind} /></section>;
 }

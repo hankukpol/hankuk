@@ -260,6 +260,7 @@ export function RulesSettingsManager({
         activeId={activeTab}
         onChange={setActiveTab}
         label="운영 규칙 설정 구분"
+        className="admin-subtabs-underline"
         idPrefix="rule-settings"
         variant="secondary"
         scrollable
@@ -279,7 +280,7 @@ export function RulesSettingsManager({
         <article className="admin-section">
           <h2 className="admin-section-title max-md:sr-only">현재 운영 규칙 요약</h2>
           <div className="mt-5 grid gap-3 sm:grid-cols-2 max-md:mt-0">
-            <div className="admin-dashboard-metric" data-tone="accent">
+            <div className="admin-dashboard-metric">
               <p className="admin-dashboard-metric-label">지각</p>
               <p className="admin-dashboard-metric-value">{form.tardyMinutes}분</p>
               <p className="admin-help mt-2">지각 판정 기준</p>

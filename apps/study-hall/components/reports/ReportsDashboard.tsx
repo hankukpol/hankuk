@@ -237,10 +237,7 @@ export function ReportsDashboard({
               <div><p className="admin-portal-summary-label">집계 대상</p><p className="admin-portal-summary-value">{data.studentRows.length}명</p></div>
             </div>
             <MobileDisclosure title="보고서 조회 조건">
-            <form
-              onSubmit={handleSubmit}
-              className="mt-6 grid gap-4 xl:grid-cols-[180px_180px_180px_auto]"
-            >
+            <form onSubmit={handleSubmit} className="admin-filter-bar mt-6">
               <label className="block">
                 <span className="admin-label mb-2 block">보고서 유형</span>
                 <select
@@ -289,31 +286,30 @@ export function ReportsDashboard({
                 </button>
               </div>
 
-              <div className="flex flex-wrap items-end gap-2 xl:justify-end max-md:hidden">
-                {reportButtons.map((button) => (
-                  <Link
-                    key={button.label}
-                    href={button.href}
-                    prefetch={false}
-                    className="admin-button"
-                  >
-                    <Download className="h-4 w-4" />
-                    {button.label}
-                  </Link>
-                ))}
-              </div>
             </form>
             </MobileDisclosure>
             <MobileWorkspaceTools title="보고서 내보내기" icon={Download}>
-              <div className="flex flex-wrap gap-2 md:hidden">{reportButtons.map((button) => <Link key={button.label} href={button.href} prefetch={false} className="admin-button"><Download className="h-4 w-4" />{button.label}</Link>)}</div>
-              {flags.examManagement && <ExamAnalysisExport key={divisionSlug} divisionSlug={divisionSlug} />}
+              {/* 내보내기는 조회 조건 옆에 떠 있지 않고 이름 붙은 패널 하나에 모은다. */}
+              <section className="admin-panel mt-6" aria-label="엑셀 내보내기">
+                <div className="admin-panel-header">
+                  <div>
+                    <h2 className="admin-section-title">엑셀 내보내기</h2>
+                    <p className="admin-help mt-1">위 조회 조건(기간)으로 내려받습니다.</p>
+                  </div>
+                </div>
+                <div className="space-y-6 p-5">
+                  <div className="flex flex-wrap gap-2">{reportButtons.map((button) => <Link key={button.label} href={button.href} prefetch={false} className="admin-button"><Download className="h-4 w-4" />{button.label}</Link>)}</div>
+                  {flags.examManagement && <ExamAnalysisExport key={divisionSlug} divisionSlug={divisionSlug} />}
+                </div>
+              </section>
             </MobileWorkspaceTools>
 
-            <section className="mt-6 rounded-lg border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
-              <p className="font-semibold text-slate-900">{data.title}</p>
-              <p className="mt-1">{data.subtitle}</p>
-              <p className="mt-2 text-slate-600">기준 범위: {data.rangeLabel}</p>
-            </section>
+            <div className="admin-workspace-toolbar mt-8">
+              <div className="min-w-0">
+                <h2 className="admin-section-title">{data.title}</h2>
+                <p className="admin-help mt-1">{data.subtitle} · 기준 범위 {data.rangeLabel}</p>
+              </div>
+            </div>
 
             {showTrend || showPointMovers ? (
               <div className="mt-6 grid gap-6 xl:grid-cols-[1.08fr_0.92fr]">
@@ -322,7 +318,7 @@ export function ReportsDashboard({
                     <h2 className="admin-section-title">
                       {data.period === "daily" ? "교시별 출결 흐름" : "출결률 추이"}
                     </h2>
-                    <div className="mt-5 h-[320px] rounded-lg border border-slate-200 bg-white p-4">
+                    <div className="admin-panel mt-5 h-[320px] p-4">
                       <ReportsTrendChart color={data.division.color} trend={data.trend} />
                     </div>
                   </section>

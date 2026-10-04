@@ -580,22 +580,23 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
           {/* 상단 바: 검색 + 설정 링크 */}
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             {/* 검색 */}
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+            <label className="relative block w-full md:w-[var(--admin-search-width)]">
+              <span className="sr-only">좌석 검색</span>
+              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-admin-text-muted" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="이름 또는 수험번호 검색"
-                className="h-8 rounded-lg border border-slate-200 bg-white pl-8 pr-3 text-xs text-slate-700 placeholder-slate-400"
+                className="pl-11"
               />
-            </div>
+            </label>
 
             <Link
               href={`/${divisionSlug}/admin/settings/seats`}
-              className="admin-table-link inline-flex items-center gap-1 text-xs"
+              className="admin-button admin-button-compact"
             >
-              <MapPin className="h-3 w-3" />
+              <MapPin className="h-4 w-4" />
               좌석 배치 편집
             </Link>
           </div>

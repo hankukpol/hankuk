@@ -542,6 +542,8 @@ export function InterviewManager({
                 context={context}
                 isLoading={isContextLoading}
                 error={contextError}
+                scoreHref={form.studentId ? `/${divisionSlug}/admin/exams/students/${encodeURIComponent(form.studentId)}` : undefined}
+                reportHref={form.studentId ? `/${divisionSlug}/admin/students/${encodeURIComponent(form.studentId)}/report` : undefined}
               />
             ) : null}
           </section>

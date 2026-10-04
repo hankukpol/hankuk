@@ -92,7 +92,7 @@ export default async function StudentDetailPage({ params }: StudentDetailPagePro
         <div className="max-md:hidden">
           <Link
             href={`/${params.division}/admin/students`}
-            className="inline-flex items-center gap-2 text-base font-bold text-slate-600 transition hover:text-slate-950"
+            className="admin-text-action"
           >
             <ChevronLeft className="h-4 w-4" />
             학생 명단으로 돌아가기

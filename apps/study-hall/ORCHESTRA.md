@@ -1,5 +1,7 @@
 # 오케스트라 운영 규칙
 
+2026-09-25 안내: 기본은 단일 담당이다. 이 문서는 병렬 협업이 필요한 경우에만 적용하며 오케스트라 사용을 강제하지 않는다. 작업 전 [DEVELOPMENT_CONTRACT.md](DEVELOPMENT_CONTRACT.md)와 [CURRENT_STATE.md](CURRENT_STATE.md)를 공통 기준으로 읽는다. 이전 세션의 배포·DB 승인이나 미커밋 소유권을 추정하지 않는다.
+
 모든 담당 작업에는 [ACADEMY_TEMPLATES.md](ACADEMY_TEMPLATES.md)의 학원별 독립 템플릿 원칙을 적용한다. 단일 작업을 기본으로 하며, 역할을 나누더라도 설정·계산 연동과 기록 보호 검증을 작업 범위에 포함한다.
 
 여러 Claude 세션이 이 앱을 나눠 작업할 때의 통신 규약이다.

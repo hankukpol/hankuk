@@ -309,6 +309,31 @@ test("without an effective policy active periods and mandatory flags come from p
   assert.deepEqual(fire.students.map(student => student.id), ["f1"]);
 });
 
+test("자동 확정 설정에서는 관리자와 조교 저장 모두 결석 벌점 부여·정정 회수를 수행한다", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date(`${date}T22:00:00+09:00`) });
+  for (const actor of [admin, assistant]) {
+    const f = fixture();
+    f.policy.managerConfirmsAttendance = false;
+    const manual: MockPointRecordRecord = { id: "manual", studentId: "p1", ruleId: null, points: 3, date: `${date}T00:00:00Z`, notes: "수동 상점", recordedById: admin.id, createdAt: `${date}T00:00:00Z` };
+    f.state.pointRecordsByDivision.police.push(manual);
+    f.state.pointRecordsByDivision.fire.push({ ...manual, id: "foreign", studentId: "f1" });
+    const foreign = JSON.stringify(f.state.pointRecordsByDivision.fire);
+    const save = (status: "ABSENT" | "PRESENT" | "EXCUSED") => f.attendance.upsertAttendanceBatch("police", actor, {
+      date, periodId: "09:15", records: [{ studentId: "p1", status, reason: status === "EXCUSED" ? "승인된 사유" : null }],
+    });
+    for (const corrected of ["PRESENT", "EXCUSED"] as const) {
+      await save("ABSENT");
+      const points = structuredClone(f.state.pointRecordsByDivision.police);
+      assert.deepEqual(points.filter(r => r.notes?.startsWith("[자동][출결벌점]")).map(r => r.points), [-2]);
+      await save("ABSENT");
+      assert.deepEqual(f.state.pointRecordsByDivision.police, points, "같은 출결 재저장은 중복 없이 ID 보존");
+      await save(corrected);
+      assert.deepEqual(f.state.pointRecordsByDivision.police, [manual]);
+    }
+    assert.equal(JSON.stringify(f.state.pointRecordsByDivision.fire), foreign);
+  }
+});
+
 test("조교는 출결과 후보만 기록하고 관리자가 확정·재확정하며 수동 기록과 다른 직렬은 보존한다", async (t) => {
   t.mock.timers.enable({ apis: ["Date"], now: new Date(`${date}T22:00:00+09:00`) });
   const f = fixture();

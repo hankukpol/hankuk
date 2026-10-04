@@ -17,6 +17,9 @@ const attendanceStatusSchema = z.enum([
 ]);
 
 const recurringAttendanceSchema = z.object({
+  operation: z.enum(["apply", "release-class"]).optional(),
+  preview: z.boolean().optional(),
+  previewToken: z.string().length(64).optional(),
   studentIds: z
     .array(z.string().min(1))
     .min(1, "학생을 한 명 이상 선택해 주세요.")

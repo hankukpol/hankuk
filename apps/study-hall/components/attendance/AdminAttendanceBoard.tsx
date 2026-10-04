@@ -100,7 +100,7 @@ type MatrixState = Record<
 >;
 
 type BulkApplyDraft = {
-  mode: "daily" | "recurring";
+  mode: "daily" | "recurring" | "release";
   startPeriodId: string;
   endPeriodId: string;
   status: AttendanceOptionValue;
@@ -324,6 +324,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [recurringSavingStudentId, setRecurringSavingStudentId] = useState<string | null>(null);
+  const [releasePreview, setReleasePreview] = useState<{ key: string; token: string; count: number; protectedCount: number } | null>(null);
   const hasSeatLayout = Boolean(seatRooms && seatRooms.length > 0 && initialSeatLayout);
   const [viewMode, setViewMode] = useState<"table" | "seat">("table");
   const isDirty = hasMatrixChanges(matrix, savedMatrix, students, periods);
@@ -495,6 +496,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
   }
 
   function updateBulkApplyDraft(studentId: string, value: Partial<BulkApplyDraft>) {
+    setReleasePreview(null);
     setBulkApplyByStudent((current) => ({
       ...current,
       [studentId]: {
@@ -695,12 +697,12 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
       return;
     }
 
-    if ((draft.status === "ABSENT" || draft.status === "EXCUSED") && !draft.reason.trim()) {
+    if (draft.mode !== "release" && (draft.status === "ABSENT" || draft.status === "EXCUSED") && !draft.reason.trim()) {
       toast.error("결석 또는 사유결석은 사유를 입력해야 합니다.");
       return;
     }
 
-    if (!draft.status) {
+    if (draft.mode !== "release" && !draft.status) {
       toast.error("적용할 상태를 선택해 주세요.");
       return;
     }
@@ -713,6 +715,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
     setRecurringSavingStudentId(studentId);
 
     try {
+      const confirmedPreview = releasePreview?.key === JSON.stringify(draft) ? releasePreview : null;
       const response = await fetchCheck(`/api/${divisionSlug}/attendance/recurring`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -723,7 +726,10 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
           weekdays: draft.weekdays,
           startPeriodId: draft.startPeriodId,
           endPeriodId: draft.endPeriodId,
-          status: draft.status,
+          status: draft.mode === "release" ? "EXCUSED" : draft.status,
+          operation: draft.mode === "release" ? "release-class" : "apply",
+          preview: draft.mode === "release" && !confirmedPreview,
+          previewToken: draft.mode === "release" ? confirmedPreview?.token : undefined,
           reason: draft.reason || null,
           overwriteExisting: draft.overwriteExisting,
         }),
@@ -735,19 +741,27 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
       }
 
       const studentLabel = `학생 ${data.targetStudentCount ?? draft.targetStudentIds.length}명 · `;
+      if (data.preview) {
+        setReleasePreview({ key: JSON.stringify(draft), token: data.previewToken,
+          count: data.releasedCount, protectedCount: data.protectedCount });
+        return;
+      }
+      setReleasePreview(null);
+      if (draft.mode === "release" && isSelectedDateIncludedInRecurringDraft(draft)) await reloadSelectedDateData();
       if (data.automationWarnings?.length) throw new Error(`출결은 반영되었지만 ${data.automationWarnings.join(" ")} 같은 조건으로 다시 적용해 재계산해 주세요.`);
       const resultMessage =
-        data.updatedExistingCount > 0
+        draft.mode === "release" ? `${studentLabel}수업 ${data.releasedCount}칸을 미처리로 변경했습니다. 다른 기록 ${data.protectedCount}칸은 보존했습니다.` : data.updatedExistingCount > 0
           ? `${studentLabel}${data.appliedCount}칸 신규 적용, 기존 기록 ${data.updatedExistingCount}칸 덮어씀`
           : `${studentLabel}${data.appliedCount}칸 적용, 기존 기록 ${data.skippedExistingCount}칸 건너뜀`;
       toast.success(resultMessage);
 
-      if (isSelectedDateIncludedInRecurringDraft(draft)) {
+      if (draft.mode !== "release" && isSelectedDateIncludedInRecurringDraft(draft)) {
         await reloadSelectedDateData();
       }
 
       setBulkApplyStudentId(null);
     } catch (error) {
+      setReleasePreview(null);
       toast.error(error instanceof Error ? error.message : "반복 출석 적용에 실패했습니다.");
     } finally {
       setRecurringSavingStudentId(null);
@@ -1113,16 +1127,17 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
         open={bulkApplyStudent !== null && activeBulkApplyDraft !== null}
         onClose={closeBulkApplyModal}
         title={`${bulkApplyStudent?.name ?? "학생"} 출석 일괄 적용`}
-        description="당일은 이 학생에게, 반복은 선택한 학생 전원에게 같은 출석 상태와 사유를 적용합니다."
+        description="당일 입력, 여러 학생의 반복 입력, 수업만 미처리로 되돌리는 작업을 선택합니다."
         badge="ATTENDANCE"
 
       >
         {bulkApplyStudent && activeBulkApplyDraft ? (
-          <div className="space-y-5">
-            <div className="grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1">
+          <fieldset disabled={isActiveRecurringSaving} className="min-w-0 space-y-5">
+            <div className="grid grid-cols-3 gap-1 rounded-lg bg-slate-100 p-1">
               {[
                 { mode: "daily" as const, label: "당일" },
                 { mode: "recurring" as const, label: "반복" },
+                { mode: "release" as const, label: "수업 해제" },
               ].map((option) => (
                 <button
                   key={option.mode}
@@ -1153,7 +1168,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
               </div>
             )}
 
-            {activeBulkApplyDraft.mode === "recurring" && (
+            {activeBulkApplyDraft.mode !== "daily" && (
               <div className="space-y-3 border-t border-slate-100 pt-4">
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1241,9 +1256,6 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
                       onChange={(event) =>
                         updateBulkApplyDraft(bulkApplyStudent.id, {
                           dateFrom: event.target.value,
-                          weekdays: event.target.value
-                            ? [getWeekdayFromDate(event.target.value)]
-                            : activeBulkApplyDraft.weekdays,
                         })
                       }
                       className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
@@ -1284,7 +1296,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
                     );
                   })}
                 </div>
-                <div className="flex flex-col gap-1 rounded-lg border border-slate-200 bg-white p-1 sm:flex-row">
+                {activeBulkApplyDraft.mode !== "release" && <div className="flex flex-col gap-1 rounded-lg border border-slate-200 bg-white p-1 sm:flex-row">
                   {[
                     {
                       overwriteExisting: false,
@@ -1308,7 +1320,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
                       {option.label}
                     </button>
                   ))}
-                </div>
+                </div>}
               </div>
             )}
 
@@ -1351,7 +1363,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
               </label>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-[220px_1fr]">
+            {activeBulkApplyDraft.mode !== "release" && <div className="grid gap-3 sm:grid-cols-[220px_1fr]">
               <label className="admin-label">
                 상태
                 <select
@@ -1362,7 +1374,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
                   data-attendance-status={getAttendanceInputValue(activeBulkApplyDraft.status, activeBulkApplyDraft.reason)}
                   className="admin-attendance-status-select mt-2 h-11 w-full rounded-lg border px-3"
                 >
-                  {ATTENDANCE_INPUT_OPTIONS.filter((option) => !isLeaveAttendanceStatus(option.value)).map((option) => (
+                  {ATTENDANCE_INPUT_OPTIONS.filter((option) => !isLeaveAttendanceStatus(option.value) && (activeBulkApplyDraft.mode === "daily" || option.value !== "")).map((option) => (
                     <option key={option.value || "active-bulk-empty"} value={option.value}>
                       {option.label}
                     </option>
@@ -1381,15 +1393,22 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
                   disabled={!activeBulkNeedsReason}
                 />
               </label>
-            </div>
+            </div>}
 
-            {activeBulkApplyDraft.mode === "recurring" && (
+            {activeBulkApplyDraft.mode === "release" && <div className="admin-notice" role="status">
+              수업 기록만 미처리로 변경합니다. 출석·지각·결석·사유·휴무와 시험 자동 기록은 보존합니다.
+              {releasePreview?.key === JSON.stringify(activeBulkApplyDraft) && <p>
+                해제할 수업 {releasePreview.count}칸 · 보존할 다른 기록 {releasePreview.protectedCount}칸.
+                아래 버튼을 눌러 확정해 주세요.
+              </p>}
+            </div>}
+            {activeBulkApplyDraft.mode !== "daily" && (
               <div className="admin-help px-3 py-2 font-medium">
                 학생 {activeRecurringStudentCount}명 × {activeRecurringDateCount}일 ×{" "}
                 {activeBulkTargetPeriods.length}교시 = 총{" "}
                 {activeRecurringCellCount.toLocaleString("ko-KR")}칸
                 <span className="ml-2 text-slate-400">
-                  {activeBulkApplyDraft.overwriteExisting
+                  {activeBulkApplyDraft.mode === "release" ? "이 범위 안의 수업만 해제합니다." : activeBulkApplyDraft.overwriteExisting
                     ? "기존 기록도 변경합니다."
                     : "기존 기록은 건너뜁니다."}
                 </span>
@@ -1407,7 +1426,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
               <button
                 type="button"
                 onClick={() =>
-                  activeBulkApplyDraft.mode === "recurring"
+                  activeBulkApplyDraft.mode !== "daily"
                     ? void applyRecurringRangeToStudent(bulkApplyStudent.id)
                     : applyBulkRangeToStudent(bulkApplyStudent.id)
                 }
@@ -1416,12 +1435,14 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
               >
                 {isActiveRecurringSaving
                   ? "적용 중..."
+                  : activeBulkApplyDraft.mode === "release"
+                    ? releasePreview?.key === JSON.stringify(activeBulkApplyDraft) ? "수업 해제 확정" : "해제 대상 확인"
                   : activeBulkApplyDraft.mode === "recurring"
                     ? "기간 반복 적용"
                     : "당일 구간 적용"}
               </button>
             </DialogActions>
-          </div>
+          </fieldset>
         ) : null}
       </SlideOver>
 

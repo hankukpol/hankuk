@@ -38,6 +38,9 @@ type AttendanceInputRecord = {
 };
 
 type RecurringAttendanceInput = {
+  operation?: "apply" | "release-class";
+  preview?: boolean;
+  previewToken?: string;
   studentIds: string[];
   dateFrom: string;
   dateTo: string;
@@ -50,6 +53,10 @@ type RecurringAttendanceInput = {
 };
 
 export type RecurringAttendanceResult = {
+  releasedCount?: number;
+  protectedCount?: number;
+  previewToken?: string;
+  preview?: boolean;
   automationWarnings?: string[];
   appliedCount: number;
   updatedExistingCount: number;
@@ -1391,6 +1398,9 @@ export async function applyRecurringAttendance(
   actor: AttendanceActor,
   input: RecurringAttendanceInput,
 ): Promise<RecurringAttendanceResult> {
+  if (input.operation === "release-class" && actor.role === "ASSISTANT") {
+    throw badRequest("수업 일괄 해제는 관리자만 사용할 수 있습니다.");
+  }
   const normalizedFrom = normalizeDate(input.dateFrom);
   const normalizedTo = normalizeDate(input.dateTo);
   const totalDays = getDateDiffInDays(normalizedFrom, normalizedTo);
@@ -1408,7 +1418,7 @@ export async function applyRecurringAttendance(
     throw badRequest("적용할 요일을 하나 이상 선택해 주세요.");
   }
 
-  if ((input.status === "ABSENT" || input.status === "EXCUSED") && !input.reason?.trim()) {
+  if (input.operation !== "release-class" && (input.status === "ABSENT" || input.status === "EXCUSED") && !input.reason?.trim()) {
     throw badRequest("결석 또는 사유결석은 사유를 입력해야 합니다.");
   }
 
@@ -1475,6 +1485,31 @@ export async function applyRecurringAttendance(
   await Promise.all(
     targetDates.map((date) => ensureAssistantAllowed(divisionSlug, actor, date)),
   );
+
+  if (input.operation === "release-class") {
+    const { releaseClassAttendance } = await import("@/lib/services/class-attendance-release.service");
+    const result = await releaseClassAttendance(divisionSlug, {
+      studentIds, periodIds: targetPeriods.map(period => period.id), dates: targetDates,
+    }, input.preview === true, input.previewToken);
+    const automationWarnings: string[] = [];
+    if (!input.preview) {
+      // Future class reservations must not create current penalties. Re-run past dates
+      // even on an empty retry so a prior derived-calculation failure can recover.
+      for (const date of targetDates.filter(date => date <= toKstDateString())) {
+        try {
+          automationWarnings.push(...(await syncAttendanceDerivedPoints(divisionSlug, date, actor.id, false))
+            .map(message => `${date}: ${message}`));
+        } catch (error) {
+          logServerError("ClassReleaseDerivedPoints", error);
+          automationWarnings.push(`${date}: 출결 관련 점수 재계산을 완료하지 못했습니다.`);
+        }
+      }
+      revalidateDivisionOperationalViews(divisionSlug, { studentIds });
+    }
+    return { ...result, automationWarnings, appliedCount: 0, updatedExistingCount: 0,
+      skippedExistingCount: result.protectedCount, targetDateCount: targetDates.length,
+      targetStudentCount: studentIds.length, targetCellCount };
+  }
 
   const reason =
     input.status === "ABSENT" || input.status === "EXCUSED" ? input.reason?.trim() ?? null : null;

@@ -4,7 +4,7 @@
 
 - 삭제: 예시 서버 복사본 `.local/exam-preview/runtime-*` 10개(최신 `runtime-cafc0f1c`만 남김), main 에 이미 합쳐지고 변경이 없던 Codex worktree 7개와 그 브랜치(`restart-police-v31`, `study-hall-absence-count/attendance-audit/monthly-exam-merits/integrated-release/point-policy-41-42/release-20260914`).
 - **사고와 복구**: 커밋 전 검증용 임시 worktree(`D:/tmp/sh-wt`)를 지울 때 그 안의 node_modules 링크를 따라가 `apps/study-hall/node_modules` 와 `packages/config` 3개 파일이 지워졌다. 루트에서 `pnpm install --frozen-lockfile --force`, `git restore packages/config`, study-hall `npx prisma generate` 로 복구했고 `npm run typecheck` 통과·테스트 975/975 확인. 이후 링크가 있는 폴더는 링크를 먼저 끊고(`Directory.Delete(link,false)`) 남은 링크가 없을 때만 지운다. **주의**: study-hall 과 academy-ops 는 같은 `@prisma/client@6.19.2` 경로를 공유하므로 마지막에 generate 한 앱의 타입이 남는다(기존 구조).
-- 남겨 둔 것(결정 필요): 다른 세션의 출석 `수업 일괄 해제` 미커밋 작업(attendance 4개 파일 + class-attendance-release 서비스·테스트·qa 문서), 공용 지침 문서 수정분(AGENTS/CLAUDE/HANDOFF/ORCHESTRA/ACADEMY_TEMPLATES)과 미추적 `CURRENT_STATE.md`·`DEVELOPMENT_CONTRACT.md`, main 에 안 합쳐진 Codex worktree 5개와 합쳐졌지만 미커밋 변경이 남은 worktree 6개, score-predict·루트 docs 미추적 파일.
+- 운영자 결정(10/4) 반영: 출석 `수업 일괄 해제` 기능 커밋 `d3cf753` 배포(Vercel READY, DB 변경 없음), 공용 지침·상태·QA 문서 커밋 `a018d32`, Codex worktree 11개·브랜치와 `D:/Codex/worktrees` 잔여물 전부 삭제(링크 먼저 끊고 삭제, 본 저장소 node_modules·packages/config 무손상 확인). 남은 것: `compose.yaml` 로컬 목업 설정 2줄(미커밋, 로컬 Docker 전용), worktree 없는 브랜치 `codex/class-pass-redeploy-20260417`·`codex/study-hall-exam-points-20260914`, score-predict 미추적 파일.
 
 ## 최신 배포 — 2026-10-04 관리자 화면 SaaS 정리 + 학생 상담 자료 A4 + 개인 성적표 개편 (Claude, 커밋 `262ce09`, 사용자 승인)
 

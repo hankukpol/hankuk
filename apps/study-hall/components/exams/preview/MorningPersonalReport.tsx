@@ -59,6 +59,9 @@ export function MorningPersonalReport({data,mode,division}:{data:PreviewData;mod
  const itemDates=Array.from(new Set(items.map(i=>i.date))).sort().reverse();
  const activeDate=itemDates.includes(itemDate)?itemDate:itemDates[0];
  const pool=printing||reviewSelection?items:items.filter(i=>i.date===activeDate);
+ // 성적표 인쇄의 문항 표는 모든 학생이 같은 기준이어야 한다: 조회 기간 전 과목의 '내가 틀린 문항'만, 날짜·과목 순서로(운영자 결정 2026-10-05).
+ const subjectOrder=new Map(data.subjects.map((s,i)=>[s.id,i]));
+ const printWrong=data.items.filter(i=>i.correct===false).sort((a,b)=>a.date.localeCompare(b.date)||(subjectOrder.get(a.subjectId)??0)-(subjectOrder.get(b.subjectId)??0)||a.itemNo-b.itemNo);
  const groups=reviewGroups(pool,data.easyThreshold);
  const chips=data.subjects.map(s=>({id:s.id,label:s.name}));
  const ranks=report?.weeklyRanks??[];
@@ -131,7 +134,8 @@ export function MorningPersonalReport({data,mode,division}:{data:PreviewData;mod
    {!printing&&!reviewSelection&&itemDates.length>0&&<label className="admin-label block max-w-xs" data-report-navigation>시험일<select value={activeDate} onChange={e=>{setItemDate(e.target.value);setFocusRequest({date:'all',page:0,serial:Date.now()});}}>{itemDates.map(d=>{const topic=data.comparisons.find(r=>r.subjectId===selected&&r.date===d)?.topic;return <option key={d} value={d}>{d}{topic?` · ${topic}`:''}</option>;})}</select></label>}
    {!printing&&<Chips label="문항 분류" items={[{id:'wrong',label:`내가 틀린 문제 ${pool.filter(i=>i.correct===false).length}`},{id:'easy',label:`많이 맞힌 문제 중 틀림 ${groups.easy.length}`},{id:'all',label:`전체 ${pool.length}`},{id:'top5',label:'많이 틀린 문제 5'}]} active={reviewSelection?'':itemFilter} onChange={id=>{setItemFilter(id);setReviewSelection(null);setFocusRequest({date:'all',page:0,serial:Date.now()});}}/>}
    {!printing&&reviewSelection&&<div className={styles.selectionContext} data-report-navigation><strong>{reviewSelection.title} · {reviewSelection.ids.length}문항</strong><button type="button" className="admin-text-action" onClick={()=>{setReviewSelection(null);setItemFilter('wrong');}}>이 과목 틀린 문제 전체</button></div>}
-   {!printing&&itemFilter==='top5'?<WrongRateTopFive items={pool}/>:<ReferenceItemBrowser key={`items-${selected}-${activeDate}-${data.range.from}-${data.range.to}`} allItems={pool} items={printing?pool:pool.filter(visibleItem)} printing={printing} focusRequest={focusRequest} personal mobile={mobile} expanded={expanded} toggle={id=>setExpanded({...expanded,[id]:!expanded[id]})}/>}
+   {printing&&<p className="admin-help">인쇄 기준: {data.range.from} ~ {data.range.to} 전 과목에서 내가 틀린 문항 {printWrong.length}개(답을 비운 문항 포함), 날짜·과목 순. 같은 날짜·과목의 전체·학원 정답률은 모든 학생이 같습니다.</p>}
+   {!printing&&itemFilter==='top5'?<WrongRateTopFive items={pool}/>:<ReferenceItemBrowser key={`items-${selected}-${activeDate}-${data.range.from}-${data.range.to}`} allItems={printing?printWrong:pool} items={printing?printWrong:pool.filter(visibleItem)} printing={printing} focusRequest={focusRequest} personal mobile={mobile} expanded={expanded} toggle={id=>setExpanded({...expanded,[id]:!expanded[id]})}/>}
    {!printing&&itemFilter!=='top5'&&itemFilter!=='all'&&pool.some(i=>visibleItem(i)&&i.correct===false)&&<div className="admin-flat-page" data-report-navigation><h3 className="admin-section-title">복습 기록</h3><ReviewWorkbench key={`workbench-${selected}-${activeDate}-${data.range.from}-${data.range.to}`} data={data} subject={selected} ids={pool.filter(visibleItem).map(i=>i.id)}/></div>}
    <ExamTimeEntry data={data}/>
   </>)}

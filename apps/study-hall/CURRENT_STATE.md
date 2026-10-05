@@ -1,5 +1,12 @@
 # 현재 구현·검증 상태
 
+## 최신 배포 — 2026-10-05 개인 성적표 인쇄의 문항 기준 통일 (Claude, 사용자 승인)
+
+- 원인: 성적표 인쇄의 문항 표가 학생마다 `가장 먼저 복습` 과목(없으면 최근 과목) 하나만 담아, 같은 날짜라도 학생마다 다른 과목의 정답률이 나왔다. 날짜 머리 줄에 과목명이 없어 같은 시험처럼 보였다(계산 자체는 회차별로 동일).
+- 운영자 결정(10/5, 1안): 인쇄는 조회 기간 **전 과목에서 내가 틀린 문항만**(빈 답 포함), 날짜·과목·번호 순. 머리 줄은 `9/11(목) 헌법 · 채점 결과`처럼 날짜·요일·과목을 함께 쓴다(화면의 여러 날짜 표도 동일). 인쇄 위에 기준 안내 한 줄을 출력한다.
+- 파일: `components/exams/preview/MorningPersonalReport.tsx`, `components/exams/preview/ReferenceItemTable.tsx`. 정기시험(Regular) 인쇄는 과목별 h3 제목이 이미 있어 바꾸지 않았다.
+- 검증: typecheck 통과, 테스트 975/975. 운영 로그인 후 실제 인쇄 확인은 운영자 확인 필요. 운영 DB 변경 없음.
+
 ## 정리 기록 — 2026-10-04 (Claude)
 
 - 삭제: 예시 서버 복사본 `.local/exam-preview/runtime-*` 10개(최신 `runtime-cafc0f1c`만 남김), main 에 이미 합쳐지고 변경이 없던 Codex worktree 7개와 그 브랜치(`restart-police-v31`, `study-hall-absence-count/attendance-audit/monthly-exam-merits/integrated-release/point-policy-41-42/release-20260914`).

@@ -439,7 +439,10 @@ Tailwind의 `rounded-sm`~`rounded-3xl`은 모두 8px로 매핑되어 있다. 직
 | 주 실행 | `.admin-button .admin-button-primary` | accent 채움 + `--admin-on-accent` 글자 | 화면의 주 작업 하나 (등록, 저장, 부여) |
 | 보조 | `.admin-button` | 흰 바탕 + 1px line | 조회, 새로고침, 이동, 취소 |
 | 위험 | `.admin-button .admin-button-danger` / `-danger-outline` | danger 채움 / danger outline | 삭제, 퇴실, 환불 |
-| 축약 | `+ .admin-button-compact` | 36px / 13px | 표 안 행 작업 |
+| 축약 | `+ .admin-button-compact` | 32px / 13px (768px 미만 36px) | 표 안 행 작업 · 패널 머리 작업 |
+| 크게 | `+ .admin-button-large` | 48px / 16px | 로그인 · 모바일 하단 고정 실행 |
+
+> **0절 12항(2026-10-07)이 크기를 정한다.** 기본 버튼·입력 40px(768px 미만 44px). 회귀 검사는 `tests/render/ui-standard.test.ts`(정의 없는 버튼 이름, 대화상자 하단 순서, 손으로 만든 버튼 상한, 높이 토큰).
 
 hover는 면 한 단계(`surface-soft` / `accent-hover`), 누름은 한 단계 더(`surface-muted`)로만 준다. `hover:opacity-90` 처럼 전체를 흐리는 방식은 쓰지 않는다.
 

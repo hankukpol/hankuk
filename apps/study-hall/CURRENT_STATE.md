@@ -1,5 +1,12 @@
 # 현재 구현·검증 상태
 
+## 배포 — 2026-10-08 리팩토링 1~4단계 운영 반영 (오케스트라 메인, 운영자 승인)
+
+- 리팩토링 브랜치 `refactor/study-hall-2026-10`(커밋 10개, 기준 3186dac)를 main 에 fast-forward 병합 후 이 배포 커밋으로 운영 반영. 상세는 `.orchestra/refactor-plan.md` 진행 기록.
+- 공용 폴더 재검증: typecheck·lint 0, 테스트 995/995.
+- 로컬 환경 주의: 이 PC에서는 한글·공백 경로(`학원 포탈 프로그램`)에서 Node 가 패키지 내부 `#` 별칭(package.json imports)을 못 찾는다. `prisma generate` 결과 `.prisma/client/default.js` 가 `require('#main-entry-point')` 로 나오면 테스트가 56개 실패한다 → 같은 파일을 `module.exports = { ...require('.') }` 로 맞추면 정상(로컬 node_modules 한정, 운영 무관).
+- 배포 후 확인할 것: DB 연결 수 기본 1→4(`PRISMA_CONNECTION_LIMIT`). 공유 Supabase pooler 사용량과 다른 앱 연결 오류가 없는지 본다. 문제 시 환경변수로 낮춘다.
+
 ## 로컬 커밋(미배포) — 2026-10-07 study-hall 리팩토링 1~4단계 (Claude, 운영자 승인 · 오케스트라 협의)
 
 - 위치: worktree `D:\코딩\학원 포탈 프로그램\hankuk-refactor`, 브랜치 `refactor/study-hall-2026-10`(기준 `3186dac`), 커밋 9개, 95파일 +1,156/−5,198. 계획·진행 기록 `.orchestra/refactor-plan.md`. 운영 DB 는 읽기 전용 `migrate status` 1회(35/35 적용, 운영자 승인)만, 쓰기 없음.

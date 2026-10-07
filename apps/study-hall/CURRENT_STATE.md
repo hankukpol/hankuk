@@ -2,7 +2,7 @@
 
 ## 최신 배포 — 2026-10-07 학습 면담 시작 지점·기간 맞춤 (Claude, 운영자 요청 1·2·3)
 
-계획 대비 빠졌던 3가지를 넣었다. ① 반 분석 `학생별 취약점` 표에 `작업` 열 `학습 면담` 버튼(`CohortWeaknessTable.tsx`, 미리보기 데이터 제외) ② 면담 일지 머리 `학습 면담` 버튼(`InterviewJournal.tsx` `onCreateStudy`, 학원 시험 관리가 켜진 경우 `admin/interviews/page.tsx` → `studyInterviewEnabled`) ③ 면담 슬라이드의 성적 요약·학습 진단 조회와 `성적 분석 ↗`(`kind=morning&from&to`)·`상담 자료 ↗`(`from&to`) 링크가 같은 기간(`reportRange(오늘)`, 4주)을 쓴다(`InterviewManager.tsx`, `InterviewScorePanel.tsx`, `StudyInterviewEditor.tsx`). 계획에서 남은 차이: 상담 자료 `다음 주 과제` 칸은 빈칸 유지(운영자 결정 대기), 정기 결론 문장의 `상위 n%`는 그대로.
+계획 대비 빠졌던 3가지를 넣었다. ① 반 분석 `학생별 취약점` 표에 `작업` 열 `학습 면담` 버튼(`CohortWeaknessTable.tsx`, 미리보기 데이터 제외) ② 면담 일지 머리 `학습 면담` 버튼(`InterviewJournal.tsx` `onCreateStudy`, 학원 시험 관리가 켜진 경우 `admin/interviews/page.tsx` → `studyInterviewEnabled`) ③ 면담 슬라이드의 성적 요약·학습 진단 조회와 `성적 분석 ↗`(`kind=morning&from&to`)·`상담 자료 ↗`(`from&to`) 링크가 같은 기간(`reportRange(오늘)`, 4주)을 쓴다(`InterviewManager.tsx`, `InterviewScorePanel.tsx`, `StudyInterviewEditor.tsx`). 계획에서 남은 차이: 상담 자료 `다음 주 과제` 칸은 빈칸 유지(운영자 결정 2026-10-07 — 상담 자료는 면담 전에 인쇄하고 새 할 일은 면담 중 손으로 적는다. 정해 둔 할 일은 `지난 할 일` 구획에 나온다), 정기 결론 문장의 `상위 n%`는 그대로.
 검증: typecheck·lint 통과, 테스트 1008/1008(렌더 테스트 2개 추가), 로컬 목업 3300 Playwright(`.local/entry-points-qa.cjs`): 일지 버튼 → 학습 면담 선택 상태로 슬라이드 열림, 링크 기간 9/10~10/7 = 성적 요약 기간, 반 분석 표 학습 면담 버튼 38개. DB 변경 없음.
 
 ## 최신 배포 — 2026-10-07 학생 화면 단순화 + 규칙 기반 학습 진단·학습 면담 (Claude, 운영자 승인)

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatPrintDocument } from "../../components/exams/analysis/print-document";
+import { formatPrintDocument } from "../../components/exams/preview/print-document";
 const { JSDOM } = require("jsdom");
 
 test("print copy converts metrics and answer pairs to tables without changing the live report", () => {

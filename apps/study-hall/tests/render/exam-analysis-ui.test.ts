@@ -13,14 +13,6 @@ import * as morningSchemas from "../../lib/morning-exam-analysis-schemas";
 import { itemDiagnostics } from "../../lib/exam-analysis-meta";
 import { DEFAULT_EXAM_ANALYSIS_SETTINGS } from "../../lib/exam-analysis-settings";
 
-test("grading table distinguishes missing responses from explicit unanswered marks", () => {
-  const items = itemDiagnostics([1, 2].map(itemNo => ({ subjectId: "a", itemNo, position: itemNo, answerKey: "1", externalCorrectRatePct: 80, internalCorrectRatePct: 50 })), [{ subjectId: "a", itemNo: 2, answer: null, isCorrect: false }], DEFAULT_EXAM_ANALYSIS_SETTINGS.common);
-  const Component = load("components/exams/analysis/ItemAnalysisTable.tsx").ItemAnalysisTable;
-  const html = renderToStaticMarkup(React.createElement(Component, { items, subjects: [{ id: "a", name: "과목" }] }));
-  assert.ok(html.includes('<td>1</td><td>1</td><td>자료 없음</td><td>자료 없음</td>'));
-  assert.ok(html.includes('<td>2</td><td>1</td><td>무응답</td><td>X</td>'));
-});
-
 const root = path.resolve(__dirname, "../..");
 test("student score targets use unframed rows without changing the default editor", () => {
   const Component = load("components/exams/ScoreTargetPanel.tsx").ScoreTargetPanel;
@@ -37,63 +29,6 @@ test("student score targets use unframed rows without changing the default edito
   assert.doesNotMatch(original, /class="admin-portal-summary /);
 });
 
-test("student report anchors retain every analysis section without hidden panels", () => {
-  const Component = load("components/exams/analysis/PersonalReportTabs.tsx").PersonalReportTabs;
-  const html = renderToStaticMarkup(React.createElement(Component, { navigation: "anchors" },
-    React.createElement("div", { "data-report-section": "overview" }, "overview content"),
-    React.createElement("div", { "data-report-section": "diagnosis" }, "diagnosis content"),
-  ));
-  assert.match(html, /aria-label="개인 성적 분석 바로가기"/);
-  assert.equal((html.match(/href="#/g) ?? []).length, 2);
-  assert.equal((html.match(/data-report-panel/g) ?? []).length, 2);
-  assert.doesNotMatch(html, /hidden=|role="tablist"|role="tabpanel"/);
-});
-
-test("subject choices preserve hidden print panels without tab semantics", () => {
-  const Component = load("components/exams/analysis/LearningActionSummary.tsx").SubjectTabs;
-  const html = renderToStaticMarkup(React.createElement(Component, { subjects: [
-    { id: "first", name: "first subject", content: "first content" },
-    { id: "second", name: "second subject", content: "second content" },
-  ] }));
-  assert.match(html, /aria-pressed="true"/);
-  assert.match(html, /aria-pressed="false"/);
-  assert.match(html, /hidden="" data-report-panel/);
-  assert.doesNotMatch(html, /role="tablist"|role="tabpanel"|aria-labelledby/);
-  const css = fs.readFileSync(path.join(root, "app/globals.css"), "utf8");
-  assert.match(css, /\[data-report-panel\]\[hidden\]\s*\{\s*display: none !important;/);
-  const print = fs.readFileSync(path.join(root, "components/exams/analysis/ReportPrintButton.tsx"), "utf8");
-  assert.match(print, /node\.hidden = false/);
-});
-
-test("student analysis return link preserves current category and filters instead of entry filters", () => {
-  for (const kind of ["morning", "regular"]) {
-    let cursor = 0;
-    const values = [kind, "current-type", "2026-07-15", { from: "2026-07-01", to: "2026-08-31" }];
-    const Component = load("components/exams/analysis/StudentAnalysisPage.tsx", {
-      react: { ...React, useEffect() {}, useState(initial: unknown) {
-        const index = cursor++;
-        return React.useState(index < values.length ? values[index] : initial);
-      } },
-      "@/components/ui/AdminTabs": { AdminTabs: () => null },
-      "./RegularStudentReport": { RegularStudentReport: () => null },
-    }).StudentAnalysisPage;
-    const html = renderToStaticMarkup(React.createElement(Component, {
-      division: "test", studentId: "student", examTypes: [{ id: "current-type", category: kind === "regular" ? "REGULAR" : "MORNING", name: "시험" }],
-      initial: { kind: kind === "regular" ? "morning" : "regular", examTypeId: "old-type", examDate: "2026-03-15", from: "2026-01-01", to: "2026-01-31" },
-    }));
-    const href = html.match(/href="([^"]+)"/)?.[1].replaceAll("&amp;", "&");
-    assert.match(html, /class="relative w-full min-w-0"/, "student search must fit its responsive filter field");
-    assert.doesNotMatch(html, /sm:w-72/);
-    assert.ok(href);
-    const query = new URL(href, "http://localhost").searchParams;
-    assert.equal(query.get("tab"), kind);
-    assert.equal(query.get("view"), "analysis");
-    assert.equal(query.get("examTypeId"), "current-type");
-    assert.equal(query.get("examDate"), kind === "regular" ? "2026-07-15" : null);
-    assert.equal(query.get("from"), kind === "morning" ? "2026-07-01" : null);
-    assert.equal(query.get("to"), kind === "morning" ? "2026-08-31" : null);
-  }
-});
 // Render actual report/table markup; replace chart geometry and unrelated portal
 // services only. These checks do not claim browser layout verification.
 /**
@@ -164,25 +99,6 @@ const report: RegularStudentReport = {
   competitors: [{ studentNumber: "90123", rank: 2, total: 40, subjectScores: {} }], trend: [], target: null, flags: [],
 };
 
-test("personal report: small cohort, unavailable external values, all prescribed sections and masked neighbours", () => {
-  const Component = load("components/exams/analysis/RegularStudentReport.tsx").RegularStudentReport;
-  const html = renderToStaticMarkup(React.createElement(Component, { report, mode: "student" }));
-  for (const text of ["반 내 지표는 참고용입니다(응시 8명)", "집계 불가", "지역 정보 없음", "과목별 비교", "과목 균형과 학습 조언", "외부 성적 분포", "문항 분석", "나만 틀린 문제", "오답률 TOP5", "전체 채점표", "목표 대비", "내 주변 석차", "일부 과목 미응시", "90***", "내 구간"]) assert.ok(html.includes(text), text);
-  assert.ok(!html.includes("관리자에게만 표시"));
-  assert.ok(!html.includes("90123"));
-  assert.ok(!/<details[^>]*\bopen/.test(html));
-  assert.ok(!html.includes("NaN"));
-});
-
-test("personal report: n=10 removes low-N warning; admin name and target remain available", () => {
-  const Component = load("components/exams/analysis/RegularStudentReport.tsx").RegularStudentReport;
-  const data = { ...report, ranks: { ...report.ranks, internal: { ...report.ranks.internal, count: 10, isReliable: true } }, target: { targetScore: 80, gap: 30, gapPercent: 30 } };
-  const html = renderToStaticMarkup(React.createElement(Component, { report: data, mode: "admin" }));
-  assert.ok(!html.includes("반 내 지표는 참고용"));
-  assert.ok(html.includes("관리자에게만 표시"));
-  assert.ok(html.includes("목표 80점"));
-});
-
 test("score chart: date-only analysis results sort and label without an undefined round", () => {
   let data: { label: string }[] = [];
   const passthrough = ({ children }: { children: React.ReactNode }) => children;
@@ -196,70 +112,6 @@ test("score chart: date-only analysis results sort and label without an undefine
   assert.match(data[0].label, /2026.*9.*8/);
   assert.match(data[1].label, /2026.*10.*1/);
   assert.ok(data.every((entry) => !entry.label.includes("undefined") && !entry.label.includes("회차")));
-});
-
-test("personal neighbours: full subject metadata distinguishes an alternate choice from a missing subject, including zero scores", () => {
-  const Component = load("components/exams/analysis/RegularStudentReport.tsx").RegularStudentReport;
-  const subjects = [
-    { ...report.subjects[0], alternateGroup: "choice" },
-    { ...report.subjects[0], id: "alternate", name: "과목 B", alternateGroup: "choice" },
-    { ...report.subjects[0], id: "required", name: "필수 과목", alternateGroup: null },
-  ];
-  const html = renderToStaticMarkup(React.createElement(Component, { report: { ...report, subjects, competitors: [{ studentNumber: "90***", rank: 2, total: 0, subjectScores: { alternate: 0 } }] }, mode: "student" }));
-  assert.match(html, /<td>선택 안 함<\/td><td>0<\/td><td>미응시<\/td>/);
-});
-
-test("item table: blank answer and multiple answers preserved; full marking table stays collapsed", () => {
-  const Component = load("components/exams/analysis/ItemAnalysisTable.tsx").ItemAnalysisTable;
-  const item = { subjectId: "subject", itemNo: 1, position: 0, answerKey: "3,4", externalCorrectRatePct: 80, internalCorrectRatePct: null, answer: null, isCorrect: false, difficulty: "쉬움" };
-  const html = renderToStaticMarkup(React.createElement(Component, { subjects: report.subjects, items: { ...report.items, list: [item], easyMissed: [item], killerTop5: [item] } }));
-  assert.ok(html.includes("3,4")); assert.ok(html.includes("무응답")); assert.ok(html.includes("과목 A"));
-  assert.ok(!/<details[^>]*\bopen/.test(html));
-});
-
-test("cohort selector: no exam types renders honest empty state without requesting analysis", () => {
-  const Component = load("components/exams/analysis/RegularCohortAnalysis.tsx").RegularCohortAnalysis;
-  assert.match(renderToStaticMarkup(React.createElement(Component, { divisionSlug: "test", examTypes: [] })), /분석할 정기 시험 종류가 없습니다/);
-});
-
-test("cohort report: low-N warning, unavailable external averages and empty matching students stay visible", () => {
-  const analysis = {
-    session: report.session, subjects: report.subjects,
-    external: { ...report.stats.external, distribution: report.distribution, subjectAverages: { subject: null }, regions: [] },
-    internal: { count: 8, average: 50, max: 50, min: 50, stdDev: 0, subjectAverages: { subject: 50 }, weakSubjects: [], isReliable: false },
-    hasPreviousExam: false, classWrongTop: [], ranking: [] as Record<string, unknown>[], declines: [], partials: [],
-  };
-  const Component = load("components/exams/analysis/RegularCohortAnalysis.tsx", {
-    react: { ...React, useState(initial: unknown) {
-      let seeded = initial;
-      if (initial && typeof initial === "object" && "url" in initial) {
-        const url = String(initial.url);
-        seeded = { url, data: url.includes("/sessions?") ? { sessions: [{ sessionId: "session", examDate: "2026-09-08", participantCount: 8 }] } : { analysis } };
-      }
-      return React.useState(seeded);
-    } },
-  }).RegularCohortAnalysis;
-  const render = (view: "cohort" | "students") => renderToStaticMarkup(React.createElement(Component, { divisionSlug: "test", examTypes: [{ id: "type", name: "정기 시험" }], view }));
-  const cohortHtml = render("cohort");
-  const html = render("students");
-  for (const text of ["반 내 지표는 참고용입니다(응시 8명)", "집계 불가", "반 오답률 TOP10"]) assert.ok(cohortHtml.includes(text), text);
-  for (const text of ["반 석차표", "이 시험에 매칭된 반 학생이 없습니다", "학습 확인 대상", "일부 미응시 학생"]) assert.ok(html.includes(text), text);
-  assert.ok(html.includes("비교할 직전 시험이 없습니다."));
-  assert.ok(!html.includes("학습 확인 신호가 없습니다."));
-  analysis.hasPreviousExam = true;
-  const prior = render("students");
-  assert.ok(prior.includes("학습 확인 신호가 없습니다."));
-  assert.ok(!prior.includes("비교할 직전 시험이 없습니다."));
-  analysis.subjects = [
-    { ...report.subjects[0], alternateGroup: "choice" },
-    { ...report.subjects[0], id: "alternate", name: "과목 B", alternateGroup: "choice" },
-    { ...report.subjects[0], id: "required", name: "필수 과목", alternateGroup: null },
-  ];
-  analysis.ranking = [{ studentId: "student", name: "학생", internalRank: 1, totalScore: 0, subjectScores: { alternate: 0 }, externalTopPercent: null, delta: null, flags: [], isPartial: true }];
-  const ranked = render("students");
-  assert.ok(ranked.includes("<td>—</td><td>—</td>"));
-  assert.ok(!ranked.includes("이직전"));
-  assert.match(ranked, /<td>선택 안 함<\/td><td>0<\/td><td>미응시<\/td>/);
 });
 
 test("secondary tabs: score input keeps only input tabs (analysis moved to the 성적 분석 route tab) and import busy state still guards navigation", () => {
@@ -343,120 +195,6 @@ test("student SSR: 학생은 세션의 본인만 보고, 주입한 studentId 와
   // 미리보기 전용 화면은 기능이 꺼져 있으면 404 다.
   gate = false;
   await assert.rejects(PreviewPage({ params: { division: "test" }, searchParams: {}, mode: "student", previewOnly: true }), /page404/);
-});
-
-test("cohort request: stale reply and unmount are ignored; error has retry and old results are cleared", async () => {
-  type Slot = { value: any; deps?: unknown[]; cleanup?: () => void }; // eslint-disable-line @typescript-eslint/no-explicit-any
-  const slots: Slot[] = [];
-  let cursor = 0, writes = 0;
-  const effects: (() => void)[] = [];
-  const pending: { signal: AbortSignal; resolve: (reply: unknown) => void }[] = [];
-  const hooks = {
-    useId: () => "selector",
-    useState(initial: unknown) { const i = cursor++; slots[i] ??= { value: initial }; return [slots[i].value, (next: any) => { writes++; slots[i].value = typeof next === "function" ? next(slots[i].value) : next; }]; }, // eslint-disable-line @typescript-eslint/no-explicit-any
-    useEffect(effect: () => () => void, deps: unknown[]) {
-      const i = cursor++;
-      if (!slots[i] || deps.some((dep, index) => !Object.is(dep, slots[i].deps?.[index]))) {
-        slots[i]?.cleanup?.(); slots[i] = { value: null, deps }; effects.push(() => { slots[i].cleanup = effect(); });
-      }
-    },
-  };
-  const Component = load("components/exams/analysis/RegularCohortAnalysis.tsx", { react: hooks }, {
-    fetch: (_url: string, options: { signal: AbortSignal }) => new Promise((resolve) => pending.push({ signal: options.signal, resolve })),
-  }).RegularCohortAnalysis;
-  const rootNode = Component({ divisionSlug: "test", examTypes: [{ id: "type", name: "시험" }] });
-  const selector = rootNode.props.children[1];
-  slots.length = 0;
-  function render(base = "/api/test/exams/analysis") {
-    cursor = 0;
-    const tree = selector.type({ ...selector.props, base });
-    while (effects.length) effects.shift()!();
-    return tree;
-  }
-  const settle = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
-  render(); render("/api/new/exams/analysis");
-  assert.equal(pending[0].signal.aborted, true);
-  pending[1].resolve({ ok: false }); await settle();
-  const failed = render("/api/new/exams/analysis");
-  assert.ok(failed.props.error); failed.props.retry(); render("/api/new/exams/analysis");
-  assert.equal(pending.length, 3);
-  pending[0].resolve({ ok: true, json: async () => ({ sessions: [{ examDate: "2099-01-01" }] }) }); await settle();
-  assert.equal(render("/api/new/exams/analysis").props.error, undefined);
-  slots.forEach((slot) => slot.cleanup?.()); const before = writes;
-  pending[2].resolve({ ok: true, json: async () => ({ sessions: [] }) }); await settle();
-  assert.equal(pending[2].signal.aborted, true); assert.equal(writes, before);
-});
-
-
-test("personal trend: first exam, undated results, same-date duplicates and other types do not imply prior history", () => {
-  const Component = load("components/exams/analysis/RegularStudentReport.tsx").RegularStudentReport;
-  const point = { id: "one", examTypeId: "type", examTypeName: "정기 시험", examDate: "2026-09-08", totalScore: 50, rankInClass: 1, subjects: [], notes: null };
-  const previous = { ...point, id: "previous", examDate: "2026-08-08" };
-  const render = (extra: Partial<RegularStudentReport>) => renderToStaticMarkup(React.createElement(Component, { report: { ...report, ...extra }, mode: "student" }));
-  for (const extra of [
-    { hasPreviousExam: false, trend: [previous, point] },
-    { hasPreviousExam: true, trend: [point] },
-    { trend: [] },
-    { trend: [point, { ...previous, examDate: null }] },
-    { trend: [point, { ...point, id: "duplicate" }] },
-    { trend: [point, { ...previous, examTypeId: "other" }] },
-  ]) {
-    const html = render(extra);
-    assert.ok(html.includes('class="admin-empty-state">직전 시험이 없어 비교할 수 없습니다. 다음 시험부터 표시됩니다.'));
-    assert.ok(!html.includes("성적 추이 차트"));
-  }
-  for (const hasPreviousExam of [true, undefined]) {
-    const html = render({ hasPreviousExam, trend: [previous, point] });
-    assert.ok(html.includes("성적 추이 차트"));
-    assert.ok(!html.includes("직전 시험이 없어 비교할 수 없습니다."));
-  }
-});
-
-test("student report exposes external rank and top percentage and full marking without names", () => {
-  const Component = load("components/exams/analysis/RegularStudentReport.tsx").RegularStudentReport;
-  const item = { subjectId: "subject", itemNo: 1, position: 0, answerKey: "3,4", answer: "2,4", isCorrect: false, externalCorrectRatePct: 80, internalCorrectRatePct: 50, difficulty: "쉬움" as const };
-  const html = renderToStaticMarkup(React.createElement(Component, { mode: "student", report: { ...report,
-    ranks: { ...report.ranks, external: { rank: 3, count: 12, topPercent: 25, percentile: 79.2 } },
-    items: { ...report.items, list: [item] },
-    competitors: [{ ...report.competitors[0], name: "다른학생실명" }],
-  } }));
-  for (const text of ["3등", "25%", "전체 채점표 (1문항)", "3,4", "2,4", "80%", "<td>X</td>"]) assert.ok(html.includes(text), text);
-  assert.ok(!html.includes("(n="));
-  for (const text of ["관리자에게만 표시", "다른학생실명", "90123"]) assert.ok(!html.includes(text), text);
-});
-
-
-test("cohort selector defaults to newest exam date even when sessions arrive oldest first", () => {
-  const requested: string[] = [];
-  const Component = load("components/exams/analysis/RegularCohortAnalysis.tsx", {
-    react: { ...React, useState(initial: unknown) {
-      let seeded = initial;
-      if (initial && typeof initial === "object" && "url" in initial) {
-        const url = String(initial.url);
-        requested.push(url);
-        if (url.includes("/sessions?")) seeded = { url, data: { sessions: [
-          { sessionId: "old", examDate: "2026-08-08", participantCount: 8 },
-          { sessionId: "new", examDate: "2026-09-08", participantCount: 8 },
-        ] } };
-      }
-      return React.useState(seeded);
-    } },
-  }).RegularCohortAnalysis;
-  const html = renderToStaticMarkup(React.createElement(Component, { divisionSlug: "test", examTypes: [{ id: "type", name: "정기 시험" }] }));
-  assert.match(html, /value="2026-09-08" selected=""/);
-  assert.ok(html.indexOf('value="2026-09-08"') < html.indexOf('value="2026-08-08"'));
-  assert.ok(requested.some((url) => url.endsWith("examTypeId=type&examDate=2026-09-08")));
-});
-
-test('personal report exposes six monthly slots and explains missing months', () => {
- const Component=load('components/exams/analysis/RegularStudentReport.tsx').RegularStudentReport;
- const history={from:'2026-04-01',to:'2026-09-08',months:['2026-04','2026-05','2026-06','2026-07','2026-08','2026-09'],coveredMonths:1,rows:[{date:'2026-09-08',total:0,fullScore:100,subjectScores:{subject:0},internalRank:1,externalRank:2,externalCount:8,externalTopPercent:25,isPartial:false}]};
- const html=renderToStaticMarkup(React.createElement(Component,{report:{...report,history},mode:'student'}));
- assert.ok(html.includes('최근 6개월 개인 성적'));
- assert.ok(html.includes('1/6개월 기록'));
- assert.equal((html.match(/성적 기록 없음/g)||[]).length,5);
- assert.ok(html.includes('0 / 100'));
- assert.ok(html.includes('25%'));
 });
 
 test("print-only text stays hidden across the whole report screen, not only inside wrap cells", () => {

@@ -3408,24 +3408,6 @@ body:has(.admin-shell) {
   }
 }
 
-/* 개인 분석의 과목 선택: 상위 밑줄 탭과 구분하는 버튼형 탭. */
-.exam-subject-tabs.admin-subtabs {
-  border: 0;
-  gap: 8px;
-  padding: 4px 0;
-}
-.exam-subject-tabs .admin-subtab {
-  min-height: 44px;
-  border: 1px solid var(--admin-line);
-  border-radius: var(--admin-radius-mobile);
-  background: var(--admin-surface);
-  color: var(--admin-text-secondary);
-}
-.exam-subject-tabs .admin-subtab[data-active="true"] {
-  border-color: var(--admin-accent);
-  background: var(--admin-accent);
-  color: var(--admin-surface);
-}
 .admin-metric-box-value.admin-metric-box-status,
 .admin-shell .admin-metric-strip > :is(article, div) > p.admin-metric-box-status:nth-child(2) {
   font-size: var(--admin-type-body);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { formatPrintDocument, reportDocumentStyle } from "../analysis/print-document";
+import { formatPrintDocument, reportDocumentStyle } from "./print-document";
 
 /** Copies only the selected report; no API or student data is sent elsewhere. */
 export function PreviewPrintButton({ prepare, wholeExam = false, single = false }: { prepare: () => () => void; wholeExam?: boolean; single?: boolean }) {

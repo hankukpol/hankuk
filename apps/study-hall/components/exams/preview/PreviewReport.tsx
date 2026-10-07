@@ -63,16 +63,7 @@ function StandardReport({data,mode,division,query}:{data:PreviewData;mode:'admin
   <div id="morning-subject-panel" role={data.kind==='morning'?'tabpanel':undefined} aria-labelledby={data.kind==='morning'?`morning-subject-${selected}`:undefined} className="admin-flat-page">
 
   <div id="preview-main-panel-results" role={mode==='admin'?'tabpanel':undefined} aria-labelledby={mode==='admin'?'preview-main-results':undefined} hidden={mode==='admin'&&active!=='results'} data-report-panel className="admin-flat-page">
-   {!personal&&<CohortWeaknessTable data={data} division={division} query={query}/>}
-   {panel('overview',data.kind==='morning'?'기간 평균 비교':'점수 비교',!rows.length?<p className="admin-empty-state">선택한 기간에 가져온 분석 자료가 없습니다. 입력 성적은 회차별 누적 성적에서 확인하세요.</p>:<>
-    <div data-learning-summary><ReferenceScoreStrip rows={rows} personal={personal}/><p className="admin-help mt-2">{mixed?'회차별 만점이 달라 통합 평균을 표시하지 않습니다.':personal?`시험 응시자 평균 대비 ${number(external?.gap,'점')} / ${external?.count}회 대응 비교`:`${rows.length}회 시험 / 우리 학원 평균은 해당 과목 응시자 기준`}</p></div>
-    {personal&&morningSubject&&<Table label="아침시험 응시 현황" heads={['응시 / 예정','응시율','성적 추이 분석']}><tr><td>{morningSubject.attended} / {morningSubject.expected}회</td><td>{number(morningSubject.attendanceRatePercent,'%')}</td><td className={styles.wrapCell}>{morningSubject.insufficientSample?`자료 부족 · 최소 ${morningSubject.requiredSessions}회 필요`:'분석 가능'}</td></tr></Table>}
-    {flags.length>0&&<Table label="성적 진단 참고" heads={['점검할 내용']}>{flags.map((flag,index)=><tr key={index}><td className={styles.wrapCell}>{flag.detail}</td></tr>)}</Table>}
-    <details className="admin-disclosure"><summary>평균·순위 계산 기준과 회차별 인원</summary><div className="admin-disclosure-body space-y-4"><p className="admin-help">시험 응시자는 가져온 성적 파일의 비교 집단이며 전국 전체를 뜻하지 않습니다. 우리 학원은 연결된 학원 응시자입니다. 과목별 상위 집단 평균은 총점 상위자의 해당 과목 평균입니다. 회차마다 응시자가 달라 인원을 합치지 않습니다. 미응시는 평균에 0점으로 넣지 않고, 동점은 같은 순위로 표시합니다.</p><Table label="평균 비교 회차별 인원" heads={['시험일','시험 과목 응시자','학원 과목 응시자','내 평균에 포함']}>{rows.map(r=><tr key={r.sessionId}><td>{r.date}</td><td>{number(r.externalCount,'명')}</td><td>{r.internalCount}명</td><td>{r.my!==null&&r.external!==null?'포함':'제외'}</td></tr>)}</Table></div></details>
-   </>)}
-   {data.kind==='morning'&&personal&&<TopicLearning data={data} subject={selected}/>}
-   {personal&&<ExamTimeEntry data={data}/>}
-   {personal&&panel('diagnosis','보완할 문항',<ReviewQueue items={items} threshold={data.easyThreshold} onOpen={openReview}/>,false)}
+   {/* 반 전체 순서(운영자 요청 2026-10-07): 전체 과목 요약 → 기간 평균 비교 → 학생별 취약점 표. 명단 아래에 묻혀 있던 반 전체 그림을 먼저 본다. */}
    {!personal&&panel('subjects','전체 과목 요약',<>
     <p className="admin-help">이 영역은 조회 기간의 전체 과목을 비교합니다. 아래 상세 분석과 문항은 선택한 {subjectName} 기준입니다.</p>
     <div className={styles.subjectComparison}><ReferenceSubjectRadar rows={data.comparisons.filter(r=>data.kind==='morning'||r.date===data.range.to)} personal={personal}/><div className="min-w-0"><Table label="과목별 비교" heads={['과목',personal?'내 점수 / 평균':'우리 학원 평균','시험 응시자 평균','만점','응시 회차']}>
@@ -80,6 +71,16 @@ function StandardReport({data,mode,division,query}:{data:PreviewData;mode:'admin
     </Table><p className="admin-help mt-2">그래프는 과목별 만점 대비 득점률입니다. 문항별 단원 정보가 없어 단원별 정답률은 제공하지 않습니다.</p></div></div>
 
    </>)}
+   {panel('overview',data.kind==='morning'?'기간 평균 비교':'점수 비교',!rows.length?<p className="admin-empty-state">선택한 기간에 가져온 분석 자료가 없습니다. 입력 성적은 회차별 누적 성적에서 확인하세요.</p>:<>
+    <div data-learning-summary><ReferenceScoreStrip rows={rows} personal={personal}/><p className="admin-help mt-2">{mixed?'회차별 만점이 달라 통합 평균을 표시하지 않습니다.':personal?`시험 응시자 평균 대비 ${number(external?.gap,'점')} / ${external?.count}회 대응 비교`:`${rows.length}회 시험 / 우리 학원 평균은 해당 과목 응시자 기준`}</p></div>
+    {personal&&morningSubject&&<Table label="아침시험 응시 현황" heads={['응시 / 예정','응시율','성적 추이 분석']}><tr><td>{morningSubject.attended} / {morningSubject.expected}회</td><td>{number(morningSubject.attendanceRatePercent,'%')}</td><td className={styles.wrapCell}>{morningSubject.insufficientSample?`자료 부족 · 최소 ${morningSubject.requiredSessions}회 필요`:'분석 가능'}</td></tr></Table>}
+    {flags.length>0&&<Table label="성적 진단 참고" heads={['점검할 내용']}>{flags.map((flag,index)=><tr key={index}><td className={styles.wrapCell}>{flag.detail}</td></tr>)}</Table>}
+    <details className="admin-disclosure"><summary>평균·순위 계산 기준과 회차별 인원</summary><div className="admin-disclosure-body space-y-4"><p className="admin-help">시험 응시자는 가져온 성적 파일의 비교 집단이며 전국 전체를 뜻하지 않습니다. 우리 학원은 연결된 학원 응시자입니다. 과목별 상위 집단 평균은 총점 상위자의 해당 과목 평균입니다. 회차마다 응시자가 달라 인원을 합치지 않습니다. 미응시는 평균에 0점으로 넣지 않고, 동점은 같은 순위로 표시합니다.</p><Table label="평균 비교 회차별 인원" heads={['시험일','시험 과목 응시자','학원 과목 응시자','내 평균에 포함']}>{rows.map(r=><tr key={r.sessionId}><td>{r.date}</td><td>{number(r.externalCount,'명')}</td><td>{r.internalCount}명</td><td>{r.my!==null&&r.external!==null?'포함':'제외'}</td></tr>)}</Table></div></details>
+   </>)}
+   {!personal&&<CohortWeaknessTable data={data} division={division} query={query}/>}
+   {data.kind==='morning'&&personal&&<TopicLearning data={data} subject={selected}/>}
+   {personal&&<ExamTimeEntry data={data}/>}
+   {personal&&panel('diagnosis','보완할 문항',<ReviewQueue items={items} threshold={data.easyThreshold} onOpen={openReview}/>,false)}
 
 
   </div>

@@ -1,5 +1,16 @@
 # 현재 구현·검증 상태
 
+## 로컬 커밋(미배포) — 2026-10-07 study-hall 리팩토링 1~4단계 (Claude, 운영자 승인 · 오케스트라 협의)
+
+- 위치: worktree `D:\코딩\학원 포탈 프로그램\hankuk-refactor`, 브랜치 `refactor/study-hall-2026-10`(기준 `3186dac`), 커밋 9개, 95파일 +1,156/−5,198. 계획·진행 기록 `.orchestra/refactor-plan.md`. 운영 DB 는 읽기 전용 `migrate status` 1회(35/35 적용, 운영자 승인)만, 쓰기 없음.
+- 1단계 안정성: 스키마 호환 대체 경로·information_schema 확인 제거(결제 삭제 때 환불 연결 확인이 꺼질 수 있던 캐시, 기능 플래그 저장의 가짜 성공, 학생 저장이 칸을 버리고 다시 쓰던 경로), 대시보드·총괄 실패 표시(`unavailableSections`·`loadFailed`), 출결 자동 마감 오류 기록·오류 번호, 정책 이전 자동 상벌점 학원·날짜 잠금(advisory lock), 결제 직렬화 충돌 1회 재시도 후 409, 활동 기록·과정 시작일 한국 날짜, 좌석 문구.
+- 2단계 성능: 시험 분석 원천 동시 호출 공유(`lib/inflight.ts`), 아침 주간 석차 일괄 읽기(`getMorningExamWeeklySummaries`), 템플릿 예약 확인 쿼리 1개·렌더당 1회, Prisma `connection_limit` 기본 4(`PRISMA_CONNECTION_LIMIT`), 대시보드 캐시 학원별 태그.
+- 3단계 정리: 안 쓰는 `components/exams/analysis/*`·컴포넌트 3개·codemod 스크립트 10개·CSS 제거, 성적표 화면의 죽은 인쇄 분기 접기, 결제·상벌점 규칙·학생의 예전 스키마 분기 제거, 서비스 13곳의 학원 조회를 공용 `getDivisionBySlugOrThrow` 하나로, 서비스의 한글 일반 Error 89곳을 같은 상태 코드의 AppError 로(사용자에게 실제 사유가 보임), CLAUDE.md 디렉터리 지도.
+- 4단계 테스트: `tests/unit/refactor-safety.test.ts`(동시 호출 공유·주간 석차 일괄=주별·목업 환불 한도와 원결제 삭제 차단·P2034 재시도), `tests/unit/attendance-close-run.test.ts`(자동 마감 실제 실행·실패일 체크포인트·학원별 계속). 서비스 가짜 모듈용 `tests/helpers/division-lookup.ts`.
+- 검증: typecheck·lint 0, 테스트 995/995(죽은 화면 테스트 32개 제거, 새 테스트 7개), `next build` 성공(목업 환경변수). 로컬 실DB(별도 컨테이너 `study-hall-refactor-db`, 합성 데이터 경찰 40명·소방 30명): 기준 코드 대비 읽기 48호출 결과 동일(대시보드 `unavailableSections: []` 추가만), 쓰기 11장면 결과 동일, 총 쿼리 749→544(아침 미리보기 48→29, 면담 성적 신호 56→30, 상담 자료 94→68). 동시 저장 6회 자동 상벌점 중복 0(기준 코드도 로컬에서 재현 안 됨 — 예방 수정). 리팩토링 빌드 목업 3310 화면 순회: 관리자 32·조교 3·학생 7 화면 × 1440·390 = 84회, 오류·오류 화면·가로 넘침 0.
+- 하지 않은 것(계획의 보류): 목업/Prisma 이중 경로 분리, 2,000줄급 서비스·대형 UI 분할, globals.css 덮어쓰기 레이어 통합, 학생 로그인 방식·전역 속도 제한, 관리규정 학원 학생 목록 상벌점 SQL 집계(합성 데이터에 관리규정이 없어 검증 불가), 공용 포맷 함수(lib/format.ts — 다른 세션이 고치는 화면 파일), 한 줄 JSX 파일 Prettier(Prettier 미설치).
+- 운영 반영 전 남은 것: 운영자 배포 승인 → main 에 합치기(그 사이 main 변경과 충돌 확인) → push·배포 → 운영 스모크. connection_limit 4 는 운영 Supabase pooler 연결 수를 배포 후 확인.
+
 ## 배포 — 2026-10-07 상담 자료 항상 2쪽 + 인쇄 표 전체 폭 (Claude, 운영자 요청)
 
 - 원인(표 폭): 휴대폰용 규칙 `@media (max-width: 767px) .student-report .report-table { display: block }` 이 인쇄에도 적용됐다(A4 인쇄 영역 ≈ 703px < 767px) → 실제 브라우저 인쇄에서 성적표·상담 자료 표가 내용 폭으로 줄어 가운데 몰림. `@media screen and (max-width: 767px)` 로 한정.

@@ -82,17 +82,21 @@ web/
 │   │       ├── interviews/
 │   │       ├── warnings/           경고 대상자 + 연락처 복사
 │   │       ├── announcements/
-│   │       ├── settings/           경로 탭 10개 (SettingsPageShell)
+│   │       ├── settings/           경로 탭 (SettingsPageShell 이 탭 목록의 원본)
 │   │       │   ├── page.tsx        general 로 redirect (허브 화면 없음)
 │   │       │   ├── general/        직렬 기본 정보
 │   │       │   ├── features/       기능 사용 여부
 │   │       │   ├── periods/        교시 설정
 │   │       │   ├── rules/          경고기준·지각기준·휴가한도
+│   │       │   ├── policy/         관리규정
 │   │       │   ├── tuition/        등록 금액
 │   │       │   ├── seats/          자습실·좌석 배치도
 │   │       │   ├── exams/          시험 템플릿·과목
-│   │       │   └── exam-schedules/ 시험 일정
-│   │       │   ※ 나머지 두 탭은 ../points/rules, ../staff 로 연결
+│   │       │   ├── exam-schedules/ 시험 일정
+│   │       │   ├── exam-analysis/  성적 분석 기준
+│   │       │   ├── templates/      학원 템플릿·적용 예약
+│   │       │   └── setup/          초기 설정
+│   │       │   ※ 상벌점 규칙·직원 탭은 ../points/rules, ../staff 로 연결
 │   │       └── reports/
 │   └── api/
 │       ├── auth/
@@ -113,24 +117,28 @@ web/
 │           └── export/
 ├── components/
 │   ├── layout/
+│   │   ├── AdminShell.tsx
 │   │   ├── AdminSidebar.tsx
-│   │   ├── MobileHeader.tsx
+│   │   ├── AdminBreadcrumb.tsx     현재 위치(메뉴 묶음 › 메뉴 › 하위 화면)
 │   │   └── AssistantBottomNav.tsx
 │   ├── dashboard/
 │   ├── attendance/
 │   ├── students/
 │   ├── points/
 │   ├── exams/
+│   │   └── preview/                성적 분석 화면(반 분석·개인 성적표·인쇄 서식)
+│   ├── print/                      인쇄물 공통 표 조각(PrintParts)
 │   ├── seats/
 │   │   ├── SeatMap.tsx             시각적 좌석 배치도
 │   │   └── SeatEditor.tsx
 │   ├── payments/
 │   ├── student-view/
 │   └── ui/
-│       ├── Badge.tsx
+│       ├── AdminTabs.tsx           1차·2차·3차 탭
+│       ├── SlideOver.tsx           오른쪽 슬라이드(입력·상세)
 │       ├── Modal.tsx
-│       ├── CopyButton.tsx          연락처 복사 버튼
-│       └── DataTable.tsx
+│       ├── ConfirmDialog.tsx
+│       └── StudentSearchCombobox.tsx
 ├── lib/
 │   ├── supabase/
 │   │   ├── server.ts               createServerClient
@@ -139,7 +147,9 @@ web/
 │   ├── prisma.ts                   PrismaClient singleton
 │   ├── auth.ts                     인증 유틸
 │   ├── api-auth.ts                 requireApiAuth 헬퍼
-│   └── services/
+│   ├── service-helpers.ts          getPrismaClient · getDivisionBySlugOrThrow(학원 조회는 이것 하나, 요청당 캐시)
+│   ├── inflight.ts                 동시에 같은 읽기를 한 번으로(shareInflight)
+│   └── services/                   업무별 서비스(약 55개, 주요 파일만 적음)
 │       ├── student.service.ts
 │       ├── attendance.service.ts
 │       ├── point.service.ts

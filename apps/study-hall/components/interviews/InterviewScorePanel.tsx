@@ -8,6 +8,8 @@ import type { StudyInterviewView } from "@/lib/services/study-diagnosis.service"
 type InterviewScorePanelProps = {
   divisionSlug: string;
   studentId: string;
+  /** 성적 분석·상담 자료 링크와 같은 기간. 없으면 서버 기본(오늘까지 4주). */
+  range?: { from: string; to: string };
 };
 
 const noticeTone: Record<string, string> = {
@@ -33,13 +35,16 @@ function shortDate(value: string) {
  * 면담 중에 학생 성적표와 같은 결론·과목 상태·먼저 볼 시험을 본다.
  * 숫자·문장은 개인 성적표와 같은 함수에서 나온다(lib/interview-score-summary.ts).
  */
-export function useStudyInterviewView(divisionSlug: string, studentId: string) {
+export function useStudyInterviewView(divisionSlug: string, studentId: string, range?: { from: string; to: string }) {
+  const from = range?.from;
+  const to = range?.to;
   const [state, setState] = useState<{ studentId: string; context: StudyInterviewView | null; error: string | null } | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
     setState(null);
-    fetch(`/api/${divisionSlug}/interviews/study-context?studentId=${encodeURIComponent(studentId)}`, {
+    const period = from && to ? `&from=${from}&to=${to}` : "";
+    fetch(`/api/${divisionSlug}/interviews/study-context?studentId=${encodeURIComponent(studentId)}${period}`, {
       cache: "no-store",
       signal: controller.signal,
     })
@@ -53,13 +58,13 @@ export function useStudyInterviewView(divisionSlug: string, studentId: string) {
         setState({ studentId, context: null, error: error instanceof Error ? error.message : "성적 요약을 불러오지 못했습니다." });
       });
     return () => controller.abort();
-  }, [divisionSlug, studentId]);
+  }, [divisionSlug, studentId, from, to]);
 
   return state && state.studentId === studentId ? state : null;
 }
 
-export function InterviewScorePanel({ divisionSlug, studentId }: InterviewScorePanelProps) {
-  const state = useStudyInterviewView(divisionSlug, studentId);
+export function InterviewScorePanel({ divisionSlug, studentId, range }: InterviewScorePanelProps) {
+  const state = useStudyInterviewView(divisionSlug, studentId, range);
 
   if (!state) {
     return (

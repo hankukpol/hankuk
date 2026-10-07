@@ -620,5 +620,20 @@ test("admin cohort weakness table: risk order, fail cells, summary and personal 
   assert.match(html, /aria-pressed="true"[^>]*>전체 3</);
   const empty = renderToStaticMarkup(React.createElement(CohortWeaknessTable, { data: { ...data, regularCohort: { subjects, ranking: [] } }, division: "police", query: "" }));
   assert.equal(empty, "", "자료가 없으면 아무것도 그리지 않는다");
+  // 취약점을 본 자리에서 바로 학습 면담을 연다. 미리보기(가짜 학생)에는 두지 않는다.
+  assert.match(html, /<a class="admin-button admin-button-compact" href="\/police\/admin\/interviews\?studentId=2&amp;category=study" aria-label="학생2 학습 면담">학습 면담<\/a>/);
+  const preview = renderToStaticMarkup(React.createElement(CohortWeaknessTable, { data: { ...data, isPreview: true }, division: "police", query: "kind=regular" }));
+  assert.doesNotMatch(preview, /학습 면담/);
+});
+
+test("interview journal header offers a study interview only when the academy uses exams", () => {
+  const { InterviewJournal } = load("components/interviews/InterviewJournal.tsx");
+  const student = { id: "s1", name: "학생", studentNumber: "91001", netPoints: 0, demeritPoints: 0, warningStage: "NORMAL", warningStageLabel: null };
+  const props = { divisionSlug: "police", student, interviews: [], today: "2026-10-07", closingId: null, onCloseInterview: () => undefined, onCreate: () => undefined };
+  const withStudy = renderToStaticMarkup(React.createElement(InterviewJournal, { ...props, onCreateStudy: () => undefined }));
+  assert.match(withStudy, />학습 면담<\/button>/);
+  assert.match(withStudy, />면담 기록<\/button>/, "주 작업 버튼은 그대로 면담 기록");
+  const without = renderToStaticMarkup(React.createElement(InterviewJournal, props));
+  assert.doesNotMatch(without, /학습 면담/);
 });
 

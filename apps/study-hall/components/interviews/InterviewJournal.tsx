@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, ExternalLink, FileText, LoaderCircle, Plus, Printer } from "lucide-react";
+import { CheckCircle2, ExternalLink, FileText, LoaderCircle, MessageSquareText, Plus, Printer } from "lucide-react";
 
 import { getInterviewResultTypeLabel, getInterviewStatusLabel, isFollowUpDue } from "@/lib/interview-meta";
 import {
@@ -74,10 +74,12 @@ type JournalProps = {
   closingId: string | null;
   onCloseInterview: (interview: InterviewItem) => void;
   onCreate: (studentId: string) => void;
+  /** 있으면 머리에 '학습 면담' 버튼을 둔다(시험 관리를 쓰는 학원). */
+  onCreateStudy?: (studentId: string) => void;
 };
 
 /** 한 학생의 면담 일지. 학생 머리 → 지켜야 할 약속 → 면담 기록(최신순)을 패널 하나에 담는다. */
-export function InterviewJournal({ divisionSlug, student, interviews, today, closingId, onCloseInterview, onCreate }: JournalProps) {
+export function InterviewJournal({ divisionSlug, student, interviews, today, closingId, onCloseInterview, onCreate, onCreateStudy }: JournalProps) {
   const promiseInterview = latestPromiseInterview(interviews);
   const promises = promiseInterview ? journalPromises(promiseInterview) : [];
   const demerit = student.demeritPoints ?? toDemeritPoints(student.netPoints);
@@ -113,6 +115,11 @@ export function InterviewJournal({ divisionSlug, student, interviews, today, clo
               <Printer className="h-4 w-4" aria-hidden="true" />일지 인쇄
               <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" /><span className="sr-only">(새 탭)</span>
             </a>
+          ) : null}
+          {onCreateStudy ? (
+            <button type="button" className="admin-button admin-button-compact" onClick={() => onCreateStudy(student.id)}>
+              <MessageSquareText className="h-4 w-4" aria-hidden="true" />학습 면담
+            </button>
           ) : null}
           <button type="button" className="admin-button admin-button-primary admin-button-compact" onClick={() => onCreate(student.id)}>
             <Plus className="h-4 w-4" />면담 기록

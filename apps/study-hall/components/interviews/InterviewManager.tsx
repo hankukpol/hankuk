@@ -17,6 +17,7 @@ import { InterviewScorePanel } from "@/components/interviews/InterviewScorePanel
 import { RecommendedStudents } from "@/components/interviews/RecommendedStudents";
 import { EMPTY_STUDY_DRAFT, StudyInterviewEditor, type StudyInterviewDraft } from "@/components/interviews/StudyInterviewEditor";
 import { recommendStudents, type InterviewScoreSignal } from "@/lib/interview-recommend";
+import { reportRange } from "@/lib/student-report";
 import { InterviewJournal, JournalStudentList, PromiseList } from "@/components/interviews/InterviewJournal";
 import { toDemeritPoints } from "@/lib/student-meta";
 import {
@@ -58,6 +59,8 @@ type InterviewManagerProps = {
   prefill?: InterviewPrefill | null;
   /** 처음 열 학생 일지(학생 상세에서 넘어온 경우). */
   initialStudentId?: string;
+  /** 시험 관리를 쓰는 학원이면 일지 머리에 '학습 면담' 버튼을 둔다. */
+  studyInterviewEnabled?: boolean;
 };
 
 type FormState = {
@@ -111,9 +114,12 @@ export function InterviewManager({
   warnInterview,
   prefill,
   initialStudentId,
+  studyInterviewEnabled = false,
 }: InterviewManagerProps) {
   const dialogFormId = useId();
   const today = getKstToday();
+  // 성적 요약 패널·성적 분석·상담 자료가 같은 기간을 보게 한다(상담 자료 기본: 오늘까지 4주).
+  const scoreRange = useMemo(() => reportRange(today), [today]);
   const activeStudents = useMemo(
     () => students.filter((student) => student.status === "ACTIVE" || student.status === "ON_LEAVE"),
     [students],
@@ -431,6 +437,7 @@ export function InterviewManager({
       closingId={closingId}
       onCloseInterview={(interview) => void closeInterview(interview)}
       onCreate={(studentId) => openCreatePanel(studentId)}
+      onCreateStudy={studyInterviewEnabled ? (studentId) => openCreatePanel(studentId, "STUDY") : undefined}
     />
   ) : (
     <div className="admin-empty-state">
@@ -628,8 +635,8 @@ export function InterviewManager({
                 context={context}
                 isLoading={isContextLoading}
                 error={contextError}
-                scoreHref={form.studentId ? `/${divisionSlug}/admin/exams/students/${encodeURIComponent(form.studentId)}` : undefined}
-                reportHref={form.studentId ? `/${divisionSlug}/admin/students/${encodeURIComponent(form.studentId)}/report` : undefined}
+                scoreHref={form.studentId ? `/${divisionSlug}/admin/exams/students/${encodeURIComponent(form.studentId)}?kind=morning&from=${scoreRange.from}&to=${scoreRange.to}` : undefined}
+                reportHref={form.studentId ? `/${divisionSlug}/admin/students/${encodeURIComponent(form.studentId)}/report?from=${scoreRange.from}&to=${scoreRange.to}` : undefined}
               />
             ) : null}
             {selectedStudent ? (
@@ -638,13 +645,14 @@ export function InterviewManager({
                   key={selectedStudent.id}
                   divisionSlug={divisionSlug}
                   studentId={selectedStudent.id}
+                  range={scoreRange}
                   draft={studyDraft}
                   onDraftChange={setStudyDraft}
                   defaultDueDate={form.followUpDate}
                   onInsertQuestions={insertQuestions}
                 />
               ) : (
-                <InterviewScorePanel divisionSlug={divisionSlug} studentId={selectedStudent.id} />
+                <InterviewScorePanel divisionSlug={divisionSlug} studentId={selectedStudent.id} range={scoreRange} />
               )
             ) : null}
 

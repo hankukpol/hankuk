@@ -93,6 +93,7 @@ function changeText(change: number | null, count: number) {
 export function StudyInterviewEditor({
   divisionSlug,
   studentId,
+  range,
   draft,
   onDraftChange,
   defaultDueDate,
@@ -100,12 +101,13 @@ export function StudyInterviewEditor({
 }: {
   divisionSlug: string;
   studentId: string;
+  range?: { from: string; to: string };
   draft: StudyInterviewDraft;
   onDraftChange: (draft: StudyInterviewDraft) => void;
   defaultDueDate: string;
   onInsertQuestions: (lines: string[]) => void;
 }) {
-  const state = useStudyInterviewView(divisionSlug, studentId);
+  const state = useStudyInterviewView(divisionSlug, studentId, range);
   const initialized = useRef<string | null>(null);
   const context = state?.context ?? null;
 

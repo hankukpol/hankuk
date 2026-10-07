@@ -59,6 +59,7 @@ export default async function AdminInterviewsPage({
         warnInterview={students.some((s) => s.demeritPoints !== undefined) ? settings.warnLevel2 : settings.warnInterview}
         prefill={prefill}
         initialStudentId={searchParams?.student}
+        studyInterviewEnabled={settings.featureFlags.examManagement}
       />
     </div>
   );

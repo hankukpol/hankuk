@@ -2,29 +2,31 @@
 
 import Link from "next/link";
 import { useEffect, useRef } from "react";
-import { CalendarCheck, GraduationCap, ScrollText, Star, Trophy, UserRound } from "lucide-react";
+import { CalendarCheck, GraduationCap, House, Star, Trophy, UserRound } from "lucide-react";
 
 type StudentPortalTabsProps = {
   divisionSlug: string;
   current:
+    | "home"
     | "management-policy"
     | "attendance"
     | "study-ranking"
     | "points"
     | "exams"
     | "profile";
-  policyEnabled?: boolean;
   attendanceEnabled?: boolean;
   pointsEnabled?: boolean;
   examsEnabled?: boolean;
 };
 
 const items = [
-  { key: "management-policy", label: "관리규정", href: "management-policy", Icon: ScrollText },
+  // 로그인하면 홈에서 오늘 볼 것을 먼저 본다(운영자 요청 2026-10-07). 관리규정은 메뉴 대신
+  // 내 정보·상벌점 화면의 "벌점 기준 보기" 링크로 들어간다. 항목 수(6)는 그대로라 하단 바 규격이 같다.
+  { key: "home", label: "홈", href: "", Icon: House },
   { key: "attendance", label: "출석", href: "attendance", Icon: CalendarCheck },
-  { key: "study-ranking", label: "학습 랭킹", href: "study-ranking", Icon: Trophy },
-  { key: "points", label: "상벌점", href: "points", Icon: Star },
   { key: "exams", label: "성적", href: "exams", Icon: GraduationCap },
+  { key: "points", label: "상벌점", href: "points", Icon: Star },
+  { key: "study-ranking", label: "학습 랭킹", href: "study-ranking", Icon: Trophy },
   // 신원 정보는 화면마다 붙어 있지 않고 이 항목 하나로 들어간다.
   { key: "profile", label: "내 정보", href: "profile", Icon: UserRound },
 ] as const;
@@ -32,7 +34,6 @@ const items = [
 export function StudentPortalTabs({
   divisionSlug,
   current,
-  policyEnabled = false,
   attendanceEnabled = true,
   pointsEnabled = true,
   examsEnabled = true,
@@ -62,7 +63,6 @@ export function StudentPortalTabs({
   }, [current]);
 
   const visibleItems = items.filter((item) => {
-    if (item.key === "management-policy") return policyEnabled;
     if (item.key === "attendance") return attendanceEnabled;
     if (item.key === "points") return pointsEnabled;
     if (item.key === "exams") return examsEnabled;

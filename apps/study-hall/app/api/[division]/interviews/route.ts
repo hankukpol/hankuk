@@ -5,6 +5,8 @@ import { requireApiAuth } from "@/lib/api-auth";
 import { getDivisionFeatureDisabledError } from "@/lib/division-feature-guard";
 import { interviewSchema } from "@/lib/interview-schemas";
 import { createInterview, listInterviews } from "@/lib/services/interview.service";
+import { interviewScoreRange } from "@/lib/services/interview-study-context.service";
+import { getStudyDiagnosisContext } from "@/lib/services/study-diagnosis.service";
 
 export async function GET(
   request: NextRequest,
@@ -70,7 +72,16 @@ export async function POST(
   }
 
   try {
-    const interview = await createInterview(params.division, auth.session, parsed.data);
+    // 학습 면담은 진단을 서버에서 다시 계산해 저장한다. 브라우저가 보낸 진단·기준 점수는 믿지 않는다.
+    const study = parsed.data.category === "STUDY"
+      ? (await getStudyDiagnosisContext(
+          params.division,
+          parsed.data.studentId,
+          interviewScoreRange(parsed.data.diagnosisRange?.from, parsed.data.diagnosisRange?.to),
+          parsed.data.reviews,
+        )).study
+      : undefined;
+    const interview = await createInterview(params.division, auth.session, parsed.data, study);
     return NextResponse.json({ interview }, { status: 201 });
   } catch (error) {
     return toApiErrorResponse(error, "면담 기록 처리 중 오류가 발생했습니다.");

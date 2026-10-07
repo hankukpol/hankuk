@@ -7,7 +7,7 @@ import { MobileWorkspaceTools } from "@/components/ui/MobileWorkspaceTools";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useState } from "react";
-import { BarChart3, Ban, CircleAlert, FileText, LoaderCircle, Pencil, Save, RotateCcw, SlidersHorizontal, Trash2 } from "lucide-react";
+import { BarChart3, Ban, CircleAlert, FileText, LoaderCircle, MessageSquareText, Pencil, Save, RotateCcw, SlidersHorizontal, Trash2 } from "lucide-react";
 import { toast } from "@/lib/sonner";
 
 import { PaymentMethodSelect } from "@/components/payments/PaymentMethodSelect";
@@ -437,6 +437,7 @@ export function StudentDetailView({
             <div className="flex flex-wrap items-center gap-2">
               {canEdit && warningManagementEnabled && pointManagementEnabled && initialStudent.demeritPoints === undefined ? <button type="button" onClick={() => { setSelectedWarnTarget(initialStudent.warningStage); setIsWarnAdjustOpen(true); }} className="admin-button"><SlidersHorizontal className="h-4 w-4" />경고 조정</button> : null}
               {examManagementEnabled ? <a className="admin-button" href={`/${divisionSlug}/admin/exams/students/${encodeURIComponent(initialStudent.id)}`}><BarChart3 className="h-4 w-4" />성적 분석</a> : null}
+              {interviewManagementEnabled && examManagementEnabled ? <a className="admin-button" href={`/${divisionSlug}/admin/interviews?studentId=${encodeURIComponent(initialStudent.id)}&category=study`}><MessageSquareText className="h-4 w-4" />학습 면담</a> : null}
               <a className="admin-button admin-button-primary" href={`/${divisionSlug}/admin/students/${encodeURIComponent(initialStudent.id)}/report`}><FileText className="h-4 w-4" />상담 자료 인쇄</a>
             </div>
           </MobileWorkspaceTools>

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { TopicLearning, ReviewWorkbench, ExamTimeEntry } from './LearningViews';
 import { AdminTabs } from '@/components/ui/AdminTabs';
 import { PreviewPrintButton } from './PreviewPrintButton';
-import { FileText } from 'lucide-react';
+import { FileText, MessageSquareText } from 'lucide-react';
 import { reviewGroups } from '@/lib/exam-preview/metrics';
 import { weekLabel } from '@/lib/exam-preview/report-summary';
 import { gapText, isoWeekMonday, morningPersonalSummary, morningStudyRows, type MorningSubjectRow, type StudyRow } from '@/lib/exam-preview/morning-personal';
@@ -17,6 +17,9 @@ import { useLearning } from './LearningProvider';
 import { PortalMetricCard } from '@/components/student-view/StudentPortalUi';
 import { Chips, number, Table } from './ReportTable';
 import styles from './preview.module.css';
+import { ReportAudience } from './ReportAudience';
+import { useStudyTasks } from './StudyTasksContext';
+import { StudentStudyTasks } from '@/components/student-view/StudentStudyTasks';
 
 type MorningTab = 'summary' | 'study' | 'history' | 'items';
 const TABS: Array<{ id: MorningTab; label: string }> = [
@@ -35,6 +38,9 @@ const statusClass: Record<MorningSubjectRow['status'], string> = {
  */
 export function MorningPersonalReport({data,mode,division}:{data:PreviewData;mode:'admin'|'student';division?:string}) {
  const [tab,setTab]=useState<MorningTab>('summary');
+ // 학생 화면은 관리자용 세부 열을 빼고 쉬운 말을 쓴다(운영자 요청 2026-10-07). 숫자·판정은 같다.
+ const student=mode==='student';
+ const studyTasks=useStudyTasks();
  const summary=useMemo(()=>morningPersonalSummary(data),[data]);
  const study=useMemo(()=>morningStudyRows(data),[data]);
  const taken=data.comparisons.filter(r=>r.my!==null);
@@ -79,8 +85,8 @@ export function MorningPersonalReport({data,mode,division}:{data:PreviewData;mod
  const rankText=thisWeek?`${thisWeek.rank}위 / ${thisWeek.count}명`:'자료 없음';
  const rankCaption=!thisWeek||!lastWeek?undefined:thisWeek.rank<lastWeek.rank?`지난주보다 ${lastWeek.rank-thisWeek.rank}계단 올라감`:thisWeek.rank>lastWeek.rank?`지난주보다 ${thisWeek.rank-lastWeek.rank}계단 내려감`:'지난주와 같음';
 
- return <div className={`admin-flat-page ${styles.reportTables}`}><div data-report-root className="admin-flat-page">
-  <header className="admin-workspace-toolbar"><div><h2 className="admin-section-title">{mode==='admin'?`${data.student?.name??''} · `:''}{data.examType.name}</h2><p className="admin-help">{data.range.from} ~ {data.range.to} · 시험 {data.comparisons.length}회{data.isPreview?' / 테스트 데이터':''}</p></div><div className="flex flex-wrap gap-2" data-report-print>{mode==='admin'&&division&&data.student&&<a className="admin-button" href={`/${division}/admin/students/${encodeURIComponent(data.student.id)}/report?from=${data.range.from}&to=${data.range.to}`}><FileText className="h-4 w-4" aria-hidden="true"/>상담 자료 인쇄</a>}{print}</div></header>
+ return <ReportAudience value={mode}><div className={`admin-flat-page ${styles.reportTables}`}><div data-report-root className="admin-flat-page">
+  <header className="admin-workspace-toolbar"><div><h2 className="admin-section-title">{mode==='admin'?`${data.student?.name??''} · `:''}{data.examType.name}</h2><p className="admin-help">{data.range.from} ~ {data.range.to} · 시험 {data.comparisons.length}회{data.isPreview?' / 테스트 데이터':''}</p></div><div className="flex flex-wrap gap-2" data-report-print>{mode==='admin'&&division&&data.student&&<a className="admin-button" href={`/${division}/admin/interviews?studentId=${encodeURIComponent(data.student.id)}&category=study`}><MessageSquareText className="h-4 w-4" aria-hidden="true"/>학습 면담</a>}{mode==='admin'&&division&&data.student&&<a className="admin-button" href={`/${division}/admin/students/${encodeURIComponent(data.student.id)}/report?from=${data.range.from}&to=${data.range.to}`}><FileText className="h-4 w-4" aria-hidden="true"/>상담 자료 인쇄</a>}{print}</div></header>
   <div data-report-navigation><AdminTabs variant="secondary" className={styles.mainTabs} idPrefix="morning-analysis" panelId={`morning-${tab}`} label="아침 성적 분석" items={TABS} activeId={tab} onChange={id=>setTab(id as MorningTab)}/></div>
 
   {section('summary','요약',<>
@@ -109,6 +115,7 @@ export function MorningPersonalReport({data,mode,division}:{data:PreviewData;mod
   </>)}
 
   {section('study','공부할 것',<>
+   {student&&<StudentStudyTasks tasks={studyTasks.filter(t=>t.examCategory!=='REGULAR')}/>}
    <StudyTable rows={study} easyThreshold={data.easyThreshold} showDate onItem={jump} onAll={openWrong}/>
    {hasTopics&&<><h3 className="admin-section-title">단원별 점검</h3><Chips label="단원별 점검 과목" items={chips} active={selected} onChange={setSubject}/><TopicLearning data={data} subject={selected}/></>}
   </>)}
@@ -116,13 +123,13 @@ export function MorningPersonalReport({data,mode,division}:{data:PreviewData;mod
   {section('history','점수 변화',<>
    <Chips label="점수 변화 과목" items={chips} active={selected} onChange={setSubject}/>
    {subjectRows.some(r=>r.my!==null)?<PreviewTrend rows={subjectRows} personal externalOnly externalLabel="전체 평균"/>:<p className="admin-empty-state">이 과목은 조회 기간에 응시 기록이 없습니다.</p>}
-   <Table label="시험별 점수" heads={['시험일','시험 범위','내 점수','전체 평균','차이',{label:'학원 석차',className:styles.desktopCell},{label:'전체 석차',className:styles.desktopCell}]}>
+   <Table label="시험별 점수" heads={['시험일','시험 범위','내 점수','전체 평균','차이',{label:'학원 석차',className:styles.desktopCell},...(student?[]:[{label:'전체 석차',className:styles.desktopCell}])]}>
     {[...subjectRows].sort((a,b)=>b.date.localeCompare(a.date)).map(r=>{const gap=r.my===null||r.external===null?null:r.my-r.external;return <tr key={r.sessionId}>
      <td>{shortDate(r.date)}</td><td className={styles.wrapCell}>{r.topic||'범위 미등록'}</td>
      <td className="admin-table-amount">{r.my===null?'결시':number(r.my)}</td><td className="admin-table-amount">{r.external===null?'—':number(r.external)}</td>
      <td className={`admin-table-amount${gapClass(gap)}`}>{gap===null?'—':gapText(gap)}</td>
      <td className={styles.desktopCell}>{r.internalRank===null?'—':`${r.internalRank}위 / ${r.internalCount}명`}</td>
-     <td className={styles.desktopCell}>{r.externalRank===null?'—':`${r.externalRank}위 / ${number(r.externalCount,'명')}`}</td>
+     {!student&&<td className={styles.desktopCell}>{r.externalRank===null?'—':`${r.externalRank}위 / ${number(r.externalCount,'명')}`}</td>}
     </tr>;})}
    </Table>
    {ranks.length>0&&<><h3 className="admin-section-title">주별 학원 석차</h3><Table label="주별 학원 석차" heads={['주','석차','지난주와 비교']}>{[...ranks].reverse().map((w,i,list)=>{const prev=list[i+1];return <tr key={`${w.weekYear}-${w.weekNumber}`}><td>{weekLabel(isoWeekMonday(w.weekYear,w.weekNumber))}</td><td className="admin-table-amount">{w.rank}위 / {w.count}명</td><td className={!prev||prev.rank===w.rank?'':prev.rank>w.rank?'text-admin-success':'text-admin-danger'}>{!prev?'—':prev.rank>w.rank?`${prev.rank-w.rank}계단 올라감`:prev.rank<w.rank?`${w.rank-prev.rank}계단 내려감`:'같음'}</td></tr>;})}</Table></>}
@@ -132,7 +139,7 @@ export function MorningPersonalReport({data,mode,division}:{data:PreviewData;mod
   {section('items','문항',<>
    <Chips label="문항 과목" items={chips} active={selected} onChange={id=>{setSubject(id);setReviewSelection(null);setItemFilter('wrong');setFocusRequest(null);}}/>
    {!printing&&!reviewSelection&&itemDates.length>0&&<label className="admin-label block max-w-xs" data-report-navigation>시험일<select value={activeDate} onChange={e=>{setItemDate(e.target.value);setFocusRequest({date:'all',page:0,serial:Date.now()});}}>{itemDates.map(d=>{const topic=data.comparisons.find(r=>r.subjectId===selected&&r.date===d)?.topic;return <option key={d} value={d}>{d}{topic?` · ${topic}`:''}</option>;})}</select></label>}
-   {!printing&&<Chips label="문항 분류" items={[{id:'wrong',label:`내가 틀린 문제 ${pool.filter(i=>i.correct===false).length}`},{id:'easy',label:`많이 맞힌 문제 중 틀림 ${groups.easy.length}`},{id:'all',label:`전체 ${pool.length}`},{id:'top5',label:'많이 틀린 문제 5'}]} active={reviewSelection?'':itemFilter} onChange={id=>{setItemFilter(id);setReviewSelection(null);setFocusRequest({date:'all',page:0,serial:Date.now()});}}/>}
+   {!printing&&<Chips label="문항 분류" items={[{id:'wrong',label:`내가 틀린 문제 ${pool.filter(i=>i.correct===false).length}`},{id:'easy',label:`많이 맞힌 문제 중 틀림 ${groups.easy.length}`},{id:'all',label:`전체 ${pool.length}`},...(student?[]:[{id:'top5',label:'많이 틀린 문제 5'}])]} active={reviewSelection?'':itemFilter} onChange={id=>{setItemFilter(id);setReviewSelection(null);setFocusRequest({date:'all',page:0,serial:Date.now()});}}/>}
    {!printing&&reviewSelection&&<div className={styles.selectionContext} data-report-navigation><strong>{reviewSelection.title} · {reviewSelection.ids.length}문항</strong><button type="button" className="admin-text-action" onClick={()=>{setReviewSelection(null);setItemFilter('wrong');}}>이 과목 틀린 문제 전체</button></div>}
    {printing&&<p className="admin-help">인쇄 기준: {data.range.from} ~ {data.range.to} 전 과목에서 내가 틀린 문항 {printWrong.length}개(답을 비운 문항 포함), 날짜·과목 순. 같은 날짜·과목의 전체·학원 정답률은 모든 학생이 같습니다.</p>}
    {!printing&&itemFilter==='top5'?<WrongRateTopFive items={pool}/>:<ReferenceItemBrowser key={`items-${selected}-${activeDate}-${data.range.from}-${data.range.to}`} allItems={printing?printWrong:pool} items={printing?printWrong:pool.filter(visibleItem)} printing={printing} focusRequest={focusRequest} personal mobile={mobile} expanded={expanded} toggle={id=>setExpanded({...expanded,[id]:!expanded[id]})}/>}
@@ -140,5 +147,5 @@ export function MorningPersonalReport({data,mode,division}:{data:PreviewData;mod
    <ExamTimeEntry data={data}/>
   </>)}
  </div>
- </div>;
+ </div></ReportAudience>;
 }

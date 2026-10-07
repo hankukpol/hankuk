@@ -217,7 +217,8 @@ export function PreviewWorkspace({
                 />
               </label>
             )}
-            <label className="admin-label">
+            {/* 학생은 고를 것이 하나뿐이면 시험 종류를 보여 주지 않는다(운영자 요청 2026-10-07: 조작 요소 줄이기). */}
+            {(mode === "admin" || choices.length > 1) && <label className="admin-label">
               시험 종류
               <select
                 value={selected?.id ?? ""}
@@ -232,7 +233,7 @@ export function PreviewWorkspace({
                   </option>
                 ))}
               </select>
-            </label>
+            </label>}
             {kind === "regular" ? (
               <>
                 <label className="admin-label">
@@ -282,6 +283,8 @@ export function PreviewWorkspace({
               </>
             ) : (
               <>
+                {/* 학생은 빠른 기간(최근 4·8·12주)만 고른다. 날짜 직접 지정은 관리자 화면에 둔다. */}
+                {mode === "admin" && <>
                 <label className="admin-label">
                   월별 선택
                   <input
@@ -322,6 +325,7 @@ export function PreviewWorkspace({
                     onChange={(e) => setRange({ ...range, to: e.target.value })}
                   />
                 </label>
+                </>}
                 <fieldset className={styles.quickPeriod}>
                   <legend className="admin-label">빠른 기간</legend>
                   <div className={styles.segmented}>

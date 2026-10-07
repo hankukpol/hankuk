@@ -3,6 +3,7 @@ import {
   getAttendanceStatusClasses,
   getAttendanceStatusLabel,
 } from "@/lib/attendance-meta";
+import { studentAttendanceWord } from "@/lib/student-words";
 
 type AttendanceCalendarProps = {
   weeklyAttendance: StudentDashboardData["weeklyAttendance"];
@@ -45,13 +46,15 @@ function getStatusLabel(
   reason: string | null,
   fallback: string,
 ) {
+  // 학생 말로 옮긴다(lib/student-words.ts): 미처리 → 확인 전, 해당없음 → 제외, 학원이 쉬는 날 → 쉬는 날.
   switch (status) {
-    case "UPCOMING":
     case "OFF":
+      return "쉬는 날";
+    case "UPCOMING":
     case "UNPROCESSED":
-      return fallback;
+      return studentAttendanceWord(fallback);
     default:
-      return getAttendanceStatusLabel(status, reason);
+      return studentAttendanceWord(getAttendanceStatusLabel(status, reason));
   }
 }
 
@@ -214,7 +217,7 @@ export function AttendanceCalendar({
                         <p className="mt-1 text-sm font-semibold">{row.date.label}</p>
                       </div>
                       <span className="text-[13px] font-semibold">
-                        {row.date.isToday ? "오늘" : row.date.isOperatingDay ? "운영" : "휴무"}
+                        {row.date.isToday ? "오늘" : row.date.isOperatingDay ? "수업일" : "쉬는 날"}
                       </span>
                     </div>
                   </div>

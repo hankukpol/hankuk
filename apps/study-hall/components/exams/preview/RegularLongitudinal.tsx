@@ -4,6 +4,7 @@ import { PreviewTrend } from "./PreviewCharts";
 import { value } from "./LearningTable";
 import styles from "./preview.module.css";
 import { gapText } from "@/lib/exam-preview/morning-personal";
+import { useReportAudience } from "./ReportAudience";
 
 type HistoryRow = NonNullable<PreviewData["totalHistory"]>[number];
 const tone = (gap: number | null) =>
@@ -16,6 +17,8 @@ const changeText = (change: number) => {
   return size === 0 ? "같음" : `${size}점 ${change > 0 ? "올라감" : "내려감"}`;
 };
 export function RegularLongitudinal({ data }: { data: PreviewData }) {
+  // 학생 화면에는 상위 비율 열을 두지 않는다. 석차와 같은 이야기를 두 번 하기 때문이다.
+  const student = useReportAudience() === "student";
   const history = data.totalHistory ?? [],
     target = data.regular?.target?.targetScore;
   const rows: Comparison[] = history.map((h) => ({
@@ -49,7 +52,7 @@ export function RegularLongitudinal({ data }: { data: PreviewData }) {
           일반 표로 두고 휴대폰에서는 핵심 5칸만 보인다. 나머지 칸은 PC와 인쇄에서 보인다. */}
       {history.length ? (
         <div className="admin-table-frame">
-          <table aria-label="총점과 상대 경쟁력 변화">
+          <table aria-label="총점 변화">
             <thead>
               <tr>
                 <th scope="col">시험일</th>
@@ -58,7 +61,7 @@ export function RegularLongitudinal({ data }: { data: PreviewData }) {
                 <th scope="col">차이</th>
                 <th scope="col" className={styles.desktopCell}>지난 시험보다</th>
                 <th scope="col">전체 석차</th>
-                <th scope="col" className={styles.desktopCell}>상위 비율</th>
+                {!student && <th scope="col" className={styles.desktopCell}>상위 비율</th>}
               </tr>
             </thead>
             <tbody>
@@ -75,7 +78,7 @@ export function RegularLongitudinal({ data }: { data: PreviewData }) {
                       {delta(h, prior, same) === null ? "—" : changeText(delta(h, prior, same)!)}
                     </td>
                     <td>{h.rank === null ? "—" : `${h.rank}위${h.count ? ` / ${h.count}명` : ""}`}</td>
-                    <td className={styles.desktopCell}>{value(h.topPercent, "%")}</td>
+                    {!student && <td className={styles.desktopCell}>{value(h.topPercent, "%")}</td>}
                   </tr>
                 );
               })}
@@ -83,7 +86,7 @@ export function RegularLongitudinal({ data }: { data: PreviewData }) {
           </table>
         </div>
       ) : (
-        <p className="admin-empty-state">총점과 상대 경쟁력 변화: 표시할 기록이 없습니다.</p>
+        <p className="admin-empty-state">총점 변화: 표시할 기록이 없습니다.</p>
       )}
     </div>
   );

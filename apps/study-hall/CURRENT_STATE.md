@@ -1,5 +1,42 @@
 # 현재 구현·검증 상태
 
+## 로컬 구현(미커밋·미배포·운영 DB 미적용) — 2026-10-07 학생 화면 단순화 + 규칙 기반 학습 진단·학습 면담 (Claude)
+
+운영자 요청: 학생 성적·상벌점·등원 화면이 복잡하다. 중학생도 이해하고, 성적 분석 → 취약점·공부할 것 진단 → 학습 면담 → 기록까지 이어지게. 운영자 결정: **외부 AI 사용 안 함(규칙 기반)**, 공부할 것은 **과목·시험 범위·문항 번호 수준**(단원 연결 작업 없음), **쉬운 화면부터 단계별**. 작업 시작 기준 `4a25d38`. 작업 중 다른 세션이 `92491a3`(관리자 UI 기준·면담 일지 정돈, 배포 표시)를 커밋했고 이 변경은 그 커밋에 들어가지 않았다 — 지금 작업 트리의 차이가 이번 변경이다.
+
+**1단계(DB 변경 없음)**
+- 학생 홈 `/[division]/student`(리다이렉트 → 홈): 할 일 → 요약 4칸 → 알림(공지) → 시험 → 최근 상벌점. 메뉴 `관리규정` 자리를 `홈`으로(6개 유지). `app/[division]/student/page.tsx`, `StudentPortalTabs/Frame.tsx`.
+- 쉬운 말 사전 `lib/student-words.ts`(판정·경고·출결·상벌점·원인·할 일 상태 말).
+- 학생 성적표 축소(관리자 화면 유지): `components/exams/preview/ReportAudience.tsx` + `ReferenceItemTable`(학생용 3/5열 표), `RegularPersonalReport`, `MorningPersonalReport`, `RegularLongitudinal`, `PreviewWorkspace`(학생 조회 조건 축소). `detectRegularDecline` flag 에 `amount`·`subject` 추가(학생 문장용, 기존 detail 유지).
+- 상벌점 기간 버그 수정 `lib/student-point-period.ts`(위 숫자와 표가 같은 기간, `?range=all`), 출석 `교시 출석/등원 시각` 칩, 관리규정 `벌점과 경고 단계` 표, 내 정보 중복 제거.
+- 면담 슬라이드 성적 요약 `InterviewScorePanel` + `lib/interview-score-summary.ts`, 권장 대상에 성적 신호(과락·하락) `lib/interview-recommend.ts`, `interview-recommendation.service.ts`, `RecommendedStudents.tsx`, API `/api/[division]/interviews/{study-context,score-signals}`.
+
+**2단계(스키마 변경 — 로컬만)**
+- 진단 `lib/study-diagnosis.ts`(원인: 실수·시간 부족·개념·어려운 문제·결시, 기준은 학원 `examAnalysis` 설정) + 새 설정 `examAnalysis.diagnosis.{maxTasks,minWrongItems}`(운영 규칙 분석 탭, 템플릿 라벨).
+- 스키마: `Interview.category`(GENERAL/STUDY)·`diagnosisSnapshot`, 새 표 `InterviewTask`. 마이그레이션 `prisma/migrations/20261007120000_study_interview_diagnosis_tasks`(멱등, RLS·권한 회수). 목업 저장소 `interviewTasksByDivision`. 마이그레이션 전 DB 에서도 기존 면담 조회는 되도록 `listInterviews` 에 스키마 불일치 대비 조회를 넣었다.
+- 서비스·API: `interview.service.ts`(할 일 저장·지난 할 일 확인·`updateInterviewTask`·`listStudentVisibleTasks`), `study-diagnosis.service.ts`, `POST /interviews`(학습 면담은 서버에서 진단 재계산), `PATCH /interviews/tasks/[taskId]`.
+- 화면: `StudyInterviewEditor.tsx`(면담 슬라이드 `일반/학습 면담` 칩), 일지·일지 인쇄·후속 확인은 할 일을 약속으로 보여 줌(`journalPromises`), 학생 홈·성적 `공부할 것` 탭 `선생님과 정한 이번 주 할 일`(`StudentStudyTasks.tsx`, `StudyTasksContext.tsx`), 상담 자료 A4 `지난 할 일`·`학습 진단`, 학생 상세·개인 성적 분석 `학습 면담` 버튼.
+
+**검증(이번 실행)**: `npm run typecheck` 통과, `npm run lint` 경고·오류 0, `npm run test` 1007/1007(다른 세션의 새 테스트 포함, 이번 새 테스트 `tests/unit/student-simplify.test.ts`, `tests/study-interview.test.ts`, `tests/render/exam-analysis-ui.test.ts` 학생/관리자 비교 추가). 로컬 Docker 목업 3300에서 Playwright(`.local/study-diagnosis-qa.cjs`, 결과·캡처 `.local/study-diagnosis-qa/`): 학생 홈·상벌점·출석·등원·내 정보·성적(아침·정기) 375/1440px 가로 넘침 0, 학생 성적표에 선택비율·우리 학원 정답률·`많이 틀린 문제 5` 없음, 면담 권장 대상 `전체 33 · 벌점 14 · 성적 26`, 학습 면담 편집기 진단·질문·성적 요약 표시, **저장 201**(로컬 목업 DB 에 테스트 학생 91001 학습 면담 1건·할 일 3건 생성), 학생 홈에 할 일 표시·면담 내용 미노출, 상담 자료에 `지난 할 일`·`학습 진단` 구획. 개발 서버가 QA 중 메모리 한도로 한 번 자동 재시작했다(코드 오류 아님).
+
+**운영 빌드·로컬 개발 서버(같은 날 추가)**: 목업 환경변수·분리 빌드 폴더(`NEXT_DIST_DIR=.next-dev-buildqa`, 확인 후 삭제)로 `next build` 성공(타입·lint 검사 포함, 정적 21쪽 생성, 새 경로 `/[division]/student`·`/api/[division]/interviews/{study-context,score-signals,tasks/[taskId]}` 포함), `verify-icon-ssr` 통과. 빌드 중 찍힌 `api-auth:super-admin` 오류 로그는 로그인 없는 정적 생성에서 나오는 기존 기록이다. 로컬 Docker 개발 서버가 성적 화면을 받는 중 메모리 한도로 스스로 재시작해 "화면을 불러오지 못했습니다"가 떴다 → `compose.yaml` dev 에 `NODE_OPTIONS=--max-old-space-size=3072`(힙 2096MB → 3120MB), 재시작 중 깨진 `.next-dev` 빌드 캐시(볼륨 `next-cache`)만 비우고 다시 띄웠다. `dev-state`(목업 DB) 볼륨은 유지. 이후 메모리 재시작 0건, 면담·성적 관리·전체 분석 200. 개발 모드 첫 컴파일이 겹치면 `useContext null` 오류 화면이 한 번 뜰 수 있고 새로고침하면 사라진다. 로컬 성적 분석은 16MB 목업 파일을 요청마다 읽어 첫 접속 1~3분 걸린다.
+
+**미확인·남은 일**
+- **운영 반영 진행 상황(운영자 승인 2026-10-07)**: 운영 DB `prisma migrate status`(읽기 전용) 결과 미적용은 `20261007120000_study_interview_diagnosis_tasks` 하나뿐. `migrate deploy` 실행은 Claude Code 자동 승인 모드에서 거부되어 **적용하지 않았다**. 이번 변경은 로컬 커밋만 했고 **푸시·배포하지 않았다**(마이그레이션 전에 코드가 나가지 않게). 남은 순서: 운영자가 마이그레이션 적용 → `migrate status` 가 up to date 인지 확인 → 이 커밋 푸시(`[deploy study-hall]`) → Vercel READY 확인 → 운영 학생·면담 화면 확인.
+- **배포 순서: 마이그레이션 먼저, 코드 나중.** 코드가 먼저 나가면 학습 면담 저장은 실패하고 일반 면담 조회·저장은 유지된다.
+- 이번 커밋에서 뺀 파일: `compose.yaml`(로컬 Docker 설정, 다른 세션 변경 + 이번 `NODE_OPTIONS`), `docs/LOCAL_DEMO.md`·`docs/docker-development.md`(다른 세션), `docs/qa/2026-10-07-manual-morning-scores.md`(다른 세션, 미추적), `tsconfig.json`(줄바꿈만 다름).
+- 운영 실제 성적으로 진단 문장 확인, A4 실제 인쇄 쪽 나눔은 운영자 확인 필요.
+- 학생 문항 탭 아래 `복습 예약과 재풀이`(LearningViews, 다른 세션 미커밋 파일)는 휴대폰에서 길다. 이번에는 손대지 않았다.
+- 다른 세션 미커밋 파일에 한 줄씩 더한 곳: `InterviewManager.tsx`(성적 요약·학습 면담·권장 대상 연결), `InterviewJournal.tsx`(학습 면담 표시·할 일 약속), `StudentDetailView.tsx`(`학습 면담` 버튼), `DESIGN.md`. 커밋할 때 함께 정리해야 한다.
+
+
+## 2026-10-07 운영 수기채점 성적 보완 완료
+사용자 승인: 경찰 관리반 OMR 판독 오류 수기채점, 2026-09-28/29/30·10-02/06의 첫 번째 점수만 운영 반영. 해당 날짜/과목의 기존 시험5개와 학생9명을 읽기 확인하여 누락12건(기존 해당 점수/응시자 연결 모두 없음)을 보완했다. 9/28은 사용자 명시 및 실제 시험과 동일한 형법, 형소법은 기존 형사소송법 과목으로 매칭. 온라인 표시는 10/2 두 건의 메모에 기록.
+운영 관리 데이터 트랜잭션으로 MorningExamScore12개·기존 ExamSession의 총점-only 참여12개·ExamCorrection 이력12개를 추가. 총점 외 문항 답안/정오답/원본 통계/외부석차는 생성하지 않음. 수기 기록은 notes에 출처/사유, derivedScoreId로 원장 연결하되 derivedScoreSnapshot은 null로 남겨 원본 import 삭제가 수기 성적을 자동 삭제하지 못하도록 보호한다. 모든 기존 참여/성적/문항답안·9~10월 출결/상벌점의 깊은 동등 비교 통과.
+동일 운영 계산 서비스 syncDbExamPoints로 9·10월 재계산, 두 달 모두 추가0/회수0. 요청12건 아침 교시 출석은 기존 PRESENT 보존. 운영 DB 재조회 및 loadAnalysisSource/enrichSessions 실제 분석 조립 결과12/12 요청점수 일치, 미제공 문항의 correct=null 확인. 브라우저 로그인 후 화면 렌더링은 이번 미검증이며 기존 분석 캐시TTL300초는 유지. 제품 코드/스키마/운영배포 변경 없음. 현재 점수입력 서비스는 가져온 시험의 직접입력을 막으므로 운영자 일반 수기입력 UI를 지원했다고 선언하면 안 됨. 이번은 승인된 누락데이터 보완 작업이며 추후 가져오기 재수정에는 수기보존 계약을 유지해야 함.
+학생 개인정보·백업·계획·실행결과·검증스크립트는 Git제외 .local/manual-scores-20261007-*에만 보관. 다른 담당자 면담/UI 수정 보존. 다음 운영 확인은 개인 성적 분석에서 해당날짜 조회. 상세 [운영 보완 QA](docs/qa/2026-10-07-manual-morning-scores.md).
+
+
 ## 2026-10-07 로컬 Docker 재실행·접속 포트 수정
 기존 study-hall-dev-1이 Exited255 상태. 재시작 시 Windows TCP 제외 범위2997~3096/3097~3196에 포함된3000/3110이 차단되는 것을 netsh 읽기조회 및 Docker bind 오류로 확인. compose 호스트포트를 STUDY_HALL_PORT(기본3300)로 설정하고 NEXT_PUBLIC_APP_URL을 일치시켰다. 내부3000/기존 dev-state·의존성·캐시 볼륨 유지, 이미지 재빌드/데이터 재시드/삭제 없음. docker compose up -d --no-build dev 성공·healthy.
 실제 브라우저 http://localhost:3300/login 관리자 mock로그인200, 학생명단 페이지/API 정상 로딩(로컬 전체40명·재원35명·테스트학생 포함). 소스 MorningPersonalReport의 호스트/컨테이너 SHA256동일 확인. MOCK_MODE=true, 기존 .local/mock-db.json 존재 확인. 운영 Supabase와 별개인 파일 목업 데이터이며 hankuk 그룹의 Supabase 실행만으로 웹서버가 켜지는 것은 아니다. 현재 클로드 미완료 면담 관련 파일은 보존. 앱브라우저 login열기는 queued 응답으로 실제탭 전환 확인과 구분한다. QA근거 .local/docker-3300-qa.cjs와 docker-3300-students.png. docs/docker-development.md·LOCAL_DEMO 주소/시작·종료·자동반영 안내 갱신. Git커밋/푸시/운영배포/운영DB쓰기 없음.

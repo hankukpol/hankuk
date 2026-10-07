@@ -13,8 +13,12 @@ import { AdminTabs, AdminTabPanel } from "@/components/ui/AdminTabs";
 import { StudentSearchCombobox } from "@/components/ui/StudentSearchCombobox";
 import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
 import { InterviewContextPanel } from "@/components/interviews/InterviewContextPanel";
+import { InterviewScorePanel } from "@/components/interviews/InterviewScorePanel";
+import { RecommendedStudents } from "@/components/interviews/RecommendedStudents";
+import { EMPTY_STUDY_DRAFT, StudyInterviewEditor, type StudyInterviewDraft } from "@/components/interviews/StudyInterviewEditor";
+import { recommendStudents, type InterviewScoreSignal } from "@/lib/interview-recommend";
 import { InterviewJournal, JournalStudentList, PromiseList } from "@/components/interviews/InterviewJournal";
-import { getWarningStageLabel, toDemeritPoints } from "@/lib/student-meta";
+import { toDemeritPoints } from "@/lib/student-meta";
 import {
   INTERVIEW_RESULT_TYPE_OPTIONS,
   type InterviewResultTypeValue,
@@ -23,7 +27,7 @@ import {
   buildContentTemplate,
   journalDayLabel,
   latestPromiseInterview,
-  parsePromises,
+  journalPromises,
   sortJournal,
   summarizeByStudent,
 } from "@/lib/interview-journal";
@@ -35,7 +39,13 @@ type InterviewPrefill = {
   studentId: string;
   trigger: string;
   reason: string;
+  /** 학생 상세·성적 분석의 "학습 면담"에서 넘어오면 학습 면담으로 연다. */
+  category?: "GENERAL" | "STUDY";
 };
+
+type InterviewCategory = "GENERAL" | "STUDY";
+// 학습 면담을 고를 때 사유가 비어 있으면 넣는 기본 문장. 자유롭게 고쳐 쓴다.
+const STUDY_REASON = "성적 확인·학습 계획";
 
 type InterviewManagerProps = {
   divisionSlug: string;
@@ -51,6 +61,7 @@ type InterviewManagerProps = {
 };
 
 type FormState = {
+  category: InterviewCategory;
   studentId: string;
   date: string;
   trigger: string;
@@ -73,12 +84,13 @@ function getKstToday() {
   }).format(new Date());
 }
 
-function toFormState(studentId?: string, prefill?: InterviewPrefill | null): FormState {
+function toFormState(studentId?: string, prefill?: InterviewPrefill | null, category: InterviewCategory = prefill?.category ?? "GENERAL"): FormState {
   return {
+    category,
     studentId: studentId ?? "",
     date: getKstToday(),
     trigger: prefill?.trigger ?? "",
-    reason: prefill?.reason ?? "",
+    reason: prefill?.reason || (category === "STUDY" ? STUDY_REASON : ""),
     content: "",
     result: "",
     resultType: "INTERVIEW",
@@ -131,18 +143,30 @@ export function InterviewManager({
   const [isContextLoading, setIsContextLoading] = useState(false);
   const [contextError, setContextError] = useState<string | null>(null);
   const { showActionComplete, actionCompleteModal } = useActionCompleteModal();
+  // 학습 면담 편집기의 초안(할 일·지난 할 일 확인). 학생이 바뀌면 편집기가 새 진단으로 다시 채운다.
+  const [studyDraft, setStudyDraft] = useState<StudyInterviewDraft>(EMPTY_STUDY_DRAFT);
 
   const selectedStudent = activeStudents.find((student) => student.id === form.studentId) ?? null;
-  const demeritOf = (student: StudentListItem) => student.demeritPoints ?? toDemeritPoints(student.netPoints);
+  // 성적 신호(과락·점수 하락)는 반 전체 분석이라 화면이 뜬 뒤 따로 불러온다. 못 불러오면 벌점 기준만 쓴다.
+  const [scoreSignals, setScoreSignals] = useState<InterviewScoreSignal[]>([]);
+  const [signalsState, setSignalsState] = useState<"loading" | "ready" | "error">("loading");
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`/api/${divisionSlug}/interviews/score-signals`, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        const data = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(data?.error);
+        setScoreSignals(Array.isArray(data?.signals) ? data.signals : []);
+        setSignalsState("ready");
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setSignalsState("error");
+      });
+    return () => controller.abort();
+  }, [divisionSlug]);
   const recommendedStudents = useMemo(
-    () =>
-      activeStudents
-        .filter((student) => (student.demeritPoints ?? toDemeritPoints(student.netPoints)) >= warnInterview)
-        .sort(
-          (left, right) =>
-            (right.demeritPoints ?? toDemeritPoints(right.netPoints)) - (left.demeritPoints ?? toDemeritPoints(left.netPoints)),
-        ),
-    [activeStudents, warnInterview],
+    () => recommendStudents(activeStudents, { demeritOf: (student) => student.demeritPoints ?? toDemeritPoints(student.netPoints), warnInterview, signals: scoreSignals }),
+    [activeStudents, warnInterview, scoreSignals],
   );
 
   const summaries = useMemo(() => summarizeByStudent(interviews, today), [interviews, today]);
@@ -269,15 +293,33 @@ export function InterviewManager({
     selectStudent(studentId);
   }
 
-  function openCreatePanel(studentId?: string) {
-    setForm(toFormState(studentId ?? (selectedId || defaultStudentId)));
+  function openCreatePanel(studentId?: string, category: InterviewCategory = "GENERAL") {
+    setForm(toFormState(studentId ?? (selectedId || defaultStudentId), null, category));
+    setStudyDraft(EMPTY_STUDY_DRAFT);
     setMobileJournalOpen(false);
     setIsEditorOpen(true);
   }
 
   function closeEditor() {
     setIsEditorOpen(false);
+    setStudyDraft(EMPTY_STUDY_DRAFT);
     setForm(toFormState(form.studentId || defaultStudentId));
+  }
+
+  function setCategory(category: InterviewCategory) {
+    setForm((current) => ({
+      ...current,
+      category,
+      reason: category === "STUDY" && !current.reason.trim() ? STUDY_REASON : current.reason,
+    }));
+  }
+
+  function insertQuestions(lines: string[]) {
+    const block = `[확인할 것]\n${lines.map((line) => `· ${line}`).join("\n")}`;
+    setForm((current) => ({
+      ...current,
+      content: current.content.trim() ? `${current.content.trimEnd()}\n\n${block}` : block,
+    }));
   }
 
   function insertTemplate() {
@@ -326,11 +368,33 @@ export function InterviewManager({
           reason: form.reason,
           content: form.content || null,
           result: form.result || null,
-          resultType: form.resultType,
+          resultType: form.category === "STUDY" ? "INTERVIEW" : form.resultType,
           followUpDate: form.followUpDate || null,
           guardianContacted: form.guardianContacted,
           // 후속 확인일을 남기지 않았다면 더 볼 것이 없으므로 바로 확인 완료로 둔다.
           status: form.followUpDate ? "OPEN" : "CLOSED",
+          category: form.category,
+          ...(form.category === "STUDY" && studyDraft.studentId === form.studentId
+            ? {
+                diagnosisRange: studyDraft.range ?? undefined,
+                tasks: studyDraft.tasks.filter((task) => task.selected).map((task) => ({
+                  examCategory: task.examCategory,
+                  examTypeId: task.examTypeId,
+                  subjectId: task.subjectId,
+                  sessionId: task.sessionId,
+                  subjectName: task.subjectName || "생활",
+                  examDate: task.examDate,
+                  scope: task.scope,
+                  itemNos: task.itemNos,
+                  cause: task.cause,
+                  title: task.title,
+                  method: task.method || null,
+                  dueDate: task.dueDate || null,
+                  visibleToStudent: task.visibleToStudent,
+                })),
+                reviews: Object.entries(studyDraft.reviews).map(([taskId, status]) => ({ taskId, status })),
+              }
+            : {}),
         }),
       });
       const data = await response.json();
@@ -446,7 +510,7 @@ export function InterviewManager({
                 </thead>
                 <tbody>
                   {followUps.map((interview) => {
-                    const promises = parsePromises(interview.result);
+                    const promises = journalPromises(interview);
                     return (
                       <tr key={interview.id}>
                         <td className="admin-table-name">
@@ -478,44 +542,14 @@ export function InterviewManager({
         </AdminTabPanel>
 
         <AdminTabPanel id="recommended" activeId={viewTab} idPrefix="interview-view" className="space-y-4">
-          <div className="admin-workspace-toolbar">
-            <h2 className="admin-section-title">면담 권장 학생 <span className="tabular-nums text-admin-danger">{recommendedStudents.length}</span></h2>
-            <p className="admin-help">벌점 {warnInterview}점 이상 · 벌점 높은 순</p>
-          </div>
-          {recommendedStudents.length ? (
-            <div className="admin-table-frame">
-              <table aria-label="면담 권장 학생">
-                <thead>
-                  <tr><th>학생</th><th>직렬</th><th>벌점</th><th>경고 단계</th><th>면담</th><th>최근 면담</th><th>작업</th></tr>
-                </thead>
-                <tbody>
-                  {recommendedStudents.map((student) => {
-                    const summary = summaries.get(student.id);
-                    return (
-                      <tr key={student.id}>
-                        <td className="admin-table-name">
-                          <button type="button" className="admin-table-link" onClick={() => openJournal(student.id)}>{student.name}</button>
-                          <span className="admin-help ml-2 tabular-nums">{student.studentNumber}</span>
-                        </td>
-                        <td>{student.studyTrack || "–"}</td>
-                        <td className="admin-table-amount font-semibold text-admin-danger">{demeritOf(student)}점</td>
-                        <td>{student.warningStageLabel ?? getWarningStageLabel(student.warningStage)}</td>
-                        <td className="tabular-nums">{summary ? `${summary.count}회` : "없음"}</td>
-                        <td className="tabular-nums">{summary?.lastDate ? journalDayLabel(summary.lastDate) : "–"}</td>
-                        <td>
-                          <button type="button" onClick={() => openCreatePanel(student.id)} className="admin-button admin-button-compact">
-                            <Plus className="h-4 w-4" />면담 기록
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="admin-empty-state"><p className="font-semibold">면담 권장 대상이 없습니다.</p><p className="admin-help mt-2">현재 기준 벌점 {warnInterview}점 이상</p></div>
-          )}
+          <RecommendedStudents
+            rows={recommendedStudents}
+            summaries={summaries}
+            warnInterview={warnInterview}
+            signalsState={signalsState}
+            onOpenJournal={openJournal}
+            onCreate={(studentId) => openCreatePanel(studentId)}
+          />
         </AdminTabPanel>
       </div>
 
@@ -539,6 +573,18 @@ export function InterviewManager({
               </div>
             </div>
 
+            {/* 학습 면담은 성적 진단으로 할 일을 정하고 다음 면담에서 확인한다. 일반 면담은 지금과 같다. */}
+            <nav className="admin-subtabs mt-4" aria-label="면담 종류 선택">
+              {([
+                { value: "GENERAL", label: "일반 면담" },
+                { value: "STUDY", label: "학습 면담" },
+              ] as const).map((option) => (
+                <button key={option.value} type="button" className="admin-subtab" aria-pressed={form.category === option.value} onClick={() => setCategory(option.value)}>
+                  {option.label}
+                </button>
+              ))}
+            </nav>
+
             <div className="mt-5 grid gap-4 md:grid-cols-2">
               <div className="block md:col-span-2">
                 <span className="admin-label mb-2 block">학생 선택</span>
@@ -561,7 +607,7 @@ export function InterviewManager({
                 />
               </label>
 
-              <label className="block">
+              {form.category === "GENERAL" ? <label className="block">
                 <span className="admin-label mb-2 block">면담 종류</span>
                 <select
                   value={form.resultType}
@@ -574,7 +620,7 @@ export function InterviewManager({
                     </option>
                   ))}
                 </select>
-              </label>
+              </label> : null}
             </div>
 
             {selectedStudent ? (
@@ -586,8 +632,24 @@ export function InterviewManager({
                 reportHref={form.studentId ? `/${divisionSlug}/admin/students/${encodeURIComponent(form.studentId)}/report` : undefined}
               />
             ) : null}
+            {selectedStudent ? (
+              form.category === "STUDY" ? (
+                <StudyInterviewEditor
+                  key={selectedStudent.id}
+                  divisionSlug={divisionSlug}
+                  studentId={selectedStudent.id}
+                  draft={studyDraft}
+                  onDraftChange={setStudyDraft}
+                  defaultDueDate={form.followUpDate}
+                  onInsertQuestions={insertQuestions}
+                />
+              ) : (
+                <InterviewScorePanel divisionSlug={divisionSlug} studentId={selectedStudent.id} />
+              )
+            ) : null}
 
-            {editorPromiseInterview ? (
+            {/* 학습 면담에서는 지난 할 일을 편집기의 "지난 할 일 확인"에서 본다. 글자 약속만 있는 면담은 그대로 보인다. */}
+            {editorPromiseInterview && !(form.category === "STUDY" && editorPromiseInterview.tasks.length) ? (
               <section className="admin-panel mt-4" aria-label="지난 약속">
                 <div className="admin-panel-row items-start max-md:flex-col">
                   <div className="w-28 shrink-0">
@@ -595,7 +657,7 @@ export function InterviewManager({
                     <p className="admin-help mt-1 tabular-nums">{journalDayLabel(editorPromiseInterview.date)} 면담</p>
                   </div>
                   <div className="min-w-0 flex-1">
-                    <PromiseList promises={parsePromises(editorPromiseInterview.result)} />
+                    <PromiseList promises={journalPromises(editorPromiseInterview)} />
                     <p className="admin-help mt-2">이번 면담에서 지켰는지 먼저 확인합니다.</p>
                   </div>
                 </div>

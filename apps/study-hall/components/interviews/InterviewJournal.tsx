@@ -7,7 +7,7 @@ import {
   journalDayLabel,
   latestPromiseInterview,
   parseInterviewContent,
-  parsePromises,
+  journalPromises,
   type JournalSection,
   type StudentJournalSummary,
 } from "@/lib/interview-journal";
@@ -79,7 +79,7 @@ type JournalProps = {
 /** 한 학생의 면담 일지. 학생 머리 → 지켜야 할 약속 → 면담 기록(최신순)을 패널 하나에 담는다. */
 export function InterviewJournal({ divisionSlug, student, interviews, today, closingId, onCloseInterview, onCreate }: JournalProps) {
   const promiseInterview = latestPromiseInterview(interviews);
-  const promises = parsePromises(promiseInterview?.result);
+  const promises = promiseInterview ? journalPromises(promiseInterview) : [];
   const demerit = student.demeritPoints ?? toDemeritPoints(student.netPoints);
   const base = `/${divisionSlug}/admin/students/${encodeURIComponent(student.id)}`;
 
@@ -175,7 +175,7 @@ export function InterviewJournal({ divisionSlug, student, interviews, today, clo
  */
 export function JournalEntry({ interview, today, action }: { interview: InterviewItem; today: string; action?: React.ReactNode }) {
   const sections = parseInterviewContent(interview.content);
-  const promises = parsePromises(interview.result);
+  const promises = journalPromises(interview);
 
   return (
     <article className="interview-entry" aria-label={`${journalDayLabel(interview.date)} 면담`}>
@@ -186,12 +186,14 @@ export function JournalEntry({ interview, today, action }: { interview: Intervie
       </div>
       <div className="min-w-0">
         <h4 className="interview-entry-title">{interview.reason}</h4>
-        {interview.resultType !== "INTERVIEW" || interview.guardianContacted ? (
+        {interview.resultType !== "INTERVIEW" || interview.guardianContacted || interview.category === "STUDY" ? (
           <p className="interview-meta-line mt-1">
+            {interview.category === "STUDY" ? <span className="font-semibold text-admin-accent">학습 면담</span> : null}
             {interview.resultType !== "INTERVIEW" ? <span className="font-semibold text-admin-danger">{getInterviewResultTypeLabel(interview.resultType)}</span> : null}
             {interview.guardianContacted ? <span>보호자 연락함</span> : null}
           </p>
         ) : null}
+        {interview.diagnosis ? <p className="admin-help mt-1 break-keep">진단: {interview.diagnosis.headline.text}</p> : null}
 
         <dl className="interview-entry-rows">
           {sections.length ? sections.map((section, index) => (

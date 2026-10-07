@@ -10,6 +10,9 @@ import { listInterviews } from "@/lib/services/interview.service";
 import { listPointRecords } from "@/lib/services/point.service";
 import { getDivisionFeatureSettings } from "@/lib/services/settings.service";
 import { getStudentDetail } from "@/lib/services/student.service";
+import { getExamAnalysisSettings } from "@/lib/services/settings.service";
+import { DEFAULT_EXAM_ANALYSIS_SETTINGS } from "@/lib/exam-analysis-settings";
+import { buildStudyDiagnosis } from "@/lib/study-diagnosis";
 
 /** 실패한 영역은 비워 두고 나머지를 인쇄한다. 한 기능이 꺼져 있거나 자료가 없다고 상담 자료 전체가 막히면 안 된다. */
 async function optional<T>(load: () => Promise<T>): Promise<T | null> {
@@ -32,7 +35,7 @@ export async function getStudentCounselingReport(slug: string, studentId: string
   const regularType = examTypes.find((t) => t.category === "REGULAR" && t.isActive !== false);
   const viewer = { role: "ADMIN" as const };
 
-  const [attendance, arrivalMonths, points, context, interviews, morning, regular] = await Promise.all([
+  const [attendance, arrivalMonths, points, context, interviews, morning, regular, analysisSettings] = await Promise.all([
     featureFlags.attendanceManagement ? optional(() => listStudentAttendanceHistory(slug, studentId, { dateFrom: range.from, dateTo: range.to })) : null,
     optional(() => Promise.all(monthsInRange(range).map((month) => listArrivalMonth(slug, studentId, month, false)))),
     featureFlags.pointManagement ? optional(() => listPointRecords(slug, { studentId, dateFrom: range.from, dateTo: range.to })) : null,
@@ -40,11 +43,27 @@ export async function getStudentCounselingReport(slug: string, studentId: string
     featureFlags.interviewManagement ? optional(() => listInterviews(slug, { studentId })) : null,
     morningType ? optional(() => getExamPreview(slug, "morning", { examTypeId: morningType.id, from: range.from, to: range.to, studentId }, viewer)) : null,
     regularType ? optional(() => getExamPreview(slug, "regular", { examTypeId: regularType.id, studentId }, viewer)) : null,
+    featureFlags.examManagement ? optional(() => getExamAnalysisSettings(slug)) : null,
   ]);
 
   const attendanceRows = attendance ?? [];
   const morningData: PreviewData | null = morning && morning.comparisons.length ? morning : null;
   const regularData: PreviewData | null = regular && regular.dates.length && regular.regular ? regular : null;
+  const settings = analysisSettings ?? DEFAULT_EXAM_ANALYSIS_SETTINGS;
+  const sortedInterviews = (interviews ?? []).slice().sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
+  // 지난 학습 면담에서 정한 할 일. 면담 때 이것부터 확인한다.
+  const latestStudy = sortedInterviews.find((interview) => interview.category === "STUDY" && interview.tasks.length) ?? null;
+  const studyTasks = (latestStudy?.tasks ?? []).filter((task) => task.status !== "CANCELLED");
+  // 학습 면담과 같은 규칙 기반 진단. 면담 화면과 같은 함수·같은 학원 설정을 쓴다(lib/study-diagnosis.ts).
+  const diagnosis = morningData || regularData
+    ? buildStudyDiagnosis({
+        morning: morningData,
+        regular: regularData,
+        settings,
+        attendance: context ? { absentCount: context.attendance.absentCount, tardyCount: context.attendance.tardyCount } : null,
+        previousTasks: studyTasks.map((task) => ({ subjectName: task.subjectName, status: task.status })),
+      })
+    : null;
 
   return {
     range,
@@ -56,8 +75,11 @@ export async function getStudentCounselingReport(slug: string, studentId: string
     arrivals: arrivalMonths ? summarizeArrivals(arrivalMonths.flatMap((m) => m.records), attendanceRows, range) : null,
     points: points ? summarizePoints(points, range) : null,
     standing: context ? { demeritPoints: context.points.demeritPoints, warningStage: context.points.warningStageLabel, aggregation: context.points.aggregationLabel, leave: context.leave } : null,
-    interviews: (interviews ?? []).slice().sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3),
-    morning: morningData ? { examTypeName: morningData.examType.name, summary: morningPersonalSummary(morningData), study: morningStudyRows(morningData).slice(0, 6), easyThreshold: morningData.easyThreshold, failCutoffPercent: morningData.failCutoffPercent } : null,
+    interviews: sortedInterviews.slice(0, 3),
+    // '먼저 공부할 것' 줄 수는 학원 설정(examAnalysis.diagnosis.maxTasks)이다.
+    morning: morningData ? { examTypeName: morningData.examType.name, summary: morningPersonalSummary(morningData), study: morningStudyRows(morningData).slice(0, settings.diagnosis.maxTasks), easyThreshold: morningData.easyThreshold, failCutoffPercent: morningData.failCutoffPercent } : null,
+    diagnosis,
+    studyTasks: latestStudy ? { interviewDate: latestStudy.date, tasks: studyTasks } : null,
     regular: regularData ? { examTypeName: regularData.examType.name, date: regularData.range.to, report: regularData.regular!, failCutoffPercent: regularData.failCutoffPercent } : null,
   };
 }

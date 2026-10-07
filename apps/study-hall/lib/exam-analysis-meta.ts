@@ -147,25 +147,26 @@ export function detectRegularDecline(input: {
   current: { total: number; internalRank: number; internalCount: number; subjectScoreRates: Record<string, number> };
   previous: { total: number; internalRank: number } | null;
   target: number | null; fullScore: number; settings: ExamAnalysisSettings;
-}): Array<{ kind: "totalDrop" | "rankDrop" | "targetGap" | "weakSubject"; detail: string }> {
+}): Array<{ kind: "totalDrop" | "rankDrop" | "targetGap" | "weakSubject"; detail: string; amount?: number; subject?: string }> {
   const { current, previous, target, fullScore, settings } = input;
   const flags: ReturnType<typeof detectRegularDecline> = [];
+  // amount·subject 는 학생 화면이 detail 문장을 다시 읽지 않고 쉬운 말로 옮기기 위한 값이다(lib/student-words.ts).
   if (previous) {
     const drop = previous.total - current.total;
     if (drop >= fullScore * settings.regular.totalDropPercent / 100) {
-      flags.push({ kind: "totalDrop", detail: `직전 시험보다 총점이 ${roundOne(drop)}점 하락했습니다.` });
+      flags.push({ kind: "totalDrop", detail: `직전 시험보다 총점이 ${roundOne(drop)}점 하락했습니다.`, amount: roundOne(drop) });
     }
     const rankDrop = current.internalRank - previous.internalRank;
     if (rankDrop >= Math.ceil(current.internalCount * settings.regular.rankDropPercent / 100)) {
-      flags.push({ kind: "rankDrop", detail: `직전 시험보다 반 석차가 ${rankDrop}계단 하락했습니다.` });
+      flags.push({ kind: "rankDrop", detail: `직전 시험보다 반 석차가 ${rankDrop}계단 하락했습니다.`, amount: rankDrop });
     }
   }
   if (target !== null && target - current.total >= fullScore * settings.regular.targetGapPercent / 100) {
-    flags.push({ kind: "targetGap", detail: `목표 점수보다 ${roundOne(target - current.total)}점 낮습니다.` });
+    flags.push({ kind: "targetGap", detail: `목표 점수보다 ${roundOne(target - current.total)}점 낮습니다.`, amount: roundOne(target - current.total) });
   }
   for (const [subject, rate] of Object.entries(current.subjectScoreRates)) {
     if (rate < settings.common.weakSubjectRatePercent) {
-      flags.push({ kind: "weakSubject", detail: `${subject} 성취율이 ${roundOne(rate)}%로 취약 기준 ${settings.common.weakSubjectRatePercent}% 미만입니다.` });
+      flags.push({ kind: "weakSubject", detail: `${subject} 성취율이 ${roundOne(rate)}%로 취약 기준 ${settings.common.weakSubjectRatePercent}% 미만입니다.`, amount: roundOne(rate), subject });
     }
   }
   return flags;

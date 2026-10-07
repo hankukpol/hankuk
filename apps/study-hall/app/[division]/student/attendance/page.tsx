@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ClipboardList } from "lucide-react";
 
@@ -12,26 +13,24 @@ import {
 import { requireDivisionStudentAccess } from "@/lib/auth";
 import { isNotFoundError } from "@/lib/errors";
 import { getStudentDashboardData } from "@/lib/services/student-dashboard.service";
+import { ATTENDANCE_LEGEND } from "@/lib/student-words";
 
 type StudentAttendancePageProps = {
   params: {
     division: string;
   };
+  searchParams?: {
+    view?: string;
+  };
 };
-
-const legendItems = [
-  { label: "출석", className: "text-attend-present" },
-  { label: "수업", className: "text-[var(--admin-attendance-class)]" },
-  { label: "지각", className: "text-attend-tardy" },
-  { label: "결석", className: "text-attend-absent" },
-  { label: "사유결석", className: "text-blue-700" },
-  { label: "휴무", className: "text-slate-700" },
-  { label: "예정/미처리", className: "text-attend-unprocessed" },
-] as const;
 
 export default async function StudentAttendancePage({
   params,
+  searchParams,
 }: StudentAttendancePageProps) {
+  // 교시 출석과 등원 시각은 서로 다른 기록이라 한 화면에 섞지 않는다(운영자 요청 2026-10-07).
+  const arrivalsView = searchParams?.view === "arrivals";
+  const base = `/${params.division}/student/attendance`;
   const session = await requireDivisionStudentAccess(params.division);
 
   try {
@@ -55,37 +54,49 @@ export default async function StudentAttendancePage({
           <PortalMetricCard
             label="이번 달 출석률"
             value={`${data.summary.monthlyAttendanceRate}%`}
-            caption={`${data.summary.monthlyAttendedCount}/${data.summary.monthlyExpectedCount} 교시 반영`}
+            caption={`${data.summary.monthlyAttendedCount} / ${data.summary.monthlyExpectedCount}교시 출석`}
           />
           <PortalMetricCard
             label="이번 주 출석"
             value={`${data.summary.weeklyAttendedCount}/${data.summary.weeklyExpectedCount}`}
-            caption="필수 교시 종료분 기준"
+            caption="끝난 필수 교시만 세요"
           />
         </section>
 
-        <StudentArrivals divisionSlug={params.division} />
+        <nav className="admin-subtabs" aria-label="출석 기록 종류">
+          <Link className="admin-subtab" href={base} prefetch={false} aria-current={!arrivalsView ? "page" : undefined}>
+            교시 출석
+          </Link>
+          <Link className="admin-subtab" href={`${base}?view=arrivals`} prefetch={false} aria-current={arrivalsView ? "page" : undefined}>
+            등원 시각
+          </Link>
+        </nav>
 
-        {/* DESIGN.md 5.2 · 5.8 — 표를 감싼 컨테이너에 테두리를 두지 않는다. */}
-        <section className="min-w-0">
-          <PortalSectionHeader
-            title="날짜별 주간 출석표"
-            icon={<ClipboardList className="h-5 w-5" />}
-            action={
-              <div className="flex flex-wrap gap-x-3 gap-y-1 text-[13px] font-semibold sm:justify-end">
-                {legendItems.map((item) => (
-                  <span key={item.label} className={item.className}>
-                    {item.label}
-                  </span>
-                ))}
-              </div>
-            }
-          />
+        {arrivalsView ? (
+          <StudentArrivals divisionSlug={params.division} />
+        ) : (
+          /* DESIGN.md 5.2 · 5.8 — 표를 감싼 컨테이너에 테두리를 두지 않는다. */
+          <section className="min-w-0">
+            <PortalSectionHeader
+              title="이번 주 교시별 출석"
+              icon={<ClipboardList className="h-5 w-5" />}
+            />
 
-          <div className="mt-3 min-w-0">
-            <AttendanceCalendar weeklyAttendance={data.weeklyAttendance} />
-          </div>
-        </section>
+            <div className="mt-3 min-w-0">
+              <AttendanceCalendar weeklyAttendance={data.weeklyAttendance} />
+            </div>
+
+            {/* 표 칸의 짧은 말을 아래에서 풀어 준다. 색은 업무 의미가 있는 출결 상태색 그대로다. */}
+            <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[13px]" aria-label="출석 표시 뜻">
+              {ATTENDANCE_LEGEND.map((item) => (
+                <li key={item.short}>
+                  <span className={`font-semibold ${item.className}`}>{item.short}</span>
+                  <span className="admin-help ml-1">{item.long}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </StudentPortalFrame>
     );
   } catch (error) {

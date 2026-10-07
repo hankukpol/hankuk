@@ -232,6 +232,42 @@ export type MockInterviewRecord = {
   closedById: string | null;
   createdById: string;
   createdAt: string;
+  /** 2026-10-07 추가. 이전 목업 기록은 GENERAL 로 읽는다. */
+  category?: "GENERAL" | "STUDY";
+  diagnosisSnapshot?: unknown;
+};
+
+export type MockInterviewTaskStatusRecord = "PLANNED" | "DONE" | "PARTIAL" | "NOT_DONE" | "CANCELLED";
+
+/** prisma InterviewTask 와 같은 모양. 학원(slug)별로 담는다. */
+export type MockInterviewTaskRecord = {
+  id: string;
+  divisionId: string;
+  interviewId: string;
+  studentId: string;
+  position: number;
+  examCategory: "MORNING" | "REGULAR" | null;
+  examTypeId: string | null;
+  subjectId: string | null;
+  sessionId: string | null;
+  subjectName: string;
+  examDate: string | null;
+  scope: string | null;
+  itemNos: number[];
+  cause: string;
+  title: string;
+  method: string | null;
+  dueDate: string | null;
+  visibleToStudent: boolean;
+  baselineMy: number | null;
+  baselineAverage: number | null;
+  status: MockInterviewTaskStatusRecord;
+  reviewNote: string | null;
+  reviewedAt: string | null;
+  reviewedById: string | null;
+  reviewedInInterviewId: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type MockWarningNoticeRecord = {
@@ -435,6 +471,7 @@ type MockState = {
   tuitionPlansByDivision: Record<string, MockTuitionPlanRecord[]>;
   leavePermissionsByDivision: Record<string, MockLeavePermissionRecord[]>;
   interviewsByDivision: Record<string, MockInterviewRecord[]>;
+  interviewTasksByDivision: Record<string, MockInterviewTaskRecord[]>;
   warningNoticesByDivision: Record<string, MockWarningNoticeRecord[]>;
   divisionSettingsHistoryByDivision: Record<string, MockDivisionSettingsHistoryRecord[]>;
   announcementsByDivision: Record<string, MockAnnouncementRecord[]>;
@@ -658,6 +695,7 @@ function getDivisionSlugs(state?: Partial<MockState>) {
       ...Object.keys(state?.chatMessagesByDivision ?? {}),
       ...Object.keys(state?.chatReadStatesByDivision ?? {}),
       ...Object.keys(state?.warningNoticesByDivision ?? {}),
+      ...Object.keys(state?.interviewTasksByDivision ?? {}),
       ...Object.keys(state?.divisionSettingsHistoryByDivision ?? {}),
     ]),
   ).filter((slug) => !deletedDivisionSlugSet.has(slug));
@@ -1552,6 +1590,9 @@ function createInitialState(): MockState {
   const warningNoticesByDivision = Object.fromEntries(
     divisions.map((division) => [division.slug, [] as MockWarningNoticeRecord[]]),
   );
+  const interviewTasksByDivision = Object.fromEntries(
+    divisions.map((division) => [division.slug, [] as MockInterviewTaskRecord[]]),
+  );
   const divisionSettingsHistoryByDivision = Object.fromEntries(
     divisions.map((division) => [division.slug, [] as MockDivisionSettingsHistoryRecord[]]),
   );
@@ -1608,6 +1649,7 @@ function createInitialState(): MockState {
     tuitionPlansByDivision,
     leavePermissionsByDivision,
     interviewsByDivision,
+    interviewTasksByDivision,
     warningNoticesByDivision,
     divisionSettingsHistoryByDivision,
     announcementsByDivision,
@@ -1845,6 +1887,8 @@ function normalizeMockState(rawState: Partial<MockState> | null | undefined) {
             guardianContacted: interview.guardianContacted ?? false,
             closedAt: interview.closedAt ?? null,
             closedById: interview.closedById ?? null,
+            category: interview.category ?? "GENERAL",
+            diagnosisSnapshot: interview.diagnosisSnapshot ?? null,
           }))
         : createInitialInterviews(divisionSlug),
     ]),
@@ -1855,6 +1899,15 @@ function normalizeMockState(rawState: Partial<MockState> | null | undefined) {
       divisionSlug,
       Array.isArray(state.warningNoticesByDivision?.[divisionSlug])
         ? state.warningNoticesByDivision[divisionSlug]
+        : [],
+    ]),
+  );
+
+  const interviewTasksByDivision = Object.fromEntries(
+    getDivisionSlugs({ ...state, divisions: normalizedDivisions, deletedDivisionSlugs }).map((divisionSlug) => [
+      divisionSlug,
+      Array.isArray(state.interviewTasksByDivision?.[divisionSlug])
+        ? state.interviewTasksByDivision[divisionSlug]
         : [],
     ]),
   );
@@ -2020,6 +2073,7 @@ function normalizeMockState(rawState: Partial<MockState> | null | undefined) {
     tuitionPlansByDivision,
     leavePermissionsByDivision,
     interviewsByDivision,
+    interviewTasksByDivision,
     warningNoticesByDivision,
     divisionSettingsHistoryByDivision,
     announcementsByDivision,

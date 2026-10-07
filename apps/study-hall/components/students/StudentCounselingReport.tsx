@@ -4,12 +4,13 @@ import { subjectVerdict, weekLabel } from "@/lib/exam-preview/report-summary";
 import type { StudentCounselingReport as Report } from "@/lib/services/student-report.service";
 import { weekdayLabel } from "@/lib/student-report";
 import { getInterviewResultTypeLabel } from "@/lib/interview-meta";
+import { STUDY_CAUSE_WORDS, TASK_STATUS_WORDS, VERDICT_WORDS } from "@/lib/student-words";
 
 const n = (value: number | null | undefined, suffix = "") => value == null ? "—" : `${Number(value.toFixed(1)).toLocaleString("ko-KR")}${suffix}`;
 const md = (date: string) => `${Number(date.slice(5, 7))}/${Number(date.slice(8, 10))}`;
 const days = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000) + 1;
 const tone = (gap: number | null) => gap === null || Math.round(gap * 10) === 0 ? undefined : gap > 0 ? "report-up" : "report-down";
-const verdictLabel = { "과락": "과락", "우수": "잘하고 있음", "보통": "보통", "취약": "복습 필요", "판정 불가": "판정 불가" } as const;
+const verdictLabel = VERDICT_WORDS;
 
 function Section({ title, note, children, keep = false }: { title: string; note?: string; children: ReactNode; keep?: boolean }) {
   return (
@@ -29,11 +30,11 @@ function Empty({ children }: { children: ReactNode }) {
 
 /**
  * 학생 상담 자료(A4). 면담 때 학생과 함께 보며 적는 종이다.
- * 순서: 한눈에 보기 → 성적(아침·정기) → 출결 → 등원 시각 → 상벌점 → 최근 면담 → 상담 기록(빈칸).
+ * 순서: 한눈에 보기 → 성적(아침·정기) → 학습 진단·지난 할 일 → 출결 → 등원 시각 → 상벌점 → 최근 면담 → 상담 기록(빈칸).
  * 인쇄 규칙(쪽 나눔·표 머리 반복)은 globals.css 의 .student-report 규칙이 맡는다.
  */
 export function StudentCounselingReport({ report, today }: { report: Report; today: string }) {
-  const { student, range, morning, regular, attendance, arrivals, points, standing, interviews } = report;
+  const { student, range, morning, regular, attendance, arrivals, points, standing, interviews, diagnosis, studyTasks } = report;
   const count = (status: string) => attendance?.counts.find((c) => c.status === status)?.count ?? 0;
   const regularRank = regular?.report.ranks.external;
 
@@ -124,6 +125,53 @@ export function StudentCounselingReport({ report, today }: { report: Report; tod
         </Section>
       ) : null}
 
+      {studyTasks?.tasks.length ? (
+        <Section title="지난 할 일" note={`${studyTasks.interviewDate.slice(0, 10)} 학습 면담에서 정한 할 일 · 했는지 먼저 확인합니다.`} keep>
+          <table className="report-table">
+            <thead><tr><th>과목</th><th>할 일</th><th>기한</th><th>확인</th></tr></thead>
+            <tbody>
+              {studyTasks.tasks.map((task) => (
+                <tr key={task.id}>
+                  <td>{task.subjectName}</td>
+                  <td className="wrap">{task.title}{task.method ? <><br /><span className="report-note">방법: {task.method}</span></> : null}</td>
+                  <td>{task.dueDate ? md(task.dueDate) : "—"}</td>
+                  <td>{task.status === "PLANNED" ? "□ 했음 □ 일부 □ 못 함" : TASK_STATUS_WORDS[task.status] ?? task.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Section>
+      ) : null}
+
+      {diagnosis ? (
+        <Section title="학습 진단" note="성적으로 만든 초안입니다. 원인은 면담에서 학생 설명을 듣고 정합니다." keep>
+          <p className={`report-callout report-callout-${diagnosis.headline.tone}`}>{diagnosis.headline.text}</p>
+          {diagnosis.strengths.length ? <p className="report-note">잘한 점: {diagnosis.strengths.join(" ")}</p> : null}
+          {diagnosis.priorities.length ? (
+            <table className="report-table">
+              <thead><tr><th>순서</th><th>과목 · 시험</th><th>짐작한 원인</th><th>할 일(방법)</th></tr></thead>
+              <tbody>
+                {diagnosis.priorities.map((p, i) => (
+                  <tr key={p.key}>
+                    <td>{i + 1}</td>
+                    <td className="wrap">{p.examCategory === "REGULAR" ? "정기 " : ""}{p.subjectName} · {md(p.date)}{p.scope ? ` · ${p.scope}` : ""}{p.itemNos.length ? <><br /><span className="report-note">틀린 문항 {p.itemNos.join(", ")}번</span></> : null}</td>
+                    <td className="wrap">{p.reference ? "참고(오답 적음)" : STUDY_CAUSE_WORDS[p.cause].label}<br /><span className="report-note">{p.reason}</span></td>
+                    <td className="wrap">{p.method}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : null}
+          {diagnosis.questions.length ? (
+            <>
+              <h3 className="report-subhead">면담 때 확인할 것</h3>
+              <ul className="space-y-1">{diagnosis.questions.map((q) => <li key={q.text}>□ {q.text}</li>)}</ul>
+            </>
+          ) : null}
+          {diagnosis.cautions.length ? <p className="report-note">{diagnosis.cautions.join(" ")}</p> : null}
+        </Section>
+      ) : null}
+
       <Section title="출결" note="교시별 기록 수입니다. 아래 표는 출석이 아닌 기록만 모았습니다.">
         {attendance ? (
           <>
@@ -162,7 +210,7 @@ export function StudentCounselingReport({ report, today }: { report: Report; tod
         <Section title="최근 면담" keep>
           <table className="report-table">
             <thead><tr><th>날짜</th><th>사유</th><th>결과</th><th>후속 확인일</th></tr></thead>
-            <tbody>{interviews.map((r) => <tr key={r.id}><td>{r.date.slice(0, 10)}</td><td className="wrap">{r.reason}</td><td>{getInterviewResultTypeLabel(r.resultType)}</td><td>{r.followUpDate?.slice(0, 10) ?? "—"}</td></tr>)}</tbody>
+            <tbody>{interviews.map((r) => <tr key={r.id}><td>{r.date.slice(0, 10)}</td><td className="wrap">{r.reason}</td><td>{r.category === "STUDY" ? "학습 면담" : getInterviewResultTypeLabel(r.resultType)}</td><td>{r.followUpDate?.slice(0, 10) ?? "—"}</td></tr>)}</tbody>
           </table>
         </Section>
       ) : null}

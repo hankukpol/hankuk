@@ -9,6 +9,9 @@ export const DEFAULT_EXAM_ANALYSIS_SETTINGS = {
   regular: { totalDropPercent: 10, rankDropPercent: 20, targetGapPercent: 10 },
   // failCutoffPercent: 과목 만점 대비 이 비율 미만이면 과락으로 표시한다. 0 이면 과락을 판정하지 않는다.
   common: { weakSubjectRatePercent: 60, balanceStdDev: 18, easyMissedRatePercent: 70, killerRatePercent: 40, failCutoffPercent: 40 },
+  // 학습 면담의 진단(lib/study-diagnosis.ts). maxTasks: 먼저 공부할 것을 몇 개까지 제안할지.
+  // minWrongItems: 한 시험에서 틀린 문항이 이보다 적으면 원인을 단정하지 않고 '참고'로 둔다.
+  diagnosis: { maxTasks: 3, minWrongItems: 3 },
 };
 
 const percent = z.number().finite().min(0, "비율은 0 이상이어야 합니다.").max(100, "비율은 100 이하여야 합니다.");
@@ -19,9 +22,14 @@ const sections = {
   }),
   regular: z.object({ totalDropPercent: percent, rankDropPercent: percent, targetGapPercent: percent }),
   common: z.object({ weakSubjectRatePercent: percent, balanceStdDev: percent, easyMissedRatePercent: percent, killerRatePercent: percent, failCutoffPercent: percent }),
+  diagnosis: z.object({
+    maxTasks: z.number().int().min(1, "제안할 공부 항목은 1개 이상이어야 합니다.").max(6, "제안할 공부 항목은 6개 이하여야 합니다."),
+    minWrongItems: z.number().int().min(1, "원인 판단 최소 오답 수는 1 이상이어야 합니다.").max(20, "원인 판단 최소 오답 수는 20 이하여야 합니다."),
+  }),
 };
 
-export const examAnalysisSettingsSchema = z.object(sections).superRefine((value, ctx) => {
+// 진단 항목은 2026-10-07에 추가했다. 이전에 저장된 설정·템플릿에는 없으므로 빠지면 기본값으로 채운다.
+export const examAnalysisSettingsSchema = z.object({ ...sections, diagnosis: sections.diagnosis.default(DEFAULT_EXAM_ANALYSIS_SETTINGS.diagnosis) }).superRefine((value, ctx) => {
   if (value.morning.movingAverageSessions > value.morning.trendWindowSessions) ctx.addIssue({
     code: "custom", path: ["morning", "trendWindowSessions"], message: "추세 응시 횟수는 이동평균 응시 횟수 이상이어야 합니다.",
   });

@@ -57,6 +57,20 @@ enum InterviewStatus {
   CLOSED
 }
 
+// 면담 종류. 학습 면담(STUDY)은 성적 진단과 할 일(InterviewTask)을 함께 남긴다. 기존 기록은 GENERAL.
+enum InterviewCategory {
+  GENERAL
+  STUDY
+}
+
+enum InterviewTaskStatus {
+  PLANNED
+  DONE
+  PARTIAL
+  NOT_DONE
+  CANCELLED
+}
+
 enum WarningNoticeChannel {
   SMS
   PHONE
@@ -117,6 +131,7 @@ model Division {
   chatMessages      ChatMessage[]
   chatReadStates    ChatReadState[]
   warningNotices    WarningNotice[]
+  interviewTasks    InterviewTask[]
   settingsHistory   DivisionSettingsHistory[]
 
   @@map("divisions")
@@ -151,6 +166,7 @@ model Student {
   pointRecords        PointRecord[]
   leavePermissions    LeavePermission[]
   interviews          Interview[]
+  interviewTasks      InterviewTask[]
   payments            Payment[]
   examScores          ExamScore[]
   morningExamScores   MorningExamScore[]
@@ -289,16 +305,66 @@ model Interview {
   closedById        String?         @map("closed_by_id")
   createdById       String          @map("created_by_id")
   createdAt         DateTime        @default(now()) @map("created_at")
+  category          InterviewCategory @default(GENERAL)
+  // 학습 면담 저장 때 서버가 다시 계산한 진단(lib/study-diagnosis.ts). 그때 무엇을 근거로 이야기했는지 남긴다.
+  diagnosisSnapshot Json?           @map("diagnosis_snapshot")
   student           Student         @relation(fields: [studentId], references: [id], onDelete: Restrict)
   createdBy         Admin           @relation("InterviewCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   // 종결한 직원 계정이 삭제돼도 면담 기록 자체는 남아야 한다.
   closedBy          Admin?          @relation("InterviewClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
+  tasks             InterviewTask[] @relation("InterviewTasks")
+  reviewedTasks     InterviewTask[] @relation("InterviewTaskReviews")
 
   @@index([studentId, date])
   @@index([createdById])
   // 후속 확인 대기 목록 조회 전용.
   @@index([status, followUpDate])
+  @@index([studentId, category, date])
   @@map("interviews")
+}
+
+// 학습 면담에서 학생과 정한 할 일. 할 일마다 다음 면담에서 따로 확인하고, 학생 화면에는 공개한 것만 보인다.
+// 시험·과목 ID 는 기록용 사본이라 외래 키를 걸지 않는다(시험을 다시 가져오거나 지워도 면담 기록이 막히지 않게).
+model InterviewTask {
+  id                    String              @id @default(cuid())
+  divisionId            String              @map("division_id")
+  interviewId           String              @map("interview_id")
+  studentId             String              @map("student_id")
+  position              Int
+  examCategory          ExamCategory?       @map("exam_category")
+  examTypeId            String?             @map("exam_type_id")
+  subjectId             String?             @map("subject_id")
+  sessionId             String?             @map("session_id")
+  subjectName           String              @map("subject_name")
+  examDate              DateTime?           @map("exam_date") @db.Date
+  scope                 String?
+  itemNos               Int[]               @map("item_nos")
+  // CONCEPT | MISTAKE | TIME | HARD | ABSENCE | OTHER (lib/student-words.ts STUDY_CAUSE_WORDS)
+  cause                 String
+  title                 String
+  method                String?
+  dueDate               DateTime?           @map("due_date") @db.Date
+  visibleToStudent      Boolean             @default(true) @map("visible_to_student")
+  // 할 일을 정할 때의 100점 기준 내 점수와 전체 평균. 다음 면담에서 점수 변화를 잰다.
+  baselineMy            Float?              @map("baseline_my")
+  baselineAverage       Float?              @map("baseline_average")
+  status                InterviewTaskStatus @default(PLANNED)
+  reviewNote            String?             @map("review_note")
+  reviewedAt            DateTime?           @map("reviewed_at")
+  reviewedById          String?             @map("reviewed_by_id")
+  reviewedInInterviewId String?             @map("reviewed_in_interview_id")
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+  division              Division            @relation(fields: [divisionId], references: [id], onDelete: Restrict)
+  interview             Interview           @relation("InterviewTasks", fields: [interviewId], references: [id], onDelete: Cascade)
+  student               Student             @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  reviewedBy            Admin?              @relation("InterviewTaskReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedInInterview   Interview?          @relation("InterviewTaskReviews", fields: [reviewedInInterviewId], references: [id], onDelete: SetNull)
+
+  @@index([studentId, status])
+  @@index([interviewId, position])
+  @@index([divisionId])
+  @@map("interview_tasks")
 }
 
 // 경고 안내를 "실제로 했다"는 사실의 기록.
@@ -731,6 +797,7 @@ model Admin {
   leaveApprovals            LeavePermission[]  @relation("LeaveApprovedBy")
   interviewsCreated         Interview[]        @relation("InterviewCreatedBy")
   interviewsClosed          Interview[]        @relation("InterviewClosedBy")
+  interviewTasksReviewed    InterviewTask[]    @relation("InterviewTaskReviewedBy")
   paymentsRecorded          Payment[]          @relation("PaymentRecordedBy")
   examScoresRecorded        ExamScore[]        @relation("ExamRecordedBy")
   morningExamScoresRecorded MorningExamScore[] @relation("MorningExamRecordedBy")

@@ -5,7 +5,7 @@ import {
   journalDayLabel,
   latestPromiseInterview,
   parseInterviewContent,
-  parsePromises,
+  journalPromises,
   sortJournal,
   type JournalSection,
 } from "@/lib/interview-journal";
@@ -33,7 +33,7 @@ function Lines({ lines }: { lines: JournalSection["lines"] }) {
 export function InterviewJournalPrint({ student, interviews, today }: { student: StudentDetail; interviews: InterviewItem[]; today: string }) {
   const sorted = sortJournal(interviews);
   const promiseInterview = latestPromiseInterview(sorted);
-  const promises = parsePromises(promiseInterview?.result);
+  const promises = promiseInterview ? journalPromises(promiseInterview) : [];
   const first = sorted[sorted.length - 1];
   const demerit = student.demeritPoints ?? toDemeritPoints(student.netPoints);
 
@@ -74,7 +74,7 @@ export function InterviewJournalPrint({ student, interviews, today }: { student:
 
       {sorted.map((interview) => {
         const sections = parseInterviewContent(interview.content);
-        const items = parsePromises(interview.result);
+        const items = journalPromises(interview);
         return (
           <section key={interview.id} className="report-section">
             <div className="report-section-head">

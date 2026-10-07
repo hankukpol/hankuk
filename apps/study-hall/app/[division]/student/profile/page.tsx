@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { IdCard, MapPin, ShieldCheck } from "lucide-react";
 
@@ -10,7 +11,6 @@ import {
   getStudentStatusToneClass,
   getWarningStageLabel,
   getWarningStageToneClass,
-  toDemeritPoints,
 } from "@/lib/student-meta";
 import { getDivisionFeatureSettings, getDivisionTheme } from "@/lib/services/settings.service";
 import { getStudentDetail } from "@/lib/services/student.service";
@@ -54,8 +54,6 @@ export default async function StudentProfilePage({ params }: StudentProfilePageP
       getStudentDetail(params.division, session.studentId),
       getDivisionFeatureSettings(params.division),
     ]);
-
-    const demeritPoints = student.demeritPoints ?? toDemeritPoints(student.netPoints);
 
     return (
       <StudentPortalFrame
@@ -125,11 +123,17 @@ export default async function StudentProfilePage({ params }: StudentProfilePageP
         <section>
           <PortalSectionHeader
             title="현재 상태"
-            description="상벌점과 경고 단계의 자세한 내역은 상벌점 화면에 있습니다."
+            description="벌점과 상점은 상벌점 화면에서 볼 수 있어요."
             icon={<ShieldCheck className="h-5 w-5" />}
+            action={student.warningStageLabels ? (
+              <Link className="admin-button admin-button-compact" href={`/${params.division}/student/management-policy`} prefetch={false}>
+                관리규정 보기
+              </Link>
+            ) : undefined}
           />
 
-          <dl className="admin-portal-summary mt-4">
+          {/* 벌점·상점은 상벌점 화면과 같은 숫자라 여기서 다시 적지 않는다(2026-10-07). */}
+          <dl className="admin-portal-summary admin-portal-summary-3 mt-4">
             <div>
               <dt>상태</dt>
               <dd className={getStudentStatusToneClass(student.status)}>
@@ -143,23 +147,9 @@ export default async function StudentProfilePage({ params }: StudentProfilePageP
               </dd>
             </div>
             <div>
-              <dt>벌점</dt>
-              <dd>{demeritPoints}점</dd>
+              <dt>등록일</dt>
+              <dd>{formatDate(student.enrolledAt) ?? "-"}</dd>
             </div>
-            {/* 상점을 따로 집계하지 않는 지점에서는 누적 점수가 벌점을 음수로 뒤집은
-                같은 값이다. 같은 수를 두 번 적는 대신 등록일을 둔다 — 칸을 비우면
-                격자에 회색 구멍이 남는다. */}
-            {student.meritPoints !== undefined ? (
-              <div>
-                <dt>상점</dt>
-                <dd>{student.meritPoints}점</dd>
-              </div>
-            ) : (
-              <div>
-                <dt>등록일</dt>
-                <dd>{formatDate(student.enrolledAt) ?? "-"}</dd>
-              </div>
-            )}
           </dl>
         </section>
       </StudentPortalFrame>

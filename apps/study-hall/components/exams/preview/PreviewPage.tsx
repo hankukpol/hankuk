@@ -14,6 +14,8 @@ import {
 import { StudentPortalFrame } from "@/components/student-view/StudentPortalFrame";
 import { normalizeAnalysisSelection } from "@/lib/exam-preview/selection";
 import { PreviewWorkspace } from "./PreviewWorkspace";
+import { StudyTasksProvider } from "./StudyTasksContext";
+import { listStudentVisibleTasks } from "@/lib/services/interview.service";
 
 export type PreviewPageProps = {
   params: { division: string; studentId?: string };
@@ -60,6 +62,10 @@ export async function PreviewPage({
     getStudentDetail(params.division, studentId!),
     getDivisionFeatureSettings(params.division),
   ]);
+  // 학습 면담에서 공개로 정한 할 일. 면담 기능이 꺼진 학원은 빈 목록이다.
+  const studyTasks = !previewOnly && settings.featureFlags.interviewManagement
+    ? await listStudentVisibleTasks(params.division, studentId!)
+    : [];
   return (
     <StudentPortalFrame
       division={{ ...division, slug: params.division }}
@@ -71,7 +77,7 @@ export async function PreviewPage({
       pointsEnabled={settings.featureFlags.pointManagement}
       examsEnabled={settings.featureFlags.examManagement}
     >
-      {workspace}
+      <StudyTasksProvider tasks={studyTasks}>{workspace}</StudyTasksProvider>
     </StudentPortalFrame>
   );
 }

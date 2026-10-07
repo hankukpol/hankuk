@@ -103,10 +103,34 @@ export function sortJournal<T extends JournalInterview>(interviews: T[]) {
   );
 }
 
+type PromiseSource = {
+  result: string | null;
+  /** 학습 면담의 할 일(2026-10-07). 있으면 글자 약속 대신 이것을 약속으로 본다. */
+  tasks?: Array<{ subjectName: string; title: string; status: string }>;
+};
+
+const TASK_STATUS_SUFFIX: Record<string, string> = { DONE: "했음", PARTIAL: "일부 했음", NOT_DONE: "못 했음", CANCELLED: "취소" };
+
 /**
- * 맨 위 "지켜야 할 약속"에 올릴 면담: 약속이 적힌 가장 최근 면담.
+ * 면담 하나의 약속 목록. 학습 면담의 할 일이 있으면 할 일을(확인한 결과를 뒤에 붙여), 없으면 약속·후속 칸의 줄을 쓴다.
+ * 예전 기록(글자 약속)은 그대로 읽힌다.
+ */
+export function journalPromises(interview: PromiseSource): string[] {
+  const tasks = (interview.tasks ?? []).filter((task) => task.status !== "CANCELLED");
+  if (tasks.length) {
+    return tasks.map((task) => {
+      const suffix = TASK_STATUS_SUFFIX[task.status];
+      const title = task.title.includes(task.subjectName) ? task.title : `${task.subjectName} · ${task.title}`;
+      return suffix ? `${title} (${suffix})` : title;
+    });
+  }
+  return parsePromises(interview.result);
+}
+
+/**
+ * 맨 위 "지켜야 할 약속"에 올릴 면담: 약속(또는 학습 면담 할 일)이 있는 가장 최근 면담.
  * 다음 면담에서 이 약속부터 확인한다.
  */
-export function latestPromiseInterview<T extends JournalInterview & { result: string | null }>(sorted: T[]) {
-  return sorted.find((interview) => parsePromises(interview.result).length > 0) ?? null;
+export function latestPromiseInterview<T extends JournalInterview & PromiseSource>(sorted: T[]) {
+  return sorted.find((interview) => journalPromises(interview).length > 0) ?? null;
 }

@@ -994,6 +994,27 @@ export function RulesSettingsManager({
                 <span className="admin-help mt-2 block">정답률이 이 기준 이하인 문항을 고난도 문항으로 분류합니다.</span>
               </label>
             </div>
+            <h4 className="admin-label mt-4">학습 면담 진단</h4>
+            <div className="mt-2 grid gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="admin-label mb-2 block">먼저 공부할 것 제안 수</span>
+                <input className="w-full" type="number" required min={1} max={6} step={1}
+                  value={Number.isFinite(form.examAnalysis.diagnosis.maxTasks) ? form.examAnalysis.diagnosis.maxTasks : ""}
+                  onChange={(event) => setForm((current) => ({ ...current, examAnalysis: { ...current.examAnalysis,
+                    diagnosis: { ...current.examAnalysis.diagnosis, maxTasks: event.target.value === "" ? Number.NaN : Number(event.target.value) },
+                  } }))} />
+                <span className="admin-help mt-2 block">학습 면담에서 &lsquo;먼저 공부할 것&rsquo;을 이 개수까지 제안합니다. 상담 자료의 &lsquo;먼저 공부할 것&rsquo;도 같은 수를 씁니다.</span>
+              </label>
+              <label className="block">
+                <span className="admin-label mb-2 block">원인 판단 최소 오답 수</span>
+                <input className="w-full" type="number" required min={1} max={20} step={1}
+                  value={Number.isFinite(form.examAnalysis.diagnosis.minWrongItems) ? form.examAnalysis.diagnosis.minWrongItems : ""}
+                  onChange={(event) => setForm((current) => ({ ...current, examAnalysis: { ...current.examAnalysis,
+                    diagnosis: { ...current.examAnalysis.diagnosis, minWrongItems: event.target.value === "" ? Number.NaN : Number(event.target.value) },
+                  } }))} />
+                <span className="admin-help mt-2 block">한 시험에서 틀린 문항이 이보다 적으면 원인(실수·시간 부족·개념 부족)을 단정하지 않고 &lsquo;참고&rsquo;로 표시합니다.</span>
+              </label>
+            </div>
           </section>
           </AdminTabPanel>
 

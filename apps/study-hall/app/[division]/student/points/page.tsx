@@ -1,4 +1,5 @@
 import { kstMonthBounds } from "@/lib/management-policy";
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ShieldAlert } from "lucide-react";
 
@@ -16,10 +17,15 @@ import { getNextWarningStage, toDemeritPoints } from "@/lib/student-meta";
 import { listPointRecords } from "@/lib/services/point.service";
 import { getDivisionFeatureSettings, getDivisionRuleSettings, getDivisionTheme } from "@/lib/services/settings.service";
 import { getStudentDetail } from "@/lib/services/student.service";
+import { isInStudentPointPeriod, studentPointPeriod } from "@/lib/student-point-period";
+import { POINT_WORDS } from "@/lib/student-words";
 
 type StudentPointsPageProps = {
   params: {
     division: string;
+  };
+  searchParams?: {
+    range?: string;
   };
 };
 
@@ -39,7 +45,7 @@ function formatTime(value: string) {
   });
 }
 
-export default async function StudentPointsPage({ params }: StudentPointsPageProps) {
+export default async function StudentPointsPage({ params, searchParams }: StudentPointsPageProps) {
   const session = await requireDivisionStudentAccess(params.division);
 
   try {
@@ -56,9 +62,13 @@ export default async function StudentPointsPage({ params }: StudentPointsPagePro
 
     const records = await listPointRecords(params.division, { studentId: session.studentId });
     const demeritPoints = student.demeritPoints ?? toDemeritPoints(student.netPoints);
-    const month = kstMonthBounds();
-    const pointPeriodLabel = student.pointMetricScope === "course" ? "수강 기간" : "이번 달";
-    const metricRecords = student.pointMetricScope || student.meritPoints !== undefined ? records.filter((r) => r.date.slice(0, 10) >= (student.pointMetricDateFrom ?? month.dateFrom) && r.date.slice(0, 10) <= (student.pointMetricDateTo ?? month.dateTo)) : records;
+    const period = studentPointPeriod(student, kstMonthBounds());
+    const pointPeriodLabel = period.label;
+    const metricRecords = records.filter((record) => isInStudentPointPeriod(record.date, period));
+    // 위 숫자와 같은 기간을 표의 기본값으로 둔다. 기간이 없는 학원은 처음부터 전체 기록이다.
+    const showAll = !period.scoped || searchParams?.range === "all";
+    const tableRecords = showAll ? records : metricRecords;
+    const policyHref = student.warningStageLabels ? `/${params.division}/student/management-policy` : null;
 
     const rewardCount = metricRecords.filter((record) => record.points > 0).length;
     const penaltyCount = metricRecords.filter((record) => record.points < 0).length;
@@ -67,9 +77,9 @@ export default async function StudentPointsPage({ params }: StudentPointsPagePro
     // 최고 단계에 닿으면 남은 점수가 없으므로 기존 기준 문구로 돌아간다.
     const nextStage = getNextWarningStage(demeritPoints, rules, student.warningStageLabels);
     const demeritCaption = [
-      student.meritPoints !== undefined ? `${pointPeriodLabel} 벌점, 상점과 별도 집계` : student.pointMetricScope ? `${pointPeriodLabel} 상점·벌점 상계 후` : null,
-      nextStage ? `${nextStage.label}까지 ${nextStage.pointsRemaining}점` : "경고 단계 반영 기준",
-    ].filter(Boolean).join(" · ");
+      student.meritPoints !== undefined ? `${pointPeriodLabel} 벌점` : student.pointMetricScope ? `${pointPeriodLabel} ${POINT_WORDS.offset}` : null,
+      nextStage ? POINT_WORDS.nextStage(nextStage.label, nextStage.pointsRemaining) : null,
+    ].filter(Boolean).join(" · ") || undefined;
 
     return (
       <StudentPortalFrame
@@ -88,15 +98,15 @@ export default async function StudentPointsPage({ params }: StudentPointsPagePro
             caption={demeritCaption}
           />
           <PortalMetricCard
-            label={student.meritPoints !== undefined ? `${pointPeriodLabel} 상점` : "가점 기록"}
+            label={student.meritPoints !== undefined ? `${pointPeriodLabel} 상점` : "상점 기록"}
             value={student.meritPoints !== undefined ? `${student.meritPoints}점` : `${rewardCount}건`}
-            caption={student.meritPoints !== undefined ? "벌점과 상계하지 않습니다" : student.pointMetricScope ? `${pointPeriodLabel} 가점 건수` : "현재 누적된 가점 건수"}
+            caption={student.meritPoints !== undefined ? POINT_WORDS.separate : period.scoped ? `${pointPeriodLabel} 받은 상점 건수` : "지금까지 받은 상점 건수"}
             valueToneClassName="text-admin-success"
           />
           <PortalMetricCard
             label={student.meritPoints !== undefined ? `${pointPeriodLabel} 벌점 기록` : "벌점 기록"}
             value={`${penaltyCount}건`}
-            caption={student.pointMetricScope || student.meritPoints !== undefined ? `${pointPeriodLabel} 확정된 벌점 건수` : "현재 누적된 벌점 건수"}
+            caption={period.scoped ? `${pointPeriodLabel} 받은 벌점 건수` : "지금까지 받은 벌점 건수"}
             valueToneClassName="text-admin-danger"
           />
         </section>
@@ -104,13 +114,29 @@ export default async function StudentPointsPage({ params }: StudentPointsPagePro
         {/* DESIGN.md 8절 — 학생 목록은 폭에 상관없이 표다. 바깥에 카드를 덧대지 않는다. */}
         <section>
           <PortalSectionHeader
-            title="전체 상벌점 기록"
+            title="상벌점 기록"
             icon={<ShieldAlert className="h-5 w-5" />}
+            action={policyHref ? (
+              <Link className="admin-button admin-button-compact" href={policyHref} prefetch={false}>
+                벌점 기준 보기
+              </Link>
+            ) : undefined}
           />
+
+          {period.scoped ? (
+            <nav className="admin-subtabs mt-4" aria-label="상벌점 기록 기간">
+              <Link className="admin-subtab" href={`/${params.division}/student/points`} prefetch={false} aria-current={!showAll ? "page" : undefined}>
+                {pointPeriodLabel} 기록 {metricRecords.length}
+              </Link>
+              <Link className="admin-subtab" href={`/${params.division}/student/points?range=all`} prefetch={false} aria-current={showAll ? "page" : undefined}>
+                전체 기록 {records.length}
+              </Link>
+            </nav>
+          ) : null}
 
           {/* 640px 미만에서는 일시·점수·사유 셋만 남긴다. 구분과 기록자는 사유 아래로
               접는다 — 다섯 열은 폰 화면 밖으로 나가 사유가 잘린 채 보였다. */}
-          {records.length > 0 ? (
+          {tableRecords.length > 0 ? (
             <div className="admin-table-frame mt-4">
               <table className="w-full">
                 <thead>
@@ -123,7 +149,7 @@ export default async function StudentPointsPage({ params }: StudentPointsPagePro
                   </tr>
                 </thead>
                 <tbody>
-                  {records.map((record) => (
+                  {tableRecords.map((record) => (
                     <tr key={record.id}>
                       <td>
                         {formatDate(record.date)}
@@ -140,9 +166,7 @@ export default async function StudentPointsPage({ params }: StudentPointsPagePro
                       </td>
                       <td className="admin-table-name">
                         {record.ruleName || "직접 기록"}
-                        <p className="admin-help">
-                          {record.notes || "기록 메모가 없습니다."}
-                        </p>
+                        {record.notes ? <p className="admin-help">{record.notes}</p> : null}
                         <p className="admin-help mt-1 sm:hidden">
                           {record.recordedByName}
                         </p>
@@ -156,8 +180,8 @@ export default async function StudentPointsPage({ params }: StudentPointsPagePro
           ) : (
             <div className="mt-4">
               <PortalEmptyState
-                title="상벌점 기록이 없습니다."
-                description="등록된 가점 또는 벌점 이력이 생기면 이 영역에 표시됩니다."
+                title={showAll ? "상벌점 기록이 없어요." : `${pointPeriodLabel} 상벌점 기록이 없어요.`}
+                description="상점이나 벌점을 받으면 여기에 보여요."
               />
             </div>
           )}

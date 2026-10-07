@@ -15,6 +15,8 @@ type AdminInterviewsPageProps = {
     reason?: string;
     /** 학생 상세 "면담 일지 열기" — 폼은 열지 않고 그 학생의 일지를 고른다. */
     student?: string;
+    /** "study" 면 학습 면담으로 연다(학생 상세·성적 분석·반 분석의 "학습 면담"). */
+    category?: string;
   };
 };
 
@@ -39,6 +41,7 @@ export default async function AdminInterviewsPage({
           studentId: prefillStudentId,
           trigger: searchParams?.trigger ?? "",
           reason: searchParams?.reason ?? "",
+          category: searchParams?.category === "study" ? ("STUDY" as const) : ("GENERAL" as const),
         }
       : null;
 

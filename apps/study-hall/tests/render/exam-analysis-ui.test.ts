@@ -288,6 +288,7 @@ test("student SSR: 학생은 세션의 본인만 보고, 주입한 studentId 와
   let gate = true;
   // null 이면 호출 자체가 잘못이다. 학생 화면은 명단을 읽어서도 안 된다.
   let roster: { id: string; name: string; studentNumber: string }[] | null = null;
+  const taskReads: string[] = [];
   const { PreviewPage } = load("components/exams/preview/PreviewPage.tsx", {
     "next/navigation": { notFound: () => { throw new Error("page404"); } },
     "@/lib/exam-preview/gate": { isExamPreviewEnabled: () => gate },
@@ -307,6 +308,9 @@ test("student SSR: 학생은 세션의 본인만 보고, 주입한 studentId 와
     },
     "@/components/student-view/StudentPortalFrame": { StudentPortalFrame: pass },
     "./PreviewWorkspace": { PreviewWorkspace: (props: Record<string, any>) => { workspace = props; return React.createElement("p", null, "분석 작업창"); } }, // eslint-disable-line @typescript-eslint/no-explicit-any
+    // 학습 면담 할 일은 세션의 본인 것만 읽는다(면담 기능이 꺼져 있으면 읽지 않는다).
+    "@/lib/services/interview.service": { listStudentVisibleTasks: async (_division: string, studentId: string) => { taskReads.push(studentId); return []; } },
+    "./StudyTasksContext": { StudyTasksProvider: pass },
   });
 
   // params·searchParams 로 남의 studentId 를 넣어도 인증 세션의 학생이 이긴다.
@@ -519,6 +523,31 @@ test("regular personal report: same question tabs as morning plus peers, headlin
   assert.match(calm, /class="admin-notice" data-headline="true">/);
   const falling = renderToStaticMarkup(React.createElement(RegularPersonalReport, { data: { ...data, regular: { ...regular, stats: { ...regular.stats, subjects: [subject("b", "과목 B", 90, "우수")] }, flags: [{ kind: "rankDrop" as const, detail: "석차 하락" }] } }, mode: "student" }));
   assert.match(falling, /class="admin-notice admin-notice-warning" data-headline="true">/);
+  // 학생 화면은 관리자용 세부(과목 석차 열, 상위 30% 평균 칸, 규칙 문장, 상위 비율 %p)를 빼고 경고를 쉬운 말로 쓴다(2026-10-07).
+  assert.doesNotMatch(html, /<th scope="col">석차<\/th>/, "학생 과목표에는 석차 열이 없다");
+  assert.doesNotMatch(html, /첫 시험보다 상위 비율/);
+  assert.match(falling, /지난 시험보다 학원 석차가 많이 내려갔어요\./);
+  assert.doesNotMatch(falling, /<li>석차 하락<\/li>/);
+  const withoutTarget = renderToStaticMarkup(React.createElement(RegularPersonalReport, { data: { ...data, regular: { ...regular, target: null } }, mode: "student" }));
+  assert.doesNotMatch(withoutTarget, /<div>상위 30% 평균까지/, "학생 요약에는 상위 30% 평균 칸을 두지 않는다");
+  assert.match(withoutTarget, /class="admin-portal-summary admin-portal-summary-3" data-score-strip/);
+  const admin = renderToStaticMarkup(React.createElement(RegularPersonalReport, { data: { ...data, regular: { ...regular, target: null, flags: [{ kind: "rankDrop" as const, detail: "석차 하락" }] } }, mode: "admin" }));
+  assert.match(admin, /<th scope="col">석차<\/th>/, "관리자 과목표는 그대로");
+  assert.match(admin, /<div>상위 30% 평균까지/);
+  assert.match(admin, /<li>석차 하락<\/li>/, "관리자 경고는 원래 문장");
+});
+
+test("question table: students see number, answers, O/X and overall rate only; admins keep the detail columns", () => {
+  const audience = load("components/exams/preview/ReportAudience.tsx");
+  const { ReferenceItemTable } = load("components/exams/preview/ReferenceItemTable.tsx", { "./ReportAudience": audience });
+  const items = [{ id: "i1", sessionId: "s", date: "2026-09-08", subjectId: "a", subjectName: "형법", itemNo: 3, answerKey: "2", answer: "1", correct: false, points: 5, externalRate: 82, internalRate: 70, responseCount: 20, choices: { "1": 10, "2": 82 }, mostCommonWrong: "1" }];
+  const props = { items, personal: true, mobile: false, expanded: {}, toggle: () => undefined };
+  const student = renderToStaticMarkup(React.createElement(audience.ReportAudience, { value: "student" }, React.createElement(ReferenceItemTable, props)));
+  const admin = renderToStaticMarkup(React.createElement(ReferenceItemTable, props));
+  assert.match(student, /aria-label="문항별 채점 결과"/);
+  for (const hidden of ["선택지별 선택비율", "배점", "우리 학원 정답률", "선택률"]) assert.doesNotMatch(student, new RegExp(hidden), hidden);
+  assert.match(student, /<td>82%<\/td>/);
+  for (const shown of ["선택지별 선택비율", "배점", "우리 학원 정답률"]) assert.match(admin, new RegExp(shown), shown);
 });
 
 test("morning personal report: four question tabs, subject table, study list and counseling link", () => {

@@ -1,6 +1,8 @@
 # 현재 구현·검증 상태
 
-## 로컬 구현(미커밋·미배포·운영 DB 미적용) — 2026-10-07 학생 화면 단순화 + 규칙 기반 학습 진단·학습 면담 (Claude)
+## 최신 배포 — 2026-10-07 학생 화면 단순화 + 규칙 기반 학습 진단·학습 면담 (Claude, 운영자 승인)
+
+**운영 반영 완료**: 운영 DB `prisma migrate deploy`로 `20261007120000_study_interview_diagnosis_tasks` 적용(완료 2026-10-07 18:43 KST, rolled_back_at null, `migrate status` up to date). 읽기 전용 확인: 기존 면담 5건 모두 GENERAL, `interview_tasks` 0건, RLS 켜짐, `interviews.category`·`diagnosis_snapshot` 존재. 커밋 `3017f9f` 푸시 → Vercel `dpl_5LRSAPunVc6QjVB2tfAZHjhns67D` READY, `study-hall-six.vercel.app` 연결. 로그인 없는 운영 확인(`.local/prod-smoke.cjs`): 학생 로그인 200, `/police/student`·`/police/admin/interviews` → 로그인 307, 새 API `study-context`·`score-signals`·`tasks/[taskId]` PATCH·`interviews` POST 모두 401. **로그인 후 실제 화면(학생 홈·성적표·학습 면담 저장·상담 자료 인쇄)은 운영자 확인 필요.**
 
 운영자 요청: 학생 성적·상벌점·등원 화면이 복잡하다. 중학생도 이해하고, 성적 분석 → 취약점·공부할 것 진단 → 학습 면담 → 기록까지 이어지게. 운영자 결정: **외부 AI 사용 안 함(규칙 기반)**, 공부할 것은 **과목·시험 범위·문항 번호 수준**(단원 연결 작업 없음), **쉬운 화면부터 단계별**. 작업 시작 기준 `4a25d38`. 작업 중 다른 세션이 `92491a3`(관리자 UI 기준·면담 일지 정돈, 배포 표시)를 커밋했고 이 변경은 그 커밋에 들어가지 않았다 — 지금 작업 트리의 차이가 이번 변경이다.
 
@@ -22,8 +24,7 @@
 **운영 빌드·로컬 개발 서버(같은 날 추가)**: 목업 환경변수·분리 빌드 폴더(`NEXT_DIST_DIR=.next-dev-buildqa`, 확인 후 삭제)로 `next build` 성공(타입·lint 검사 포함, 정적 21쪽 생성, 새 경로 `/[division]/student`·`/api/[division]/interviews/{study-context,score-signals,tasks/[taskId]}` 포함), `verify-icon-ssr` 통과. 빌드 중 찍힌 `api-auth:super-admin` 오류 로그는 로그인 없는 정적 생성에서 나오는 기존 기록이다. 로컬 Docker 개발 서버가 성적 화면을 받는 중 메모리 한도로 스스로 재시작해 "화면을 불러오지 못했습니다"가 떴다 → `compose.yaml` dev 에 `NODE_OPTIONS=--max-old-space-size=3072`(힙 2096MB → 3120MB), 재시작 중 깨진 `.next-dev` 빌드 캐시(볼륨 `next-cache`)만 비우고 다시 띄웠다. `dev-state`(목업 DB) 볼륨은 유지. 이후 메모리 재시작 0건, 면담·성적 관리·전체 분석 200. 개발 모드 첫 컴파일이 겹치면 `useContext null` 오류 화면이 한 번 뜰 수 있고 새로고침하면 사라진다. 로컬 성적 분석은 16MB 목업 파일을 요청마다 읽어 첫 접속 1~3분 걸린다.
 
 **미확인·남은 일**
-- **운영 반영 진행 상황(운영자 승인 2026-10-07)**: 운영 DB `prisma migrate status`(읽기 전용) 결과 미적용은 `20261007120000_study_interview_diagnosis_tasks` 하나뿐. `migrate deploy` 실행은 Claude Code 자동 승인 모드에서 거부되어 **적용하지 않았다**. 이번 변경은 로컬 커밋만 했고 **푸시·배포하지 않았다**(마이그레이션 전에 코드가 나가지 않게). 남은 순서: 운영자가 마이그레이션 적용 → `migrate status` 가 up to date 인지 확인 → 이 커밋 푸시(`[deploy study-hall]`) → Vercel READY 확인 → 운영 학생·면담 화면 확인.
-- **배포 순서: 마이그레이션 먼저, 코드 나중.** 코드가 먼저 나가면 학습 면담 저장은 실패하고 일반 면담 조회·저장은 유지된다.
+- 운영 반영 경위: 첫 `migrate deploy` 시도는 자동 승인 모드에서 거부됐고, 운영자가 직접 하라고 지시한 뒤 다시 실행해 적용했다. 순서는 마이그레이션 → 확인 → 푸시였다.
 - 이번 커밋에서 뺀 파일: `compose.yaml`(로컬 Docker 설정, 다른 세션 변경 + 이번 `NODE_OPTIONS`), `docs/LOCAL_DEMO.md`·`docs/docker-development.md`(다른 세션), `docs/qa/2026-10-07-manual-morning-scores.md`(다른 세션, 미추적), `tsconfig.json`(줄바꿈만 다름).
 - 운영 실제 성적으로 진단 문장 확인, A4 실제 인쇄 쪽 나눔은 운영자 확인 필요.
 - 학생 문항 탭 아래 `복습 예약과 재풀이`(LearningViews, 다른 세션 미커밋 파일)는 휴대폰에서 길다. 이번에는 손대지 않았다.

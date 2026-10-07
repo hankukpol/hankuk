@@ -3401,72 +3401,6 @@ body:has(.admin-shell) {
     padding: 0;
   }
 
-  /* --- 홈 바로가기: 768px 미만에서 카드가 아니라 행이다 (§2.4·§3).
-         223px 카드가 다섯 개 쌓이면 1100px 이 바로가기 하나로 나간다.
-         데스크톱 격자 카드는 그대로 두고 모바일에서만 편다.
-
-         두 줄로 편다: 제목 / 기준(note).
-         note 는 숫자의 기준이다 — "최근 7일 기준" 없이 "3명"만 남으면 무엇의 3명인지 모른다.
-         접는 것은 설명과 CTA 뿐이다. 화살표는 행 전체가 링크라 없어도 눌리는 곳을 안다. --- */
-  .admin-action-card {
-    display: grid;
-    min-height: 48px;
-    grid-template-columns: auto 1fr auto;
-    grid-template-rows: auto auto;
-    align-items: center;
-    gap: 2px 12px;
-    border-width: 0 0 1px 0;
-    border-radius: 0;
-    padding: 10px 16px;
-  }
-
-  /* 아이콘·배지를 격자에 직접 올린다. 감싼 div 는 자리만 차지한다. */
-  .admin-action-card > div:first-child {
-    display: contents;
-  }
-
-  .admin-action-card > div:first-child > :first-child {
-    width: 32px;
-    min-width: 32px;
-    height: 32px;
-    grid-column: 1;
-    grid-row: 1 / span 2;
-    align-self: center;
-    border-radius: var(--admin-radius-mobile);
-  }
-
-  .admin-action-card > div:first-child > :last-child {
-    grid-column: 3;
-    grid-row: 1 / span 2;
-    align-self: center;
-  }
-
-  .admin-action-card > p:first-of-type {
-    margin: 0;
-    grid-column: 2;
-    grid-row: 1;
-    font-size: var(--admin-type-body);
-    font-weight: 600;
-  }
-
-  /* 설명은 접는다. 제목과 기준만으로 무엇을 누르는지 알 수 있다. */
-  .admin-action-card > p:nth-of-type(2) {
-    display: none;
-  }
-
-  .admin-action-card > div:last-child {
-    display: block;
-    margin: 0;
-    grid-column: 2;
-    grid-row: 2;
-    min-width: 0;
-  }
-
-  /* 마지막 칸이 CTA 다. 기준(note)만 남긴다. */
-  .admin-action-card > div:last-child > :last-child {
-    display: none;
-  }
-
   /* --- 페이지 설명은 숨긴다 (§2.1).
          설명이 꼭 필요하면 첫 섹션 상단에 .admin-help 한 줄로 둔다. --- */
   .admin-page-description {
@@ -3620,22 +3554,23 @@ table :is(.admin-badge, .admin-status-chip, span[class*="rounded"]):not([role="b
   min-height: 0;
 }
 
-table :is(a.admin-button, button.admin-button, .admin-icon-button, a[class*="rounded"], button[class*="rounded"]:not([aria-pressed]):not([role="switch"])) {
+/* 표 안 .admin-button 은 화면 기준 확정 레이어(파일 끝)가 32px 외곽 버튼으로 둔다. 여기서는 그 밖의 둥근 장식만 지운다. */
+table :is(.admin-icon-button, a[class*="rounded"]:not(.admin-button), button[class*="rounded"]:not(.admin-button):not([aria-pressed]):not([role="switch"])) {
   border-color: transparent !important;
   border-radius: 0 !important;
   background: transparent !important;
   box-shadow: none !important;
 }
 
-table :is(.admin-button-primary, .admin-badge.text-white, .admin-status-chip.text-white, span.rounded-lg.text-white, a.text-white, button.text-white:not([aria-pressed])) {
+table :is(.admin-badge.text-white, .admin-status-chip.text-white, span.rounded-lg.text-white, a.text-white, button.text-white:not([aria-pressed])) {
   color: var(--admin-accent) !important;
 }
 
-table :is(.admin-button-danger, a.bg-admin-danger, button.bg-admin-danger:not([aria-pressed])) {
+table :is(a.bg-admin-danger, button.bg-admin-danger:not([aria-pressed])) {
   color: var(--admin-danger) !important;
 }
 
-table :is(a.admin-button, button.admin-button):hover {
+table :is(a[class*="rounded"]:not(.admin-button), button[class*="rounded"]:not(.admin-button):not([aria-pressed]):not([role="switch"])):hover {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -4284,12 +4219,13 @@ table :is(a.admin-button, button.admin-button):hover {
 
 /* ==========================================================================
    학생별 면담 일지 — /[division]/admin/interviews (DESIGN.md 0절 11항)
-   왼쪽 학생 목록(고정 폭, 화면에 붙어 따라옴) + 오른쪽 선택 학생 일지.
-   선택 표시는 왼쪽 막대가 아니라 칸 전체의 accent 바탕·테두리다.
+   예약 관리형 업무 화면을 따른다: 상자를 겹치지 않고 패널 하나 안을 1px 선으로 나누며,
+   상태는 알약 배지가 아닌 글자색으로, 부가 정보는 세로 구분선이 있는 회색 한 줄로 쓴다.
+   선택 표시는 행 전체의 accent-soft 바탕(왼쪽 막대 금지).
    ========================================================================== */
 .interview-journal-layout {
   display: grid;
-  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
   align-items: start;
   gap: 24px;
 }
@@ -4300,27 +4236,76 @@ table :is(a.admin-button, button.admin-button):hover {
   max-height: calc(100vh - 32px);
 }
 
+/* 회색 한 줄 부가 정보: 항목 사이에 1px 세로선 */
+.admin-meta-line,
+.interview-meta-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  row-gap: 2px;
+  color: var(--admin-text-muted);
+  font-size: 13px;
+}
+
+.admin-meta-line > * + *::before,
+.interview-meta-line > * + *::before {
+  content: "";
+  display: inline-block;
+  width: 1px;
+  height: 10px;
+  margin: 0 8px;
+  background: var(--admin-line);
+  vertical-align: middle;
+}
+
+/* 왼쪽 학생 목록 — 머리 행이 있는 3열 표 */
+.interview-student-table {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
+.interview-student-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px 76px;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+}
+
+.interview-student-row > span:not(:first-child) {
+  text-align: center;
+}
+
+.interview-student-header {
+  border-bottom: 1px solid var(--admin-line-soft);
+  padding-block: 8px;
+  background: var(--admin-surface-soft);
+  color: var(--admin-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .interview-student-list {
   position: relative;
   min-height: 0;
   flex: 1 1 auto;
   overflow-y: auto;
   margin: 0;
-  padding: 6px;
+  padding: 0;
   list-style: none;
 }
 
+.interview-student-list > li + li {
+  border-top: 1px solid var(--admin-line-soft);
+}
+
 .interview-student-item {
-  display: grid;
   width: 100%;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: baseline;
-  gap: 4px 8px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  padding: 10px 12px;
+  border-radius: 0;
   color: var(--admin-text);
-  font-size: 15px;
+  font-size: 14px;
   text-align: left;
 }
 
@@ -4329,29 +4314,191 @@ table :is(a.admin-button, button.admin-button):hover {
 }
 
 .interview-student-item[aria-pressed="true"] {
-  border-color: var(--admin-accent-line);
   background: var(--admin-accent-soft);
+}
+
+.interview-student-item[aria-pressed="true"] .interview-student-name {
+  color: var(--admin-accent);
 }
 
 .interview-student-item:focus-visible {
   outline: 2px solid var(--admin-accent);
-  outline-offset: 1px;
+  outline-offset: -2px;
 }
 
-.interview-journal-list {
-  padding-left: 18px;
-  list-style: disc;
+.interview-student-name {
+  font-weight: 600;
+}
+
+/* 오른쪽 일지 — 학생 머리 / 약속 / 면담 기록을 선으로만 나눈다 */
+.interview-journal-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 16px;
+  border-bottom: 1px solid var(--admin-line-soft);
+  padding: 20px 24px;
+}
+
+.admin-shell .interview-journal-name {
+  margin-bottom: 4px;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.interview-journal-block {
+  border-bottom: 1px solid var(--admin-line-soft);
+  padding: 20px 24px;
+}
+
+.interview-journal-block:last-child {
+  border-bottom: 0;
+}
+
+.interview-journal-block-flush {
+  padding: 20px 0 0;
+}
+
+.interview-journal-block-flush > .interview-block-head {
+  padding-inline: 24px;
+}
+
+.interview-block-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-bottom: 12px;
+}
+
+.admin-shell .interview-block-head h3 {
+  font-size: 16px;
+  font-weight: 700;
 }
 
 .interview-promise-list {
-  padding-left: 22px;
-  font-weight: 600;
-  list-style: decimal;
+  margin: 0;
+  border-top: 1px solid var(--admin-line-soft);
+  padding: 0;
+  list-style: none;
 }
 
-.interview-journal-list li + li,
-.interview-promise-list li + li {
+.interview-promise-list > li {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 8px;
+  border-bottom: 1px solid var(--admin-line-soft);
+  padding: 10px 0;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.interview-promise-no {
+  color: var(--admin-text-muted);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  text-align: right;
+}
+
+.interview-entry-list {
+  margin: 0;
+  border-top: 1px solid var(--admin-line-soft);
+  padding: 0;
+  list-style: none;
+}
+
+.interview-entry-list > li + li {
+  border-top: 1px solid var(--admin-line-soft);
+}
+
+.interview-entry {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  gap: 20px;
+  padding: 20px 24px;
+}
+
+.interview-entry-date {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.interview-entry-day {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.admin-shell .interview-entry-title {
+  color: var(--admin-text);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.45;
+  word-break: keep-all;
+}
+
+.interview-entry-rows {
+  margin-top: 12px;
+  border-top: 1px solid var(--admin-line-soft);
+}
+
+.interview-entry-rows > div {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 16px;
+  border-bottom: 1px solid var(--admin-line-soft);
+  padding: 10px 0;
+}
+
+.interview-entry-rows dt {
+  padding-top: 2px;
+  color: var(--admin-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.interview-entry-rows dd {
+  min-width: 0;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+/* 면담 회차 안의 약속은 행 선 안에 들어가므로 자체 선을 지운다. */
+.interview-entry-rows .interview-promise-list {
+  border-top: 0;
+}
+
+.interview-entry-rows .interview-promise-list > li {
+  border-bottom: 0;
+  padding: 0;
+}
+
+.interview-entry-rows .interview-promise-list > li + li {
   margin-top: 4px;
+}
+
+/* 후속 확인 표의 약속 칸: 첫 약속 한 줄, 넘치면 말줄임 */
+.admin-shell td.interview-table-promise {
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.interview-journal-list {
+  padding-left: 16px;
+  list-style: disc;
+}
+
+.interview-journal-list li::marker {
+  color: var(--admin-text-muted);
+}
+
+.interview-journal-list li + li {
+  margin-top: 2px;
 }
 
 @media (max-width: 767px) {
@@ -4362,6 +4509,37 @@ table :is(a.admin-button, button.admin-button):hover {
   .interview-journal-students {
     position: static;
     max-height: none;
+  }
+
+  .interview-journal-head,
+  .interview-journal-block,
+  .interview-entry {
+    padding-inline: 16px;
+  }
+
+  .interview-journal-block-flush {
+    padding-inline: 0;
+  }
+
+  .interview-journal-block-flush > .interview-block-head {
+    padding-inline: 16px;
+  }
+
+  .interview-entry {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .interview-entry-date {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px;
+  }
+
+  .interview-entry-rows > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
   }
 }
 
@@ -4480,5 +4658,206 @@ table :is(a.admin-button, button.admin-button):hover {
       color: #667085;
       font-size: 8pt;
     }
+  }
+}
+
+/* ==========================================================================
+   화면 기준 확정 레이어 (운영자 결정 2026-10-07, DESIGN.md 0절 12항)
+   국내 관리자 화면 관례에 맞춘 단일 기준. 이 레이어가 마지막에 덮는다.
+   - 버튼·입력 높이: 기본 40 / 작게 32(표 안·패널 머리) / 크게 48. 768px 미만은 터치 규격 44 / 36.
+   - 버튼 색: 확인·저장 = accent 채움, 취소·닫기 = 흰 바탕 + 회색 테두리, 삭제·퇴실 = 빨간 테두리(최종 확인만 빨간 채움).
+   - 대화상자 하단: 오른쪽 정렬, 취소(왼쪽) → 확인(오른쪽).
+   - 표 안 작업 버튼은 글자로 지우지 않고 32px 외곽 버튼으로 둔다.
+   - 글자 계층: 페이지 제목 22 / 구획 제목 17 / 본문 15 / 버튼 14 / 보조 13.
+   ========================================================================== */
+:root {
+  --admin-control-height: 40px;
+  --admin-control-compact: 32px;
+  --admin-control-large: 48px;
+  --admin-type-title: 22px;
+  --admin-type-section: 17px;
+  --admin-type-button: 14px;
+}
+
+@media (max-width: 767px) {
+  :root {
+    --admin-control-height: 44px;
+    --admin-control-compact: 36px;
+    --admin-type-button: 15px;
+  }
+}
+
+.admin-shell .admin-button {
+  min-height: var(--admin-control-height);
+  padding: 4px 16px;
+  font-size: var(--admin-type-button);
+  font-weight: 600;
+}
+
+.admin-shell .admin-button.admin-button-compact {
+  min-height: var(--admin-control-compact);
+  gap: 6px;
+  padding: 2px 12px;
+  font-size: var(--admin-type-caption);
+}
+
+.admin-shell .admin-button.admin-button-compact svg {
+  width: 14px;
+  height: 14px;
+}
+
+.admin-button.admin-button-large {
+  min-height: var(--admin-control-large);
+  padding: 0 24px;
+  font-size: 16px;
+}
+
+/* 대화상자 하단 버튼: 같은 높이, 최소 폭 80. 확인이 오른쪽 끝(마크업 순서 = 취소 → 확인). */
+.admin-shell .admin-dialog-footer :is(button, a).admin-button {
+  min-width: var(--admin-dialog-action-width);
+  min-height: var(--admin-control-height);
+  font-size: var(--admin-type-button);
+}
+
+/* 표 안 작업: 글자로 지우지 않고 32px 외곽 버튼. 앞선 레이어의 글자화 규칙을 되돌린다. */
+.admin-shell table :is(a, button).admin-button {
+  min-height: var(--admin-control-compact) !important;
+  border-color: var(--admin-line) !important;
+  border-radius: var(--admin-radius) !important;
+  padding: 0 12px;
+  background: var(--admin-surface) !important;
+  box-shadow: var(--admin-shadow-xs) !important;
+  color: var(--admin-text-secondary) !important;
+  font-size: var(--admin-type-caption);
+  text-decoration: none !important;
+}
+
+.admin-shell table :is(a, button).admin-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.admin-shell table :is(a, button).admin-button:hover:not(:disabled) {
+  background: var(--admin-surface-soft) !important;
+  color: var(--admin-text) !important;
+}
+
+.admin-shell table :is(a, button).admin-button.admin-button-primary {
+  border-color: var(--admin-accent) !important;
+  background: var(--admin-accent) !important;
+  color: var(--admin-on-accent) !important;
+}
+
+.admin-shell table :is(a, button).admin-button.admin-button-primary:hover:not(:disabled) {
+  border-color: var(--admin-accent-hover) !important;
+  background: var(--admin-accent-hover) !important;
+}
+
+.admin-shell table :is(a, button).admin-button:is(.admin-button-danger-outline, .admin-button-danger) {
+  border-color: var(--admin-danger-line) !important;
+  background: var(--admin-surface) !important;
+  color: var(--admin-danger) !important;
+}
+
+.admin-shell table :is(a, button).admin-button:is(.admin-button-danger-outline, .admin-button-danger):hover:not(:disabled) {
+  background: var(--admin-danger-soft) !important;
+}
+
+.admin-shell table :is(a, button).admin-button:disabled {
+  border-color: var(--admin-line-soft) !important;
+  background: var(--admin-surface-muted) !important;
+  box-shadow: none !important;
+  color: var(--admin-text-disabled) !important;
+}
+
+/* 글자 계층 */
+.admin-shell .admin-page-title {
+  font-size: var(--admin-type-title);
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.admin-shell .admin-section-title {
+  font-size: var(--admin-type-section);
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+/* 입력·선택 값은 본문 굵기. 굵은 라벨 안에 들어가도 값이 굵어지지 않게 한다(학생 명단 필터에서 발견). */
+.admin-shell :is(input, select, textarea) {
+  font-weight: 400;
+}
+
+/* 대시보드 "오늘 처리할 일": 패널 안 행 목록 (제목·설명 | 개수 | 바로가기) */
+.admin-shell .admin-todo-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 4px 24px;
+  border-bottom: 1px solid var(--admin-line-soft);
+  padding: 16px 20px;
+  color: var(--admin-text);
+  text-decoration: none;
+  transition: background-color 150ms ease-out;
+}
+
+.admin-shell .admin-todo-row:last-child {
+  border-bottom: 0;
+}
+
+.admin-shell .admin-todo-row:hover {
+  background: var(--admin-surface-soft);
+}
+
+.admin-shell .admin-todo-row:focus-visible {
+  outline: 2px solid var(--admin-accent);
+  outline-offset: -2px;
+}
+
+.admin-shell .admin-todo-title {
+  display: block;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.admin-shell .admin-todo-count {
+  min-width: 64px;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  text-align: right;
+}
+
+.admin-shell .admin-todo-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--admin-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.admin-shell .admin-todo-row:hover .admin-todo-cta {
+  color: var(--admin-text);
+}
+
+@media (max-width: 767px) {
+  .admin-shell .admin-todo-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 12px 16px;
+  }
+
+  .admin-shell .admin-todo-cta {
+    display: none;
+  }
+}
+
+/* 조교 출석체크 표의 좌석 칸: 휴대폰에서 "자습실 / 좌석"이 한 줄로 늘어나 출결 버튼 칸을 밀어내지 않게 접는다. */
+@media (max-width: 767px) {
+  .admin-shell td.admin-table-seat {
+    width: 72px;
+    max-width: 72px;
+    white-space: normal;
+    word-break: keep-all;
   }
 }

@@ -21,11 +21,11 @@ export function ApplicationDateCorrection({divisionSlug, application, onSaved}:{
       else setPreview(result);
     }catch(e){setError((e as Error).message);}finally{setBusy(false);}
   }
-  return <><button type="button" className="admin-button admin-button-secondary" onClick={()=>{
+  return <><button type="button" className="admin-button" onClick={()=>{
     setDate(application.effectiveFrom);setReason("");setPreview(null);setError("");setAudit([]);setOpen(true);
     void post("date-history").then(setAudit).catch(e=>setError(e.message));
   }}>적용일 정정</button><Modal open={open} title="적용일 정정" onClose={()=>{if(!busy)setOpen(false);}} footer={<>
-    <button className="admin-button admin-button-secondary" disabled={busy} onClick={()=>setOpen(false)}>취소</button>
+    <button className="admin-button" disabled={busy} onClick={()=>setOpen(false)}>취소</button>
     <button className="admin-button admin-button-primary" disabled={busy||!date||!reason.trim()||date===application.effectiveFrom} onClick={()=>void submit()}>{preview?"정정 적용":"정정 미리보기"}</button>
   </>}><div className="space-y-4"><p>{application.templateName} · 기존 적용일 {application.effectiveFrom}</p>
     <label className="admin-field"><span>정정 적용일</span><input type="date" value={date} disabled={busy} onChange={e=>{setDate(e.target.value);setPreview(null);}}/></label>

@@ -96,7 +96,7 @@ export function LearningAdmin({ division, previewOnly = true }: { division: stri
           </p>
         </div>
         <Link
-          className="admin-button admin-button-secondary"
+          className="admin-button"
           href={`/${division}/admin/exams/${previewOnly?'preview':'analysis'}`}
         >
           성적 분석으로
@@ -175,7 +175,7 @@ export function LearningAdmin({ division, previewOnly = true }: { division: stri
             <div className="admin-workspace-toolbar">
               <h2 className="admin-section-title">2. 대단원과 세부 진도</h2>
               <button
-                className="admin-button admin-button-secondary"
+                className="admin-button"
                 disabled={!doc.subjects.length}
                 onClick={() =>
                   open({
@@ -291,7 +291,7 @@ export function LearningAdmin({ division, previewOnly = true }: { division: stri
             </div>
             <div className="flex flex-wrap gap-2">
               <button
-                className="admin-button admin-button-secondary"
+                className="admin-button"
                 onClick={() =>
                   setSelected(
                     chosen.length === items.length
@@ -316,7 +316,7 @@ export function LearningAdmin({ division, previewOnly = true }: { division: stri
                 선택 {chosen.length}문항 연결 미리보기
               </button>
               <button
-                className="admin-button admin-button-secondary"
+                className="admin-button"
                 disabled={!chosen.length}
                 onClick={() =>
                   preview({ action: "assign", topicId: null, itemIds: chosen })

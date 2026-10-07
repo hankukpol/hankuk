@@ -565,7 +565,7 @@ export const LeaveManager = memo(function LeaveManager({
                             type="button"
                             onClick={() => void handleCancelPermission(permission)}
                             disabled={cancellingPermissionId === permission.id}
-                            className="inline-flex items-center rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="admin-button admin-button-compact admin-button-danger-outline"
                           >
                             {cancellingPermissionId === permission.id ? "처리 중..." : "승인 취소"}
                           </button>

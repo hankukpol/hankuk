@@ -76,13 +76,16 @@ export default async function AdminAttendancePage({ params, searchParams }: Admi
 
   return (
     <div className="admin-flat-page">
-      <section className="admin-section">
-        <h1 className="admin-page-title">관리자 출석부</h1>
-        <p className="admin-page-description">
-          데스크톱에서는 학생 x 교시 매트릭스로 한 번에 확인하고, 모바일에서는 좌석·학생·출결
-          표로 현재 교시를 빠르게 체크할 수 있습니다.
-        </p>
-        <Link className="admin-text-action" href={`/${params.division}/admin/attendance/import`}>누적시험 응시 여부 가져오기</Link>
+      {/* 페이지 머리: 제목·설명 왼쪽, 보조 작업 오른쪽 (DESIGN.md 0절 7항) */}
+      <section className="admin-workspace-toolbar">
+        <div className="min-w-0">
+          <h1 className="admin-page-title">관리자 출석부</h1>
+          <p className="admin-page-description">
+            데스크톱에서는 학생 x 교시 매트릭스로 한 번에 확인하고, 모바일에서는 좌석·학생·출결
+            표로 현재 교시를 빠르게 체크할 수 있습니다.
+          </p>
+        </div>
+        <Link className="admin-button" href={`/${params.division}/admin/attendance/import`}>누적시험 응시 여부 가져오기</Link>
       </section>
 
       <ResponsiveAttendanceBoard

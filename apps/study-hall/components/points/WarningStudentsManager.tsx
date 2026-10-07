@@ -248,11 +248,13 @@ export function WarningStudentsManager({
           </div>
         </div>
 
-        <div className="mt-5 flex flex-wrap items-center gap-3">
+        <div className="admin-filter-bar mt-5">
+          <label className="flex items-center gap-2">
+          <span className="admin-label shrink-0">경고 단계</span>
           <select
             value={stageFilter}
             onChange={(event) => setStageFilter(event.target.value as (typeof stageOptions)[number]["value"])}
-            className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition"
+            className="w-48"
           >
             {stageOptions.map((option) => (
               <option key={option.value} value={option.value}>
@@ -260,6 +262,7 @@ export function WarningStudentsManager({
               </option>
             ))}
           </select>
+          </label>
 
           <label className="flex items-center gap-2 text-sm text-slate-700 max-md:min-h-11">
             <input
@@ -288,7 +291,7 @@ export function WarningStudentsManager({
                   <th>벌점</th>
                   <th>전화번호</th>
                   <th>안내 상태</th>
-                  <th>액션</th>
+                  <th>작업</th>
                 </tr>
               </thead>
               <tbody>
@@ -300,7 +303,11 @@ export function WarningStudentsManager({
                       <td>
                         <WarningStageBadge stage={student.warningStage} label={student.warningStageLabel} />
                       </td>
-                      <td>{student.name}</td>
+                      <td className="admin-table-name">
+                        {studentManagementEnabled ? (
+                          <Link href={`/${divisionSlug}/admin/students/${student.id}`} className="admin-table-link">{student.name}</Link>
+                        ) : student.name}
+                      </td>
                       <td>{student.studentNumber}</td>
                       <td>{student.netPoints}점</td>
                       <td>{student.phone || "미등록"}</td>
@@ -357,14 +364,6 @@ export function WarningStudentsManager({
                               className="admin-button admin-button-compact"
                             >
                               면담 기록
-                            </Link>
-                          ) : null}
-                          {studentManagementEnabled ? (
-                            <Link
-                              href={`/${divisionSlug}/admin/students/${student.id}`}
-                              className="admin-button admin-button-primary"
-                            >
-                              학생 보기
                             </Link>
                           ) : null}
                         </div>

@@ -50,7 +50,7 @@ export function useConfigurationReview(divisionSlug: string): {
     } catch(e) {setError((e as Error).message);} finally {setBusy(false);}
   }
   return {review,dialog:<Modal open={!!draft} title="설정 변경 확인" onClose={()=>{if(!busy)finish(null);}} footer={<>
-    <button type="button" className="admin-button admin-button-secondary" disabled={busy} onClick={()=>finish(null)}>취소</button>
+    <button type="button" className="admin-button" disabled={busy} onClick={()=>finish(null)}>취소</button>
     <button type="button" className="admin-button admin-button-primary" disabled={busy || (!!preview && !preview.changes.length)} onClick={()=>void submit(!!preview)}>{preview ? (date<=(draft?.library.today ?? "") ? "변경 적용" : "적용 예약") : "변경 미리보기"}</button>
   </>}><div className="space-y-4">
     <label className="admin-field"><span>적용일</span><input type="date" value={date} disabled={busy} onChange={e=>{setDate(e.target.value);setPreview(null);}}/></label>

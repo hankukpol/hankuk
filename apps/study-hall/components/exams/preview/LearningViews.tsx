@@ -406,7 +406,7 @@ export function ReviewWorkbench({
         </label>
         <button
           type="button"
-          className="admin-button admin-button-secondary"
+          className="admin-button"
           disabled={!items.length}
           onClick={() =>
             setSelected(

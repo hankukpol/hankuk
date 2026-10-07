@@ -32,7 +32,7 @@ export function ArrivalCalendar({ month, today, records, selectedDate, onMonthCh
             const record = byDate.get(date);
             const status = unavailable ? "조회 필요" : record?.cancelledAt ? "취소" : record ? formatArrivalTime(record.effectiveAt) : date > today ? "" : "기록 없음";
             const sourceLabel = record && !record.cancelledAt && !unavailable ? record.source === "ADMIN_CORRECTED" ? "정정" : record.source === "ADMIN_ADDED" ? "추가" : "" : "";
-            const content = <><span className="admin-arrival-day-number" data-today={date === today}>{day}</span><span className={record?.cancelledAt ? "text-admin-text-muted" : record ? "text-admin-accent" : "text-admin-text-muted"}>{status}</span>{sourceLabel && <span className="text-admin-text-muted">{sourceLabel}</span>}</>;
+            const content = <><span className="admin-arrival-day-number" data-today={date === today}>{day}</span><span className={`break-keep ${record?.cancelledAt ? "text-admin-text-muted" : record ? "text-admin-accent" : "text-admin-text-muted"}`}>{unavailable ? "–" : status}</span>{sourceLabel && <span className="text-admin-text-muted">{sourceLabel}</span>}</>;
             return <td key={weekday} data-selected={selectedDate === date}>
               {onSelectDate ? <button type="button" className="admin-arrival-day" disabled={disabled || date > today} aria-label={`${date}${date === today ? " 오늘" : ""}, ${status}${sourceLabel ? `, 관리자 ${sourceLabel}` : ""}`} aria-pressed={selectedDate === date} onClick={() => onSelectDate(date)}>{content}</button> : <div className="admin-arrival-day" aria-label={`${date}${date === today ? " 오늘" : ""}, ${status}${sourceLabel ? `, 관리자 ${sourceLabel}` : ""}`}>{content}</div>}
             </td>;

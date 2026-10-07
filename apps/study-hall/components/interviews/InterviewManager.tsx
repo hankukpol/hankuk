@@ -3,7 +3,7 @@
 import { useId } from "react";
 import { DialogActions } from "@/components/ui/DialogActions";
 
-import { BookOpen, CheckCircle2, LoaderCircle, Plus, RefreshCcw, Save, Search } from "lucide-react";
+import { CheckCircle2, LoaderCircle, Plus, RefreshCcw, Save, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "@/lib/sonner";
 
@@ -12,10 +12,9 @@ import { MobileWorkspaceTools } from "@/components/ui/MobileWorkspaceTools";
 import { AdminTabs, AdminTabPanel } from "@/components/ui/AdminTabs";
 import { StudentSearchCombobox } from "@/components/ui/StudentSearchCombobox";
 import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
-import { WarningStageBadge } from "@/components/students/StudentBadges";
 import { InterviewContextPanel } from "@/components/interviews/InterviewContextPanel";
 import { InterviewJournal, JournalStudentList, PromiseList } from "@/components/interviews/InterviewJournal";
-import { toDemeritPoints } from "@/lib/student-meta";
+import { getWarningStageLabel, toDemeritPoints } from "@/lib/student-meta";
 import {
   INTERVIEW_RESULT_TYPE_OPTIONS,
   type InterviewResultTypeValue,
@@ -436,36 +435,40 @@ export function InterviewManager({
 
         <AdminTabPanel id="followUp" activeId={viewTab} idPrefix="interview-view" className="space-y-4">
           <div className="admin-workspace-toolbar">
-            <h2 className="admin-section-title">후속 확인 대기 <span className="text-admin-danger">{followUps.length}건</span></h2>
-            <p className="admin-help">후속 확인일이 오늘({journalDayLabel(today)})까지 온 면담 · 약속을 확인하고 ‘확인 완료’를 누릅니다.</p>
+            <h2 className="admin-section-title">후속 확인 대기 <span className="tabular-nums text-admin-danger">{followUps.length}</span></h2>
+            <p className="admin-help">후속 확인일이 오늘({journalDayLabel(today)})까지 온 면담입니다. 약속을 확인한 뒤 ‘확인 완료’를 누릅니다.</p>
           </div>
           {followUps.length ? (
-            <section className="admin-panel" aria-label="후속 확인 대기 목록">
-              {followUps.map((interview) => {
-                const promises = parsePromises(interview.result);
-                return (
-                  <div key={interview.id} className="admin-panel-row items-start max-md:flex-col">
-                    <div className="w-44 shrink-0">
-                      <p className="font-semibold">{interview.studentName}<span className="admin-help ml-2 tabular-nums">{interview.studentNumber}</span></p>
-                      <p className="admin-help mt-1 tabular-nums">{journalDayLabel(interview.date)} 면담</p>
-                      <p className="mt-1 text-sm font-semibold tabular-nums text-admin-danger">확인일 {interview.followUpDate ? journalDayLabel(interview.followUpDate) : "—"}</p>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="break-keep text-sm text-admin-text-secondary">{interview.reason}</p>
-                      {promises.length ? <div className="mt-2"><PromiseList promises={promises} /></div> : <p className="admin-help mt-2">적어 둔 약속 없음</p>}
-                    </div>
-                    <div className="flex shrink-0 flex-wrap gap-2">
-                      <button type="button" className="admin-button admin-button-compact" onClick={() => openJournal(interview.studentId)}>
-                        <BookOpen className="h-4 w-4" />일지 보기
-                      </button>
-                      <button type="button" className="admin-button admin-button-compact" disabled={closingId === interview.id} onClick={() => void closeInterview(interview)}>
-                        {closingId === interview.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}확인 완료
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </section>
+            <div className="admin-table-frame">
+              <table aria-label="후속 확인 대기 목록">
+                <thead>
+                  <tr><th>학생</th><th>면담일</th><th>확인일</th><th>약속</th><th>작업</th></tr>
+                </thead>
+                <tbody>
+                  {followUps.map((interview) => {
+                    const promises = parsePromises(interview.result);
+                    return (
+                      <tr key={interview.id}>
+                        <td className="admin-table-name">
+                          <button type="button" className="admin-table-link" onClick={() => openJournal(interview.studentId)}>{interview.studentName}</button>
+                          <span className="admin-help ml-2 tabular-nums">{interview.studentNumber}</span>
+                        </td>
+                        <td className="tabular-nums">{journalDayLabel(interview.date)}</td>
+                        <td className="tabular-nums font-semibold text-admin-danger">{interview.followUpDate ? journalDayLabel(interview.followUpDate) : "–"}</td>
+                        <td className="interview-table-promise">
+                          {promises.length ? <>{promises[0]}{promises.length > 1 ? <span className="admin-help ml-2">외 {promises.length - 1}개</span> : null}</> : <span className="admin-help">적어 둔 약속 없음</span>}
+                        </td>
+                        <td>
+                          <button type="button" className="admin-button admin-button-compact" disabled={closingId === interview.id} onClick={() => void closeInterview(interview)}>
+                            {closingId === interview.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}확인 완료
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           ) : (
             <div className="admin-empty-state">
               <p className="font-semibold">확인해야 할 후속 조치가 없습니다.</p>
@@ -476,39 +479,43 @@ export function InterviewManager({
 
         <AdminTabPanel id="recommended" activeId={viewTab} idPrefix="interview-view" className="space-y-4">
           <div className="admin-workspace-toolbar">
-            <h2 className="admin-section-title">면담 권장 학생 <span className="text-admin-danger">{recommendedStudents.length}명</span></h2>
+            <h2 className="admin-section-title">면담 권장 학생 <span className="tabular-nums text-admin-danger">{recommendedStudents.length}</span></h2>
             <p className="admin-help">벌점 {warnInterview}점 이상 · 벌점 높은 순</p>
           </div>
-          <div className="grid gap-4 xl:grid-cols-2">
-            {recommendedStudents.map((student) => {
-              const summary = summaries.get(student.id);
-              return (
-                <article key={student.id} className="admin-record-card">
-                  <div className="admin-workspace-toolbar">
-                    <div>
-                      <h3 className="admin-section-title">{student.name}</h3>
-                      <p className="admin-help mt-1">{student.studentNumber} · {student.studyTrack || "직렬 미지정"} · {summary ? `면담 ${summary.count}회, 마지막 ${journalDayLabel(summary.lastDate ?? "")}` : "면담 기록 없음"}</p>
-                    </div>
-                    <WarningStageBadge stage={student.warningStage} label={student.warningStageLabel} />
-                  </div>
-                  <div className="admin-workspace-toolbar mt-4 border-t border-admin-line-soft pt-4">
-                    <p className="admin-label">현재 벌점 <strong className="ml-2 text-xl font-bold text-admin-danger">{demeritOf(student)}점</strong></p>
-                    <div className="flex flex-wrap gap-2">
-                      {summary ? (
-                        <button type="button" onClick={() => openJournal(student.id)} className="admin-button">
-                          <BookOpen className="h-4 w-4" />일지 보기
-                        </button>
-                      ) : null}
-                      <button type="button" onClick={() => openCreatePanel(student.id)} className="admin-button">
-                        <Plus className="h-4 w-4" />바로 기록
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-          {!recommendedStudents.length ? <div className="admin-empty-state"><p className="font-semibold">면담 권장 대상이 없습니다.</p><p className="admin-help mt-2">현재 기준 벌점 {warnInterview}점 이상</p></div> : null}
+          {recommendedStudents.length ? (
+            <div className="admin-table-frame">
+              <table aria-label="면담 권장 학생">
+                <thead>
+                  <tr><th>학생</th><th>직렬</th><th>벌점</th><th>경고 단계</th><th>면담</th><th>최근 면담</th><th>작업</th></tr>
+                </thead>
+                <tbody>
+                  {recommendedStudents.map((student) => {
+                    const summary = summaries.get(student.id);
+                    return (
+                      <tr key={student.id}>
+                        <td className="admin-table-name">
+                          <button type="button" className="admin-table-link" onClick={() => openJournal(student.id)}>{student.name}</button>
+                          <span className="admin-help ml-2 tabular-nums">{student.studentNumber}</span>
+                        </td>
+                        <td>{student.studyTrack || "–"}</td>
+                        <td className="admin-table-amount font-semibold text-admin-danger">{demeritOf(student)}점</td>
+                        <td>{student.warningStageLabel ?? getWarningStageLabel(student.warningStage)}</td>
+                        <td className="tabular-nums">{summary ? `${summary.count}회` : "없음"}</td>
+                        <td className="tabular-nums">{summary?.lastDate ? journalDayLabel(summary.lastDate) : "–"}</td>
+                        <td>
+                          <button type="button" onClick={() => openCreatePanel(student.id)} className="admin-button admin-button-compact">
+                            <Plus className="h-4 w-4" />면담 기록
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="admin-empty-state"><p className="font-semibold">면담 권장 대상이 없습니다.</p><p className="admin-help mt-2">현재 기준 벌점 {warnInterview}점 이상</p></div>
+          )}
         </AdminTabPanel>
       </div>
 

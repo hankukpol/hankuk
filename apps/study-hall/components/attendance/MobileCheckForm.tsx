@@ -793,7 +793,7 @@ export function MobileCheckForm({
         <div className="admin-workspace-toolbar">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <h2 className="admin-section-title">학생 출결 체크</h2>
-            <span className="admin-badge">{visibleStudents.length}명 표시</span>
+            <span className="text-sm font-semibold tabular-nums text-admin-text-secondary">{visibleStudents.length}명 표시</span>
           </div>
           <button
             type="button"
@@ -882,7 +882,7 @@ export function MobileCheckForm({
                       onTouchEnd={() => handleSwipeEnd(student.id)}
                       onTouchCancel={() => handleSwipeEnd(student.id)}
                     >
-                      <td>{locationLabel}</td>
+                      <td className="admin-table-seat">{locationLabel}</td>
 
                       <td className="admin-table-name">
                         {student.name}

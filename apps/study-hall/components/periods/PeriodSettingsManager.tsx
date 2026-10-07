@@ -105,27 +105,19 @@ function SortablePeriodRow({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="admin-section-title">{period.name}</h2>
-            <span
-              className="admin-badge"
-            >
-              {period.isMandatory ? "필수" : "선택"}
-            </span>
-            <span
-              className="admin-badge"
-            >
-              {period.isActive ? "활성" : "비활성"}
-            </span>
           </div>
 
           <p className="admin-help mt-1">{period.label || "부제 없음"}</p>
 
-          <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-slate-600">
-            <span className="inline-flex items-center gap-2">
+          <p className="admin-meta-line mt-3 text-sm">
+            <span className="inline-flex items-center gap-2 tabular-nums text-admin-text-secondary">
               <Clock3 className="h-4 w-4" />
               {period.startTime} - {period.endTime}
             </span>
-            <span>순서 {period.displayOrder + 1}</span>
-          </div>
+            <span className="tabular-nums">순서 {period.displayOrder + 1}</span>
+            <span>{period.isMandatory ? "필수" : "선택"}</span>
+            <span className={period.isActive ? "text-admin-success font-semibold" : "text-admin-text-muted font-semibold"}>{period.isActive ? "활성" : "비활성"}</span>
+          </p>
         </div>
 
         <div className="flex items-center gap-2">

@@ -319,7 +319,7 @@ export default function SuperAdminAnnouncementsPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       {item.isPinned && (
-                        <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 text-[13px] font-semibold text-slate-600">
+                        <span className="inline-flex items-center gap-1 text-[13px] font-semibold text-admin-accent">
                           <Pin className="h-3 w-3" />
                           고정
                         </span>
@@ -343,7 +343,7 @@ export default function SuperAdminAnnouncementsPage() {
                     <button
                       type="button"
                       onClick={() => void handleTogglePin(item)}
-                      className="rounded-lg border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50"
+                      className="admin-button admin-button-compact"
                       title={item.isPinned ? "고정 해제" : "상단 고정"}
                     >
                       {item.isPinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
@@ -351,7 +351,7 @@ export default function SuperAdminAnnouncementsPage() {
                     <button
                       type="button"
                       onClick={() => openEdit(item)}
-                      className="rounded-lg border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50"
+                      className="admin-button admin-button-compact"
                       title="수정"
                     >
                       <Pencil className="h-4 w-4" />

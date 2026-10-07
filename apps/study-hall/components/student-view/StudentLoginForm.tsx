@@ -144,7 +144,7 @@ export function StudentLoginForm({
           <button
             type="submit"
             disabled={isSubmitting}
-            className="admin-button admin-button-primary w-full"
+            className="admin-button admin-button-primary admin-button-large w-full"
           >
             {isSubmitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
             로그인

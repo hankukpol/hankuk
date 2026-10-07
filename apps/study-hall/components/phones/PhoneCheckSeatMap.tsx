@@ -448,7 +448,7 @@ export function PhoneCheckSeatMap({
                   onOpenBulkRental(modalStudentId);
                   setModalStudentId(null);
                 }}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-700 transition hover:bg-sky-100"
+                className="admin-button w-full"
               >
                 <Phone className="h-4 w-4" />
                 일괄 대여

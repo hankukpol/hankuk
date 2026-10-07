@@ -672,7 +672,7 @@ export function ReportsDashboard({
                               {formatDateTime(item.occurredAt)}
                             </td>
                             <td>
-                              <span className="rounded-lg bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                              <span className="font-semibold text-admin-text-secondary">
                                 {item.actionLabel}
                               </span>
                             </td>

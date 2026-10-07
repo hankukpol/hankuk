@@ -960,7 +960,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
               </button>
             ) : null}
           </label>
-          <div className="inline-flex items-center rounded-lg bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+          <div className="text-sm font-semibold tabular-nums text-admin-text-secondary">
             {filteredStudents.length}명 표시 / 전체 {students.length}명
           </div>
         </div>

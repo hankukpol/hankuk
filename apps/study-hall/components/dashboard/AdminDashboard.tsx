@@ -768,36 +768,25 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
           </div>
         </div>
 
-        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {/* 할 일은 카드 격자가 아니라 한 패널 안의 행 목록이다. 개수는 업무색 글자로만 알린다. */}
+        <div className="admin-panel mt-5">
           {visibleActionCards.map((card) => {
-            const Icon = card.icon;
+            const tone = card.badgeClass.split(" ").find((name) => name.startsWith("text-")) ?? "text-admin-text";
 
             return (
-              <Link
-                key={card.title}
-                href={card.href}
-                className={`admin-action-card group rounded-lg border ${card.borderClass} bg-white p-5 transition hover:bg-admin-surface-soft`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className={`inline-flex h-12 w-12 items-center justify-center rounded-lg ${card.iconClass}`}>
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <span className={`rounded-lg px-3 py-1 text-xs font-semibold ${card.badgeClass}`}>
-                    {card.value}
+              <Link key={card.title} href={card.href} className="admin-todo-row">
+                <span className="min-w-0">
+                  <span className="admin-todo-title">{card.title}</span>
+                  <span className="admin-meta-line mt-1">
+                    <span>{card.description}</span>
+                    <span>{card.note}</span>
                   </span>
-                </div>
-
-                <p className="mt-4 text-base font-bold text-slate-950">{card.title}</p>
-                <p className="mt-2 min-h-[48px] text-sm leading-6 text-slate-600">
-                  {card.description}
-                </p>
-                <div className="mt-4 flex items-center justify-between gap-3">
-                  <span className="admin-help">{card.note}</span>
-                  <span className="inline-flex items-center gap-1 text-sm font-medium text-slate-700 transition group-hover:text-slate-950">
-                    {card.cta}
-                    <ArrowRight className="h-4 w-4" />
-                  </span>
-                </div>
+                </span>
+                <span className={`admin-todo-count ${tone}`}>{card.value}</span>
+                <span className="admin-todo-cta">
+                  {card.cta}
+                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                </span>
               </Link>
             );
           })}
@@ -986,7 +975,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                       <button
                         type="button"
                         onClick={() => void copyPhone(student.phone)}
-                        className="shrink-0 rounded-lg border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50"
+                        className="admin-button admin-button-compact shrink-0" aria-label="연락처 복사"
                         title="연락처 복사"
                       >
                         <Copy className="h-3.5 w-3.5" />
@@ -1300,7 +1289,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                             </span>
                           )}
                           <span className="admin-help">{leave.studentNumber}</span>
-                          <span className="rounded-lg bg-blue-50 px-2 py-1 text-[13px] font-semibold text-blue-700">
+                          <span className="text-[13px] font-semibold text-admin-accent">
                             {LEAVE_TYPE_LABEL[leave.type] ?? leave.type}
                           </span>
                         </div>
@@ -1374,7 +1363,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                     <button
                       type="button"
                       onClick={() => void copyPhone(student.phone)}
-                      className="shrink-0 rounded-lg border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50"
+                      className="admin-button admin-button-compact shrink-0" aria-label="연락처 복사"
                       title="연락처 복사"
                     >
                       <Copy className="h-3.5 w-3.5" />

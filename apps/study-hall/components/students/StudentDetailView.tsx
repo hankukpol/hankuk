@@ -923,14 +923,14 @@ export function StudentDetailView({
               type="button"
               onClick={() => setIsDeleteOpen(false)}
               disabled={isDeleteConfirming}
-              className="flex-1 rounded-lg border border-slate-200 bg-white py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+              className="admin-button"
             >
               취소
             </button>
             <button form={`${dialogFormId}-2`}
               type="submit"
               disabled={isDeleteConfirming}
-              className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-admin-danger py-3 text-sm font-medium text-white transition hover:bg-admin-danger disabled:opacity-60"
+              className="admin-button admin-button-danger"
             >
               {isDeleteConfirming ? (
                 <LoaderCircle className="h-4 w-4 animate-spin" />

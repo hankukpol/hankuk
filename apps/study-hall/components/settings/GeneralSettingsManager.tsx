@@ -153,78 +153,45 @@ export function GeneralSettingsManager({
         variant="secondary"
       />
       <AdminTabPanel id="summary" activeId={activeTab} idPrefix="general-settings" className="mt-6">
-        <div>
-        {/* DESIGN.md 5.3 — 지점 색은 색면이 아니라 표식으로만 보여준다. */}
-        <div className="admin-metric-box">
-          <p className="admin-metric-box-label">지점 미리보기</p>
-          <div className="mt-2 flex items-center gap-3">
-            <span
-              className="h-8 w-8 shrink-0 rounded-lg border border-admin-line"
-              style={{ backgroundColor: form.color }}
-              aria-hidden
-            />
-            <div className="min-w-0 text-left">
-              <p className="text-[16px] font-bold text-admin-text">
-                {form.name || "지점 이름"}
-              </p>
-              <p className="admin-help">{form.fullName || "학원 전체 이름"}</p>
+        {/* 현재 설정은 이름 붙은 행 하나의 패널로 읽는다(라벨 왼쪽 · 값 오른쪽). 배지·색 칩을 쓰지 않는다. */}
+        <div className="admin-panel">
+          <div className="admin-panel-row items-start">
+            <span className="admin-label w-28 shrink-0 pt-1">지점</span>
+            <div className="flex min-w-0 items-center gap-3">
+              {/* DESIGN.md 5.3 — 지점 색은 색면이 아니라 표식으로만 보여준다. */}
+              <span className="h-6 w-6 shrink-0 rounded-md border border-admin-line" style={{ backgroundColor: form.color }} aria-hidden />
+              <div className="min-w-0">
+                <p className="font-semibold text-admin-text">{form.name || "지점 이름"}</p>
+                <p className="admin-help">{form.fullName || "학원 전체 이름"}</p>
+              </div>
             </div>
           </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <span className="admin-badge">{form.isActive ? "운영 중" : "비활성"}</span>
-            <span className="admin-badge">운영 요일 {activeDayCount}일</span>
-            <span className="admin-badge">직렬 {studyTracks.length}개</span>
+          <div className="admin-panel-row">
+            <span className="admin-label w-28 shrink-0">운영 상태</span>
+            <span className={`font-semibold ${form.isActive ? "text-admin-success" : "text-admin-text-muted"}`}>{form.isActive ? "운영 중" : "비활성"}</span>
           </div>
-        </div>
-
-        <div className="admin-panel mt-5">
-          <article className="admin-panel-row">
-            <div className="min-w-0">
-            <p className="text-sm font-semibold text-slate-900">운영 요일</p>
-            <p className="admin-help mt-2">현재 {activeDayCount}일 운영 중입니다.</p>
-            <div className="mt-3 flex flex-wrap gap-2">
+          <div className="admin-panel-row">
+            <span className="admin-label w-28 shrink-0">운영 요일</span>
+            <p className="admin-meta-line text-[15px]">
               {OPERATING_DAY_KEYS.map((key) => (
-                <span
-                  key={key}
-                  className={`rounded-lg px-3 py-2 text-xs font-semibold ${ form.operatingDays[key] ? "bg-admin-accent text-white" : "bg-slate-200 text-slate-500" }`}
-                >
+                <span key={key} className={form.operatingDays[key] ? "font-semibold text-admin-text" : "text-admin-text-disabled"}>
                   {OPERATING_DAY_LABELS[key]}
                 </span>
               ))}
-            </div>
-            </div>
-          </article>
-
-          <article className="admin-panel-row">
+              <span className="text-admin-text-muted">주 {activeDayCount}일</span>
+            </p>
+          </div>
+          <div className="admin-panel-row items-start">
+            <span className="admin-label w-28 shrink-0 pt-1">직렬</span>
             <div className="min-w-0">
-            <p className="text-sm font-semibold text-slate-900">직렬 목록 미리보기</p>
-            <p className="admin-help mt-2">
-              학생 등록과 목록 필터에서 이 직렬 목록을 기준으로 사용합니다.
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {studyTracks.length > 0 ? (
-                studyTracks.map((track) => (
-                  <span
-                    key={track}
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700"
-                  >
-                    {track}
-                  </span>
-                ))
-              ) : (
-                <span className="admin-help">등록된 직렬이 없습니다.</span>
-              )}
+              <p className="text-[15px] text-admin-text">{studyTracks.length ? studyTracks.join(", ") : "등록된 직렬이 없습니다."}</p>
+              <p className="admin-help mt-1">학생 등록과 목록 필터에서 이 직렬 목록을 기준으로 사용합니다.</p>
             </div>
-            </div>
-          </article>
-
-          <article className="admin-panel-row justify-between">
-            <p className="text-sm font-semibold text-slate-900">최종 저장</p>
-            <p className="admin-help">
-              {formatKstDateTime(settings.updatedAt)}
-            </p>
-          </article>
-        </div>
+          </div>
+          <div className="admin-panel-row">
+            <span className="admin-label w-28 shrink-0">최종 저장</span>
+            <span className="tabular-nums text-admin-text-secondary">{formatKstDateTime(settings.updatedAt)}</span>
+          </div>
         </div>
       </AdminTabPanel>
       <AdminTabPanel id="edit" activeId={activeTab} idPrefix="general-settings" className="mt-6">

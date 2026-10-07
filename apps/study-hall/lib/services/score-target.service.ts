@@ -9,8 +9,6 @@ import {
 } from "@/lib/mock-store";
 import type { ScoreTargetUpsertInput } from "@/lib/score-target-schemas";
 import {
-  isPrismaSchemaMismatchError,
-  logSchemaCompatibilityFallback,
 } from "@/lib/service-helpers";
 import { listExamTypes, type ExamTypeItem } from "@/lib/services/exam.service";
 import { listStudents } from "@/lib/services/student.service";
@@ -254,36 +252,25 @@ export async function listScoreTargets(
     }),
   ]);
 
-  let targets: ScoreTargetRecord[];
-
-  try {
-    targets = await prisma.scoreTarget.findMany({
-      where: {
-        studentId,
-        student: {
-          division: {
-            slug: divisionSlug,
-          },
+  const targets: ScoreTargetRecord[] = await prisma.scoreTarget.findMany({
+    where: {
+      studentId,
+      student: {
+        division: {
+          slug: divisionSlug,
         },
       },
-      select: {
-        id: true,
-        studentId: true,
-        examTypeId: true,
-        targetScore: true,
-        note: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-  } catch (error) {
-    if (!isPrismaSchemaMismatchError(error, ["score_targets"])) {
-      throw error;
-    }
-
-    logSchemaCompatibilityFallback("score-targets:list", error);
-    return [];
-  }
+    },
+    select: {
+      id: true,
+      studentId: true,
+      examTypeId: true,
+      targetScore: true,
+      note: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
 
   const latestByType = new Map<string, LatestExamMeta>();
   for (const record of latestScores) {

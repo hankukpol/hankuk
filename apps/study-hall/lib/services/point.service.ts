@@ -423,53 +423,14 @@ const getDivisionOrThrow = cache(async function getDivisionOrThrow(divisionSlug:
   return division;
 });
 
-async function getPointRuleCategoryMode() {
-  if (isMockMode()) {
-    return "text" as const;
-  }
-
-  const prisma = await getPrismaClient();
-  const rows = await prisma.$queryRaw<Array<{ dataType: string; udtName: string }>>`
-    SELECT
-      data_type AS "dataType",
-      udt_name AS "udtName"
-    FROM information_schema.columns
-    WHERE table_name = 'point_rules'
-      AND column_name = 'category'
-    ORDER BY
-      CASE WHEN table_schema = ANY(current_schemas(false)) THEN 0 ELSE 1 END,
-      table_schema ASC
-    LIMIT 1
-  `;
-
-  if (!rows[0]) {
-    return "text" as const;
-  }
-
-  return rows[0].udtName === "text" ? ("text" as const) : ("legacy-enum" as const);
+// 상벌점 규칙 분류 칸은 문자열(마이그레이션 20260401), 학원별 분류 칸(point_categories)도 운영 DB 에 있다
+// (2026-10-07 migrate status 35/35). 예전에는 규칙을 읽을 때마다 information_schema 를 두 번 조회했다.
+async function getPointRuleCategoryMode(): Promise<"text" | "legacy-enum"> {
+  return "text";
 }
 
 export async function supportsPointCategoryCustomization() {
-  if (isMockMode()) {
-    return true;
-  }
-
-  if ((await getPointRuleCategoryMode()) === "legacy-enum") {
-    return false;
-  }
-
-  const prisma = await getPrismaClient();
-  const rows = await prisma.$queryRaw<Array<{ exists: boolean }>>`
-    SELECT EXISTS (
-      SELECT 1
-      FROM information_schema.columns
-      WHERE table_name = 'division_settings'
-        AND column_name = 'point_categories'
-        AND table_schema = ANY(current_schemas(false))
-    ) AS "exists"
-  `;
-
-  return rows[0]?.exists ?? false;
+  return true;
 }
 
 async function listLegacyPointRuleRows(

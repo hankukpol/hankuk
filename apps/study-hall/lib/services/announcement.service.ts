@@ -12,8 +12,6 @@ import {
 import type { AnnouncementSchemaInput } from "@/lib/announcement-schemas";
 import { badRequest, forbidden, notFound } from "@/lib/errors";
 import {
-  isPrismaSchemaMismatchError,
-  logSchemaCompatibilityFallback,
 } from "@/lib/service-helpers";
 
 type AnnouncementActor = {
@@ -239,7 +237,7 @@ export async function listAnnouncements(
   const division = await getDivisionOrThrow(divisionSlug);
   const { prisma } = await import("@/lib/prisma");
 
-  let announcements: Array<{
+  const announcements: Array<{
     id: string;
     divisionId: string | null;
     title: string;
@@ -256,74 +254,33 @@ export async function listAnnouncements(
     createdBy: {
       name: string;
     };
-  }>;
-
-  try {
-    announcements = await prisma.announcement.findMany({
-      where: {
-        OR: [{ divisionId: division.id }, { divisionId: null }],
-      },
-      select: {
-        id: true,
-        divisionId: true,
-        title: true,
-        content: true,
-        isPinned: true,
-        createdById: true,
-        createdAt: true,
-        updatedAt: true,
-        publishedAt: true,
-        division: {
-          select: {
-            name: true,
-            fullName: true,
-          },
-        },
-        createdBy: {
-          select: {
-            name: true,
-          },
+  }> = await prisma.announcement.findMany({
+    where: {
+      OR: [{ divisionId: division.id }, { divisionId: null }],
+    },
+    select: {
+      id: true,
+      divisionId: true,
+      title: true,
+      content: true,
+      isPinned: true,
+      createdById: true,
+      createdAt: true,
+      updatedAt: true,
+      publishedAt: true,
+      division: {
+        select: {
+          name: true,
+          fullName: true,
         },
       },
-    });
-  } catch (error) {
-    if (!isPrismaSchemaMismatchError(error, ["announcements", "published_at"])) {
-      throw error;
-    }
-
-    logSchemaCompatibilityFallback("announcements:list", error);
-    const legacyAnnouncements = await prisma.announcement.findMany({
-      where: {
-        OR: [{ divisionId: division.id }, { divisionId: null }],
-      },
-      select: {
-        id: true,
-        divisionId: true,
-        title: true,
-        content: true,
-        isPinned: true,
-        createdById: true,
-        createdAt: true,
-        updatedAt: true,
-        division: {
-          select: {
-            name: true,
-            fullName: true,
-          },
-        },
-        createdBy: {
-          select: {
-            name: true,
-          },
+      createdBy: {
+        select: {
+          name: true,
         },
       },
-    });
-
-    announcements = legacyAnnouncements.map((record) => ({
-      ...record,
-      publishedAt: null,
-    }));
-  }
+    },
+  });
 
   return sortAnnouncements(announcements)
     .filter((record) => includeScheduled || isPublishedAnnouncement(record.publishedAt))

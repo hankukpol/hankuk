@@ -21,7 +21,7 @@ import type {
   InterviewResultTypeValue,
   InterviewStatusValue,
 } from "@/lib/interview-meta";
-import { getPrismaClient, isPrismaSchemaMismatchError } from "@/lib/service-helpers";
+import { getPrismaClient} from "@/lib/service-helpers";
 
 type InterviewActor = {
   id: string;
@@ -365,31 +365,15 @@ export async function listInterviews(
     createdBy: { select: { id: true, name: true } },
   } as const;
 
-  try {
-    const interviews = await prisma.interview.findMany({
-      where,
-      include: { ...relations, tasks: { orderBy: { position: "asc" } } },
-      orderBy,
-    });
-    return interviews
-      .map((record) => serializeInterviewRecord(record, record.student, record.createdBy.name))
-      .filter(Boolean) as InterviewItem[];
-  } catch (error) {
-    // 학습 면담 마이그레이션(20261007120000) 전의 DB 에서도 기존 면담은 보이게 한다.
-    if (!isPrismaSchemaMismatchError(error, ["interview_tasks", "category", "diagnosis_snapshot"])) throw error;
-    const interviews = await prisma.interview.findMany({
-      where,
-      select: {
-        id: true, studentId: true, date: true, trigger: true, reason: true, content: true, result: true, resultType: true,
-        followUpDate: true, status: true, guardianContacted: true, closedAt: true, createdById: true, createdAt: true,
-        ...relations,
-      },
-      orderBy,
-    });
-    return interviews
-      .map((record) => serializeInterviewRecord(record, record.student, record.createdBy.name))
-      .filter(Boolean) as InterviewItem[];
-  }
+
+  const interviews = await prisma.interview.findMany({
+    where,
+    include: { ...relations, tasks: { orderBy: { position: "asc" } } },
+    orderBy,
+  });
+  return interviews
+    .map((record) => serializeInterviewRecord(record, record.student, record.createdBy.name))
+    .filter(Boolean) as InterviewItem[];
 }
 
 export async function countFollowUpDueInterviews(divisionSlug: string) {

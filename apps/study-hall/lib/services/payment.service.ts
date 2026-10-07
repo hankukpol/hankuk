@@ -29,8 +29,6 @@ import {
 } from "@/lib/mock-store";
 import {
   getPrismaClient,
-  isPrismaSchemaMismatchError,
-  logSchemaCompatibilityFallback,
   normalizeOptionalText,
 } from "@/lib/service-helpers";
 import type { StudentDetail } from "@/lib/services/student.service";
@@ -141,15 +139,8 @@ type PaymentCreateMeta = {
   originalPaymentId?: string | null;
 };
 
-const PAYMENT_SCHEMA_MISMATCH_PATTERNS = [
-  "payments",
-  "payment_group_id",
-  "original_payment_id",
-] as const;
-
 const PAYMENT_AMOUNT_LIMIT = 2_000_000_000;
 
-let paymentSchemaCompatibilityPromise: Promise<PaymentSchemaCompatibility> | null = null;
 
 function getKstToday() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -164,35 +155,13 @@ function parseDateString(value: string) {
   return parseUtcDateFromYmd(value, "날짜");
 }
 
-async function detectPaymentSchemaCompatibility(): Promise<PaymentSchemaCompatibility> {
-  const prisma = await getPrismaClient();
-  const columns = await prisma.$queryRaw<{ column_name: string }[]>`
-    SELECT column_name
-    FROM information_schema.columns
-    WHERE table_name = 'payments'
-      AND table_schema IN (current_schema(), 'study_hall')
-      AND column_name IN ('payment_group_id', 'original_payment_id')
-  `;
-  const columnNames = new Set(columns.map((column) => column.column_name));
-
-  return {
-    supportsGroupedPayments:
-      columnNames.has("payment_group_id") && columnNames.has("original_payment_id"),
-  };
-}
+// 결제 묶음·환불 연결 칸(마이그레이션 20260402)은 운영 DB 에 적용돼 있다(2026-10-07 migrate status 확인).
+// 예전에는 information_schema 로 확인하고 실패를 인스턴스 수명 동안 캐시해, DB 가 잠깐 흔들리면
+// 환불 연결 확인이 꺼진 채 원결제를 지울 수 있었다. 이제 확인하지 않고 항상 지금 구조를 쓴다.
+const PAYMENT_SCHEMA: PaymentSchemaCompatibility = { supportsGroupedPayments: true };
 
 async function getPaymentSchemaCompatibility() {
-  if (!paymentSchemaCompatibilityPromise) {
-    paymentSchemaCompatibilityPromise = detectPaymentSchemaCompatibility().catch((error) => {
-      logSchemaCompatibilityFallback("payments:schema-detect", error);
-
-      return {
-        supportsGroupedPayments: false,
-      } satisfies PaymentSchemaCompatibility;
-    });
-  }
-
-  return paymentSchemaCompatibilityPromise;
+  return PAYMENT_SCHEMA;
 }
 
 function createPaymentGroupId() {
@@ -752,26 +721,11 @@ export async function listPayments(
         }
       : {}),
   } satisfies Prisma.PaymentWhereInput;
-  let payments: PaymentWithIncludes[];
-
-  try {
-    payments = await prisma.payment.findMany({
-      where: paymentWhere,
-      select: getPaymentSelect(paymentSchema.supportsGroupedPayments),
-      orderBy: [{ paymentDate: "desc" }, { createdAt: "desc" }],
-    });
-  } catch (error) {
-    if (!isPrismaSchemaMismatchError(error, [...PAYMENT_SCHEMA_MISMATCH_PATTERNS])) {
-      throw error;
-    }
-
-    logSchemaCompatibilityFallback("payments:list", error);
-    payments = await prisma.payment.findMany({
-      where: paymentWhere,
-      select: legacyPaymentSelect,
-      orderBy: [{ paymentDate: "desc" }, { createdAt: "desc" }],
-    });
-  }
+  const payments: PaymentWithIncludes[] = await prisma.payment.findMany({
+    where: paymentWhere,
+    select: getPaymentSelect(paymentSchema.supportsGroupedPayments),
+    orderBy: [{ paymentDate: "desc" }, { createdAt: "desc" }],
+  });
 
   return payments.map((payment) => serializePayment(payment)) satisfies PaymentItem[];
 }

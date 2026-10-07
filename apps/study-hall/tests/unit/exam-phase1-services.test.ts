@@ -49,13 +49,14 @@ test("mock rule roundtrip persists analysis and keeps another division untouched
   assert.equal((await service.updateDivisionRuleSettings("a", oldClientInput)).examAnalysis.regular.totalDropPercent, 24);
 });
 
-test("DB serialization and legacy serialization normalize analysis with the same rules", () => {
-  const service = load<{ serializeSettingsRecord(record: unknown): unknown; serializeLegacySettingsRecord(record: unknown): unknown }>("settings", {}, ["serializeSettingsRecord", "serializeLegacySettingsRecord"]);
-  const legacy = { divisionId: "a", examAnalysis: { morning: { classGapPercent: 31 } }, updatedAt: new Date("2026-09-08T00:00:00Z") };
-  const normalized = service.serializeLegacySettingsRecord(legacy) as { examAnalysis: analysis.ExamAnalysisSettings };
-  const serialized = service.serializeSettingsRecord({ ...normalized, updatedAt: legacy.updatedAt }) as typeof normalized;
-  assert.deepEqual(serialized.examAnalysis, normalized.examAnalysis);
-  assert.equal(normalized.examAnalysis.morning.classGapPercent, 31);
+// 예전 DB 구조용 직렬화(serializeLegacySettingsRecord)는 운영 DB 가 최신이라 지웠다(2026-10-07 리팩토링 1단계).
+// 남은 직렬화가 일부만 저장된 분석 설정을 기본값으로 채우는지만 확인한다.
+test("DB serialization normalizes a partial analysis setting with defaults", () => {
+  const service = load<{ serializeSettingsRecord(record: unknown): unknown }>("settings", {}, ["serializeSettingsRecord"]);
+  const record = { divisionId: "a", examAnalysis: { morning: { classGapPercent: 31 } }, updatedAt: new Date("2026-09-08T00:00:00Z") };
+  const serialized = service.serializeSettingsRecord(record) as { examAnalysis: analysis.ExamAnalysisSettings };
+  assert.equal(serialized.examAnalysis.morning.classGapPercent, 31);
+  assert.deepEqual(serialized.examAnalysis.diagnosis, analysis.DEFAULT_EXAM_ANALYSIS_SETTINGS.diagnosis);
 });
 
 test("exam subject serializers and payloads preserve alternate groups in mock and DB shapes", () => {

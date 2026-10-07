@@ -14,8 +14,6 @@ import { revalidateDivisionOperationalViews } from "@/lib/revalidation";
 import { readMockState, updateMockState, type MockStudentRecord } from "@/lib/mock-store";
 import {
   getPrismaClient,
-  isPrismaSchemaMismatchError,
-  logSchemaCompatibilityFallback,
   normalizeOptionalText,
 } from "@/lib/service-helpers";
 import { getDivisionSettings } from "@/lib/services/settings.service";
@@ -188,8 +186,6 @@ type StudentWriteCompatibleFields = {
   tuitionExemptReason: string | null;
 };
 
-let studentSchemaCompatibilityPromise: Promise<StudentSchemaCompatibility> | null = null;
-
 function normalizeText(value: string) {
   return value.trim();
 }
@@ -223,78 +219,22 @@ function isPrismaUniqueConstraintError(error: unknown, target: string) {
   return values.some((value) => value.includes(target));
 }
 
-const STUDENT_SCHEMA_MISMATCH_PATTERNS = [
-  "students",
-  "study_track",
-  "course_start_date",
-  "course_end_date",
-  "tuition_plan_id",
-  "tuition_amount",
-  "tuition_exempt",
-  "tuition_exempt_reason",
-] as const;
-
-function isStudentSchemaMismatchError(error: unknown) {
-  return isPrismaSchemaMismatchError(error, [...STUDENT_SCHEMA_MISMATCH_PATTERNS]);
-}
-
-async function detectStudentSchemaCompatibility(): Promise<StudentSchemaCompatibility> {
-  const prisma = await getPrismaClient();
-  const rows = await prisma.$queryRaw<Array<{ tableName: string; columnName: string }>>`
-    SELECT
-      table_name AS "tableName",
-      column_name AS "columnName"
-    FROM information_schema.columns
-    WHERE table_schema IN (current_schema(), 'study_hall')
-      AND (
-        (table_name = 'students' AND column_name IN (
-          'study_track',
-          'course_start_date',
-          'course_end_date',
-          'tuition_plan_id',
-          'tuition_amount',
-          'tuition_exempt',
-          'tuition_exempt_reason'
-        ))
-        OR (table_name = 'study_rooms' AND column_name = 'id')
-        OR (table_name = 'tuition_plans' AND column_name = 'id')
-      )
-  `;
-  const columns = new Set(rows.map((row) => `${row.tableName}:${row.columnName}`));
-
-  return {
-    hasStudyTrack: columns.has("students:study_track"),
-    hasCourseStartDate: columns.has("students:course_start_date"),
-    hasCourseEndDate: columns.has("students:course_end_date"),
-    hasTuitionPlanId: columns.has("students:tuition_plan_id"),
-    hasTuitionAmount: columns.has("students:tuition_amount"),
-    hasTuitionExempt: columns.has("students:tuition_exempt"),
-    hasTuitionExemptReason: columns.has("students:tuition_exempt_reason"),
-    hasStudyRoomsTable: columns.has("study_rooms:id"),
-    hasTuitionPlansTable: columns.has("tuition_plans:id"),
-  };
-}
+// 학생 칸(직렬·수강 기간·수강료·자습실·수강료 플랜)은 운영 DB 에 모두 있다(2026-10-07 migrate status 35/35 확인).
+// 예전에는 information_schema 로 확인하고, 저장이 '스키마 불일치'로 보이면 그 칸들을 빼고 다시 저장했다(조용히 값이 사라짐).
+const STUDENT_SCHEMA: StudentSchemaCompatibility = {
+  hasStudyTrack: true,
+  hasCourseStartDate: true,
+  hasCourseEndDate: true,
+  hasTuitionPlanId: true,
+  hasTuitionAmount: true,
+  hasTuitionExempt: true,
+  hasTuitionExemptReason: true,
+  hasStudyRoomsTable: true,
+  hasTuitionPlansTable: true,
+};
 
 async function getStudentSchemaCompatibility() {
-  if (!studentSchemaCompatibilityPromise) {
-    studentSchemaCompatibilityPromise = detectStudentSchemaCompatibility().catch((error) => {
-      logSchemaCompatibilityFallback("students:schema-detect", error);
-
-      return {
-        hasStudyTrack: true,
-        hasCourseStartDate: true,
-        hasCourseEndDate: true,
-        hasTuitionPlanId: true,
-        hasTuitionAmount: true,
-        hasTuitionExempt: true,
-        hasTuitionExemptReason: true,
-        hasStudyRoomsTable: true,
-        hasTuitionPlansTable: true,
-      } satisfies StudentSchemaCompatibility;
-    });
-  }
-
-  return studentSchemaCompatibilityPromise;
+  return STUDENT_SCHEMA;
 }
 
 function supportsPrismaStudentRead(schema: StudentSchemaCompatibility) {
@@ -359,14 +299,6 @@ function buildCompatibleStudentWriteData<T extends Record<string, unknown>>(
   } as T & Partial<StudentWriteCompatibleFields>;
 }
 
-function toStudentWriteErrorCompat(error: unknown) {
-  if (isStudentSchemaMismatchError(error)) {
-    return badRequest("학생 관련 데이터베이스 변경이 아직 반영되지 않았습니다. DB 마이그레이션 상태를 확인해 주세요.");
-  }
-
-  return toStudentWriteError(error);
-}
-
 function getCreatedWithdrawalFields(isWithdrawn: boolean) {
   return {
     withdrawnAt: isWithdrawn ? new Date() : null,
@@ -384,52 +316,23 @@ function getUpdatedWithdrawalFields(
   };
 }
 
+/** 학생 저장. 실패하면 사용자에게 보일 오류로 바꿔 던진다(예전 구조로 다시 쓰지 않는다). runLegacy 는 호출하는 쪽 정리 전까지 받기만 한다. */
 async function runStudentWriteWithFallback<T>({
-  scope,
-  preferLegacyWrite,
   runModern,
-  runLegacy,
 }: {
   scope: string;
   preferLegacyWrite?: boolean;
   runModern: () => Promise<T>;
   runLegacy: () => Promise<T>;
 }) {
-  if (!preferLegacyWrite) {
-    try {
-      return await runModern();
-    } catch (error) {
-      if (!isStudentSchemaMismatchError(error)) {
-        throw toStudentWriteErrorCompat(error);
-      }
-
-      logSchemaCompatibilityFallback(scope, error);
-    }
-  }
-
   try {
-    return await runLegacy();
+    return await runModern();
   } catch (error) {
-    throw toStudentWriteErrorCompat(error);
+    throw toStudentWriteError(error);
   }
 }
 
 function toStudentWriteError(error: unknown) {
-  if (
-    isPrismaSchemaMismatchError(error, [
-      "students",
-      "study_track",
-      "course_start_date",
-      "course_end_date",
-      "tuition_plan_id",
-      "tuition_amount",
-      "tuition_exempt",
-      "tuition_exempt_reason",
-    ])
-  ) {
-    return badRequest("학생 관련 데이터베이스 변경이 아직 반영되지 않았습니다. DB 마이그레이션 상태를 확인해 주세요.");
-  }
-
   if (isPrismaUniqueConstraintError(error, "seat")) {
     return conflict("이미 다른 학생에게 배정된 좌석입니다. 다른 좌석을 선택해 주세요.");
   }
@@ -822,60 +725,19 @@ async function getDbStudentsWithMetrics(
     );
   }
 
-  let students: DbStudentRecord[];
-
-  try {
-    students = await prisma.student.findMany({
-      where: { division: { slug: divisionSlug } },
-      include: {
-        seat: {
-          select: {
-            id: true,
-            label: true,
-            studyRoom: { select: { id: true, name: true } },
-          },
+  const students: DbStudentRecord[] = await prisma.student.findMany({
+    where: { division: { slug: divisionSlug } },
+    include: {
+      seat: {
+        select: {
+          id: true,
+          label: true,
+          studyRoom: { select: { id: true, name: true } },
         },
-        tuitionPlan: { select: { id: true, name: true } },
       },
-    });
-  } catch (error) {
-    if (
-      !isPrismaSchemaMismatchError(error, [
-        "students",
-        "study_track",
-        "course_start_date",
-        "course_end_date",
-        "tuition_plan_id",
-        "tuition_amount",
-        "tuition_exempt",
-        "tuition_exempt_reason",
-        "study_room_id",
-        "tuition_plans",
-        "study_rooms",
-      ])
-    ) {
-      throw error;
-    }
-
-    logSchemaCompatibilityFallback("students:list", error);
-
-    const [settings, pointAggregates, compatibleStudents] = await Promise.all([
-      settingsPromise,
-      pointAggregatesPromise,
-      readCompatibleStudents(prisma, divisionSlug, { schema: studentSchema }),
-    ]);
-
-    const pointTotals = new Map<string, number>(
-      pointAggregates.map((record) => [record.studentId, record._sum.points ?? 0]),
-    );
-
-    return sortBySeatAndName(
-      compatibleStudents.map((student) => {
-        const netPoints = toNetPoints(pointTotals.get(student.id) ?? 0);
-        return serializeCompatibleStudent(student, netPoints, getWarningStage(toDemeritPoints(netPoints), settings));
-      }),
-    );
-  }
+      tuitionPlan: { select: { id: true, name: true } },
+    },
+  });
 
   const [settings, pointAggregates] = await Promise.all([
     settingsPromise,
@@ -1186,108 +1048,58 @@ async function getStudentDetailLegacy(divisionSlug: string, studentId: string) {
     return serializeCompatibleStudent(raw, netPoints, getWarningStage(toDemeritPoints(netPoints), settings));
   }
 
-  try {
-    const [settings, raw, pointAggregate] = await Promise.all([
-    getDivisionSettings(divisionSlug),
-    prisma.student.findFirst({
-      where: {
-        id: studentId,
+  const [settings, raw, pointAggregate] = await Promise.all([
+  getDivisionSettings(divisionSlug),
+  prisma.student.findFirst({
+    where: {
+      id: studentId,
+      division: {
+        slug: divisionSlug,
+      },
+    },
+    include: {
+      seat: {
+        select: {
+          id: true,
+          label: true,
+          studyRoom: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      },
+      tuitionPlan: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+  }),
+  prisma.pointRecord.aggregate({
+    where: {
+      studentId,
+      student: {
         division: {
           slug: divisionSlug,
         },
       },
-      include: {
-        seat: {
-          select: {
-            id: true,
-            label: true,
-            studyRoom: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-          },
-        },
-        tuitionPlan: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-      },
-    }),
-    prisma.pointRecord.aggregate({
-      where: {
-        studentId,
-        student: {
-          division: {
-            slug: divisionSlug,
-          },
-        },
-      },
-      _sum: {
-        points: true,
-      },
-    }),
+    },
+    _sum: {
+      points: true,
+    },
+  }),
   ]);
 
   if (!raw) {
-    throw new Error("학생 정보를 찾을 수 없습니다.");
+  throw new Error("학생 정보를 찾을 수 없습니다.");
   }
 
   const netPoints = toNetPoints(pointAggregate._sum.points ?? 0);
 
-    return serializeDbStudent(raw, netPoints, getWarningStage(toDemeritPoints(netPoints), settings));
-  } catch (error) {
-    if (
-      !isPrismaSchemaMismatchError(error, [
-        "students",
-        "study_track",
-        "course_start_date",
-        "course_end_date",
-        "tuition_plan_id",
-        "tuition_amount",
-        "tuition_exempt",
-        "tuition_exempt_reason",
-        "study_room_id",
-        "tuition_plans",
-        "study_rooms",
-      ])
-    ) {
-      throw error;
-    }
-
-    logSchemaCompatibilityFallback("students:detail", error);
-    const [settings, compatibleRows, pointAggregate] = await Promise.all([
-      getDivisionSettings(divisionSlug),
-      readCompatibleStudents(prisma, divisionSlug, {
-        studentId,
-        schema: studentSchema,
-      }),
-      prisma.pointRecord.aggregate({
-        where: {
-          studentId,
-          student: {
-            division: {
-              slug: divisionSlug,
-            },
-          },
-        },
-        _sum: {
-          points: true,
-        },
-      }),
-    ]);
-    const raw = compatibleRows[0];
-
-    if (!raw) {
-      throw notFound("학생 정보를 찾을 수 없습니다.");
-    }
-
-    const netPoints = toNetPoints(pointAggregate._sum.points ?? 0);
-    return serializeCompatibleStudent(raw, netPoints, getWarningStage(toDemeritPoints(netPoints), settings));
-  }
+  return serializeDbStudent(raw, netPoints, getWarningStage(toDemeritPoints(netPoints), settings));
 }
 
 /**

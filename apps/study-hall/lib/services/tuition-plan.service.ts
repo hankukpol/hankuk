@@ -7,8 +7,6 @@ import {
   type MockTuitionPlanRecord,
 } from "@/lib/mock-store";
 import {
-  isPrismaSchemaMismatchError,
-  logSchemaCompatibilityFallback,
 } from "@/lib/service-helpers";
 
 export type TuitionPlanItem = {
@@ -132,16 +130,8 @@ export async function listTuitionPlans(
     return listTuitionPlansUncached(divisionSlug, options);
   }
 
-  try {
-    return await listTuitionPlansCached(divisionSlug, options);
-  } catch (error) {
-    if (!isPrismaSchemaMismatchError(error, ["tuition_plans", "tuition_plan_id"])) {
-      throw error;
-    }
 
-    logSchemaCompatibilityFallback("tuition-plans:list", error);
-    return [];
-  }
+  return await listTuitionPlansCached(divisionSlug, options);
 }
 
 export async function getTuitionPlanById(divisionSlug: string, planId: string) {

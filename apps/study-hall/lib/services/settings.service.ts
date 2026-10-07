@@ -29,8 +29,6 @@ import {
   type StudyTrackList,
 } from "@/lib/settings-schemas";
 import {
-  isPrismaSchemaMismatchError,
-  logSchemaCompatibilityFallback,
   normalizeOptionalText,
 } from "@/lib/service-helpers";
 
@@ -73,43 +71,6 @@ type RawDbDivisionSettingsRecord = {
 };
 
 type RawDivisionSettingsRecord = RawDbDivisionSettingsRecord | MockDivisionSettingsRecord;
-
-type LegacyDivisionSettingsRow = {
-  examAnalysis?: unknown;
-  divisionId: string;
-  warnLevel1?: number | null;
-  warnLevel2?: number | null;
-  warnInterview?: number | null;
-  warnWithdraw?: number | null;
-  warnMsgLevel1?: string | null;
-  warnMsgLevel2?: string | null;
-  warnMsgInterview?: string | null;
-  warnMsgWithdraw?: string | null;
-  tardyMinutes?: number | null;
-  assistantPastEditAllowed?: boolean | null;
-  assistantPastEditDays?: number | null;
-  holidayLimit?: number | null;
-  halfDayLimit?: number | null;
-  healthLimit?: number | null;
-  holidayUnusedPts?: number | null;
-  halfDayUnusedPts?: number | null;
-  tardyPointRuleId?: string | null;
-  absentPointRuleId?: string | null;
-  operatingDays?: unknown;
-  studyTracks?: unknown;
-  pointCategories?: unknown;
-  featureFlags?: unknown;
-  perfectAttendancePtsEnabled?: boolean | null;
-  perfectAttendancePts?: number | null;
-  perfectAttendanceWeeklyPts?: number | null;
-  perfectAttendanceMonthlyPts?: number | null;
-  expirationWarningDays?: number | null;
-  updatedAt?: Date | null;
-};
-
-type DivisionSettingsColumnRow = {
-  columnName: string;
-};
 
 type DefaultRuleValues = {
   warnLevel1: number;
@@ -156,41 +117,6 @@ const DEFAULT_RULE_VALUES: DefaultRuleValues = {
 };
 
 const DIVISION_NOT_FOUND_ERROR = "지점 정보를 찾을 수 없습니다.";
-
-const LEGACY_RULE_SELECT_COLUMNS = [
-  { column: "warn_level1", alias: "warnLevel1" },
-  { column: "warn_level2", alias: "warnLevel2" },
-  { column: "warn_interview", alias: "warnInterview" },
-  { column: "warn_withdraw", alias: "warnWithdraw" },
-  { column: "warn_msg_level1", alias: "warnMsgLevel1" },
-  { column: "warn_msg_level2", alias: "warnMsgLevel2" },
-  { column: "warn_msg_interview", alias: "warnMsgInterview" },
-  { column: "warn_msg_withdraw", alias: "warnMsgWithdraw" },
-  { column: "tardy_minutes", alias: "tardyMinutes" },
-  { column: "assistant_past_edit_allowed", alias: "assistantPastEditAllowed" },
-  { column: "assistant_past_edit_days", alias: "assistantPastEditDays" },
-  { column: "holiday_limit", alias: "holidayLimit" },
-  { column: "half_day_limit", alias: "halfDayLimit" },
-  { column: "health_limit", alias: "healthLimit" },
-  { column: "holiday_unused_pts", alias: "holidayUnusedPts" },
-  { column: "half_day_unused_pts", alias: "halfDayUnusedPts" },
-  { column: "tardy_point_rule_id", alias: "tardyPointRuleId" },
-  { column: "absent_point_rule_id", alias: "absentPointRuleId" },
-  { column: "perfect_attendance_pts_enabled", alias: "perfectAttendancePtsEnabled" },
-  { column: "perfect_attendance_pts", alias: "perfectAttendancePts" },
-  { column: "perfect_attendance_weekly_pts", alias: "perfectAttendanceWeeklyPts" },
-  { column: "perfect_attendance_monthly_pts", alias: "perfectAttendanceMonthlyPts" },
-  { column: "expiration_warning_days", alias: "expirationWarningDays" },
-] as const;
-
-const LEGACY_DIVISION_SETTINGS_OPTIONAL_SELECT_COLUMNS = [
-  { column: "exam_analysis", alias: "examAnalysis" },
-  { column: "operating_days", alias: "operatingDays" },
-  { column: "study_tracks", alias: "studyTracks" },
-  { column: "point_categories", alias: "pointCategories" },
-  { column: "feature_flags", alias: "featureFlags" },
-  { column: "updated_at", alias: "updatedAt" },
-] as const;
 
 export type WarningTemplateKey =
   | "warnMsgLevel1"
@@ -328,57 +254,6 @@ function normalizePointRuleId(value: string | null | undefined) {
   return normalizeOptionalText(value);
 }
 
-async function listDivisionSettingsColumns(
-  prisma: Awaited<ReturnType<typeof getPrismaClient>>,
-) {
-  const rows = await prisma.$queryRaw<DivisionSettingsColumnRow[]>`
-    SELECT column_name AS "columnName"
-    FROM information_schema.columns
-    WHERE table_schema = 'study_hall'
-      AND table_name = 'division_settings'
-  `;
-
-  return new Set(rows.map((row) => row.columnName));
-}
-
-function getLegacyDivisionSettingsSelectColumns(availableColumns: Set<string>) {
-  return [...LEGACY_RULE_SELECT_COLUMNS, ...LEGACY_DIVISION_SETTINGS_OPTIONAL_SELECT_COLUMNS].filter(
-    ({ column }) => availableColumns.has(column),
-  );
-}
-
-function getLegacyRuleColumnValues(
-  input: RulesSettingsInput,
-  attendancePointRuleSettings: ReturnType<typeof normalizeAttendancePointRuleSettings>,
-) {
-  return [
-    ...(input.examAnalysis === undefined ? [] : [{ column: "exam_analysis", value: JSON.stringify(input.examAnalysis) }]),
-    { column: "warn_level1", value: input.warnLevel1 },
-    { column: "warn_level2", value: input.warnLevel2 },
-    { column: "warn_interview", value: input.warnInterview },
-    { column: "warn_withdraw", value: input.warnWithdraw },
-    { column: "warn_msg_level1", value: input.warnMsgLevel1.trim() },
-    { column: "warn_msg_level2", value: input.warnMsgLevel2.trim() },
-    { column: "warn_msg_interview", value: input.warnMsgInterview.trim() },
-    { column: "warn_msg_withdraw", value: input.warnMsgWithdraw.trim() },
-    { column: "tardy_minutes", value: input.tardyMinutes },
-    { column: "assistant_past_edit_allowed", value: input.assistantPastEditAllowed },
-    { column: "assistant_past_edit_days", value: input.assistantPastEditDays },
-    { column: "holiday_limit", value: input.holidayLimit },
-    { column: "half_day_limit", value: input.halfDayLimit },
-    { column: "health_limit", value: input.healthLimit },
-    { column: "holiday_unused_pts", value: input.holidayUnusedPts },
-    { column: "half_day_unused_pts", value: input.halfDayUnusedPts },
-    { column: "tardy_point_rule_id", value: attendancePointRuleSettings.tardyPointRuleId },
-    { column: "absent_point_rule_id", value: attendancePointRuleSettings.absentPointRuleId },
-    { column: "perfect_attendance_pts_enabled", value: input.perfectAttendancePtsEnabled },
-    { column: "perfect_attendance_pts", value: input.perfectAttendancePts },
-    { column: "perfect_attendance_weekly_pts", value: input.perfectAttendanceWeeklyPts },
-    { column: "perfect_attendance_monthly_pts", value: input.perfectAttendanceMonthlyPts },
-    { column: "expiration_warning_days", value: input.expirationWarningDays },
-  ] as const;
-}
-
 export function serializeSettingsRecord(record: RawDivisionSettingsRecord): DivisionSettingsRecord {
   const templates = getDefaultWarningTemplates();
 
@@ -415,124 +290,6 @@ export function serializeSettingsRecord(record: RawDivisionSettingsRecord): Divi
     updatedAt:
       typeof record.updatedAt === "string" ? record.updatedAt : record.updatedAt.toISOString(),
   };
-}
-
-function serializeLegacySettingsRecord(record: LegacyDivisionSettingsRow): DivisionSettingsRecord {
-  return serializeSettingsRecord({
-    examAnalysis: normalizeExamAnalysisSettings((record as { examAnalysis?: unknown }).examAnalysis),
-    divisionId: record.divisionId,
-    warnLevel1: record.warnLevel1 ?? DEFAULT_RULE_VALUES.warnLevel1,
-    warnLevel2: record.warnLevel2 ?? DEFAULT_RULE_VALUES.warnLevel2,
-    warnInterview: record.warnInterview ?? DEFAULT_RULE_VALUES.warnInterview,
-    warnWithdraw: record.warnWithdraw ?? DEFAULT_RULE_VALUES.warnWithdraw,
-    warnMsgLevel1: record.warnMsgLevel1 ?? null,
-    warnMsgLevel2: record.warnMsgLevel2 ?? null,
-    warnMsgInterview: record.warnMsgInterview ?? null,
-    warnMsgWithdraw: record.warnMsgWithdraw ?? null,
-    tardyMinutes: record.tardyMinutes ?? DEFAULT_RULE_VALUES.tardyMinutes,
-    assistantPastEditAllowed:
-      record.assistantPastEditAllowed ?? DEFAULT_RULE_VALUES.assistantPastEditAllowed,
-    assistantPastEditDays: record.assistantPastEditDays ?? DEFAULT_RULE_VALUES.assistantPastEditDays,
-    holidayLimit: record.holidayLimit ?? DEFAULT_RULE_VALUES.holidayLimit,
-    halfDayLimit: record.halfDayLimit ?? DEFAULT_RULE_VALUES.halfDayLimit,
-    healthLimit: record.healthLimit ?? DEFAULT_RULE_VALUES.healthLimit,
-    holidayUnusedPts: record.holidayUnusedPts ?? DEFAULT_RULE_VALUES.holidayUnusedPts,
-    halfDayUnusedPts: record.halfDayUnusedPts ?? DEFAULT_RULE_VALUES.halfDayUnusedPts,
-    tardyPointRuleId: record.tardyPointRuleId ?? DEFAULT_RULE_VALUES.tardyPointRuleId,
-    absentPointRuleId: record.absentPointRuleId ?? DEFAULT_RULE_VALUES.absentPointRuleId,
-    perfectAttendancePtsEnabled:
-      record.perfectAttendancePtsEnabled ?? DEFAULT_RULE_VALUES.perfectAttendancePtsEnabled,
-    perfectAttendancePts: record.perfectAttendancePts ?? DEFAULT_RULE_VALUES.perfectAttendancePts,
-    perfectAttendanceWeeklyPts: record.perfectAttendanceWeeklyPts ?? DEFAULT_RULE_VALUES.perfectAttendanceWeeklyPts,
-    perfectAttendanceMonthlyPts: record.perfectAttendanceMonthlyPts ?? DEFAULT_RULE_VALUES.perfectAttendanceMonthlyPts,
-    expirationWarningDays:
-      record.expirationWarningDays ?? DEFAULT_RULE_VALUES.expirationWarningDays,
-    operatingDays: record.operatingDays ?? normalizeOperatingDays(undefined),
-    studyTracks: normalizeStudyTracks(record.studyTracks),
-    pointCategories: normalizePointCategories(record.pointCategories),
-    featureFlags: normalizeDivisionFeatureFlags(record.featureFlags),
-    updatedAt: record.updatedAt ?? new Date(),
-  });
-}
-
-async function readLegacyDivisionSettings(
-  prisma: Awaited<ReturnType<typeof getPrismaClient>>,
-  divisionId: string,
-): Promise<DivisionSettingsRecord> {
-  const availableColumns = await listDivisionSettingsColumns(prisma);
-  const selectColumns = getLegacyDivisionSettingsSelectColumns(availableColumns);
-  const selectClause = selectColumns
-    .map(({ column, alias }) => `,\n      "${column}" AS "${alias}"`)
-    .join("");
-
-  const rows = await prisma.$queryRawUnsafe<LegacyDivisionSettingsRow[]>(
-    `SELECT
-      division_id AS "divisionId"${selectClause}
-    FROM study_hall.division_settings
-    WHERE division_id = $1
-    LIMIT 1`,
-    divisionId,
-  );
-
-  return rows[0] ? serializeLegacySettingsRecord(rows[0]) : createDefaultSettingsRecord(divisionId);
-}
-
-async function upsertLegacyDivisionRuleSettings(
-  prisma: Awaited<ReturnType<typeof getPrismaClient>>,
-  divisionId: string,
-  input: RulesSettingsInput,
-  attendancePointRuleSettings: ReturnType<typeof normalizeAttendancePointRuleSettings>,
-) {
-  const availableColumns = await listDivisionSettingsColumns(prisma);
-  const ruleColumnValues = getLegacyRuleColumnValues(input, attendancePointRuleSettings);
-  const missingColumns = ruleColumnValues
-    .map(({ column }) => column)
-    .filter((column) => !availableColumns.has(column));
-
-  if (missingColumns.length > 0) {
-    throw new Error(
-      `운영 규칙 저장에 필요한 DB 컬럼이 누락되어 있습니다: ${missingColumns.join(", ")}. 최신 마이그레이션을 적용한 뒤 다시 저장해 주세요.`,
-    );
-  }
-
-  const insertColumns = ["division_id", ...ruleColumnValues.map(({ column }) => column)];
-  const placeholders = insertColumns.map((column, index) => `$${index + 1}${column === "exam_analysis" ? "::jsonb" : ""}`).join(", ");
-  const updateAssignments = [
-    ...ruleColumnValues.map(({ column }) => `"${column}" = EXCLUDED."${column}"`),
-    availableColumns.has("updated_at") ? `"updated_at" = CURRENT_TIMESTAMP` : null,
-  ]
-    .filter((value): value is string => Boolean(value))
-    .join(",\n      ");
-
-  await prisma.$executeRawUnsafe(
-    `INSERT INTO study_hall.division_settings (
-      ${insertColumns.map((column) => `"${column}"`).join(",\n      ")}
-    ) VALUES (
-      ${placeholders}
-    )
-    ON CONFLICT (division_id) DO UPDATE SET
-      ${updateAssignments}`,
-    divisionId,
-    ...ruleColumnValues.map(({ value }) => value),
-  );
-}
-
-async function upsertLegacyDivisionGeneralSettings(
-  prisma: Awaited<ReturnType<typeof getPrismaClient>>,
-  divisionId: string,
-  input: GeneralSettingsInput,
-) {
-  await prisma.$executeRaw`
-    INSERT INTO study_hall.division_settings (
-      division_id,
-      operating_days
-    ) VALUES (
-      ${divisionId},
-      ${JSON.stringify(normalizeOperatingDays(input.operatingDays))}::jsonb
-    )
-    ON CONFLICT (division_id) DO UPDATE SET
-      operating_days = EXCLUDED.operating_days
-  `;
 }
 
 function getDivisionRuleSettingsFromRecord(
@@ -629,34 +386,9 @@ async function ensureDbDivisionSettings(divisionSlug: string) {
     throw notFound(DIVISION_NOT_FOUND_ERROR);
   }
 
-  let settings;
-
-  try {
-    settings = await prisma.divisionSettings.findUnique({
-      where: { divisionId: division.id },
-    });
-  } catch (error) {
-    if (
-      !isPrismaSchemaMismatchError(error, [
-        "division_settings",
-        "assistant_past_edit",
-        "warn_msg_",
-        "study_tracks",
-        "point_categories",
-        "feature_flags",
-        "tardy_point_rule_id",
-        "absent_point_rule_id",
-      ])
-    ) {
-      throw error;
-    }
-
-    logSchemaCompatibilityFallback("division-settings:read", error);
-    return {
-      division,
-      settings: await readLegacyDivisionSettings(prisma, division.id),
-    };
-  }
+  const settings = await prisma.divisionSettings.findUnique({
+    where: { divisionId: division.id },
+  });
 
   return {
     division,
@@ -1011,87 +743,63 @@ export async function updateDivisionRuleSettings(
     }
   }
 
-  try {
-    await prisma.divisionSettings.upsert({
-      where: { divisionId: division.id },
-      update: {
-        ...analysisUpdate,
-        warnLevel1: input.warnLevel1,
-        warnLevel2: input.warnLevel2,
-        warnInterview: input.warnInterview,
-        warnWithdraw: input.warnWithdraw,
-        warnMsgLevel1: input.warnMsgLevel1.trim(),
-        warnMsgLevel2: input.warnMsgLevel2.trim(),
-        warnMsgInterview: input.warnMsgInterview.trim(),
-        warnMsgWithdraw: input.warnMsgWithdraw.trim(),
-        tardyMinutes: input.tardyMinutes,
-        assistantPastEditAllowed: input.assistantPastEditAllowed,
-        assistantPastEditDays: input.assistantPastEditDays,
-        holidayLimit: input.holidayLimit,
-        halfDayLimit: input.halfDayLimit,
-        healthLimit: input.healthLimit,
-        holidayUnusedPts: input.holidayUnusedPts,
-        halfDayUnusedPts: input.halfDayUnusedPts,
-        tardyPointRuleId: attendancePointRuleSettings.tardyPointRuleId,
-        absentPointRuleId: attendancePointRuleSettings.absentPointRuleId,
-        perfectAttendancePtsEnabled: input.perfectAttendancePtsEnabled,
-        perfectAttendancePts: input.perfectAttendancePts,
-        perfectAttendanceWeeklyPts: input.perfectAttendanceWeeklyPts,
-        perfectAttendanceMonthlyPts: input.perfectAttendanceMonthlyPts,
-        expirationWarningDays: input.expirationWarningDays,
-      },
-      create: {
-        ...createDbDefaultSettingsCreateInput(division.id),
-        ...analysisUpdate,
-        warnLevel1: input.warnLevel1,
-        warnLevel2: input.warnLevel2,
-        warnInterview: input.warnInterview,
-        warnWithdraw: input.warnWithdraw,
-        warnMsgLevel1: input.warnMsgLevel1.trim(),
-        warnMsgLevel2: input.warnMsgLevel2.trim(),
-        warnMsgInterview: input.warnMsgInterview.trim(),
-        warnMsgWithdraw: input.warnMsgWithdraw.trim(),
-        tardyMinutes: input.tardyMinutes,
-        assistantPastEditAllowed: input.assistantPastEditAllowed,
-        assistantPastEditDays: input.assistantPastEditDays,
-        holidayLimit: input.holidayLimit,
-        halfDayLimit: input.halfDayLimit,
-        healthLimit: input.healthLimit,
-        holidayUnusedPts: input.holidayUnusedPts,
-        halfDayUnusedPts: input.halfDayUnusedPts,
-        tardyPointRuleId: attendancePointRuleSettings.tardyPointRuleId,
-        absentPointRuleId: attendancePointRuleSettings.absentPointRuleId,
-        perfectAttendancePtsEnabled: input.perfectAttendancePtsEnabled,
-        perfectAttendancePts: input.perfectAttendancePts,
-        perfectAttendanceWeeklyPts: input.perfectAttendanceWeeklyPts,
-        perfectAttendanceMonthlyPts: input.perfectAttendanceMonthlyPts,
-        expirationWarningDays: input.expirationWarningDays,
-      },
-    });
-  } catch (error) {
-    if (
-      !isPrismaSchemaMismatchError(error, [
-        "division_settings",
-        "assistant_past_edit",
-        "warn_msg_",
-        "study_tracks",
-        "point_categories",
-        "feature_flags",
-        "tardy_point_rule_id",
-        "absent_point_rule_id",
-      ])
-    ) {
-      throw error;
-    }
 
-    logSchemaCompatibilityFallback("division-settings:write-rules", error);
-    await upsertLegacyDivisionRuleSettings(
-      prisma,
-      division.id,
-      input,
-      attendancePointRuleSettings,
-    );
-  }
+  await prisma.divisionSettings.upsert({
+    where: { divisionId: division.id },
+    update: {
+      ...analysisUpdate,
+      warnLevel1: input.warnLevel1,
+      warnLevel2: input.warnLevel2,
+      warnInterview: input.warnInterview,
+      warnWithdraw: input.warnWithdraw,
+      warnMsgLevel1: input.warnMsgLevel1.trim(),
+      warnMsgLevel2: input.warnMsgLevel2.trim(),
+      warnMsgInterview: input.warnMsgInterview.trim(),
+      warnMsgWithdraw: input.warnMsgWithdraw.trim(),
+      tardyMinutes: input.tardyMinutes,
+      assistantPastEditAllowed: input.assistantPastEditAllowed,
+      assistantPastEditDays: input.assistantPastEditDays,
+      holidayLimit: input.holidayLimit,
+      halfDayLimit: input.halfDayLimit,
+      healthLimit: input.healthLimit,
+      holidayUnusedPts: input.holidayUnusedPts,
+      halfDayUnusedPts: input.halfDayUnusedPts,
+      tardyPointRuleId: attendancePointRuleSettings.tardyPointRuleId,
+      absentPointRuleId: attendancePointRuleSettings.absentPointRuleId,
+      perfectAttendancePtsEnabled: input.perfectAttendancePtsEnabled,
+      perfectAttendancePts: input.perfectAttendancePts,
+      perfectAttendanceWeeklyPts: input.perfectAttendanceWeeklyPts,
+      perfectAttendanceMonthlyPts: input.perfectAttendanceMonthlyPts,
+      expirationWarningDays: input.expirationWarningDays,
+    },
+    create: {
+      ...createDbDefaultSettingsCreateInput(division.id),
+      ...analysisUpdate,
+      warnLevel1: input.warnLevel1,
+      warnLevel2: input.warnLevel2,
+      warnInterview: input.warnInterview,
+      warnWithdraw: input.warnWithdraw,
+      warnMsgLevel1: input.warnMsgLevel1.trim(),
+      warnMsgLevel2: input.warnMsgLevel2.trim(),
+      warnMsgInterview: input.warnMsgInterview.trim(),
+      warnMsgWithdraw: input.warnMsgWithdraw.trim(),
+      tardyMinutes: input.tardyMinutes,
+      assistantPastEditAllowed: input.assistantPastEditAllowed,
+      assistantPastEditDays: input.assistantPastEditDays,
+      holidayLimit: input.holidayLimit,
+      halfDayLimit: input.halfDayLimit,
+      healthLimit: input.healthLimit,
+      holidayUnusedPts: input.holidayUnusedPts,
+      halfDayUnusedPts: input.halfDayUnusedPts,
+      tardyPointRuleId: attendancePointRuleSettings.tardyPointRuleId,
+      absentPointRuleId: attendancePointRuleSettings.absentPointRuleId,
+      perfectAttendancePtsEnabled: input.perfectAttendancePtsEnabled,
+      perfectAttendancePts: input.perfectAttendancePts,
+      perfectAttendanceWeeklyPts: input.perfectAttendanceWeeklyPts,
+      perfectAttendanceMonthlyPts: input.perfectAttendanceMonthlyPts,
+      expirationWarningDays: input.expirationWarningDays,
+    },
+  });
 
   revalidateDivisionRuleSettings(divisionSlug);
 
@@ -1153,28 +861,17 @@ export async function updateDivisionFeatureSettings(
   const prisma = await getPrismaClient();
   const { division } = await ensureDbDivisionSettings(divisionSlug);
 
-  try {
-    await prisma.divisionSettings.upsert({
-      where: { divisionId: division.id },
-      update: {
-        featureFlags: nextFlags,
-      },
-      create: {
-        ...createDbDefaultSettingsCreateInput(division.id),
-        featureFlags: nextFlags,
-      },
-    });
-  } catch (error) {
-    if (!isPrismaSchemaMismatchError(error, ["division_settings", "feature_flags", "point_categories"])) {
-      throw error;
-    }
-
-    logSchemaCompatibilityFallback("division-settings:write-features", error);
-    return {
-      featureFlags: DEFAULT_DIVISION_FEATURE_FLAGS,
-      updatedAt: new Date().toISOString(),
-    };
-  }
+  // 저장이 실패하면 그대로 오류로 알린다. 예전에는 '스키마 불일치'로 판정되면 저장 없이 기본값을 성공처럼 돌려줬다.
+  await prisma.divisionSettings.upsert({
+    where: { divisionId: division.id },
+    update: {
+      featureFlags: nextFlags,
+    },
+    create: {
+      ...createDbDefaultSettingsCreateInput(division.id),
+      featureFlags: nextFlags,
+    },
+  });
 
   revalidateTag(`division-settings:${divisionSlug}`);
   revalidateTag("admin-dashboard");
@@ -1233,45 +930,9 @@ export async function updateDivisionGeneralSettings(
     throw notFound(DIVISION_NOT_FOUND_ERROR);
   }
 
-  try {
-    await prisma.$transaction([
-      prisma.division.update({
-        where: { slug: divisionSlug },
-        data: {
-          name: input.name,
-          fullName: input.fullName,
-          color: input.color,
-          isActive: input.isActive,
-        },
-      }),
-      prisma.divisionSettings.upsert({
-        where: { divisionId: division.id },
-        update: {
-          operatingDays: normalizeOperatingDays(input.operatingDays),
-          studyTracks: normalizeStudyTracks(input.studyTracks),
-        },
-        create: {
-          ...createDbDefaultSettingsCreateInput(division.id),
-          operatingDays: normalizeOperatingDays(input.operatingDays),
-          studyTracks: normalizeStudyTracks(input.studyTracks),
-        },
-      }),
-    ]);
-  } catch (error) {
-    if (
-      !isPrismaSchemaMismatchError(error, [
-        "division_settings",
-        "study_tracks",
-        "assistant_past_edit",
-        "point_categories",
-        "feature_flags",
-      ])
-    ) {
-      throw error;
-    }
 
-    logSchemaCompatibilityFallback("division-settings:write-general", error);
-    await prisma.division.update({
+  await prisma.$transaction([
+    prisma.division.update({
       where: { slug: divisionSlug },
       data: {
         name: input.name,
@@ -1279,9 +940,20 @@ export async function updateDivisionGeneralSettings(
         color: input.color,
         isActive: input.isActive,
       },
-    });
-    await upsertLegacyDivisionGeneralSettings(prisma, division.id, input);
-  }
+    }),
+    prisma.divisionSettings.upsert({
+      where: { divisionId: division.id },
+      update: {
+        operatingDays: normalizeOperatingDays(input.operatingDays),
+        studyTracks: normalizeStudyTracks(input.studyTracks),
+      },
+      create: {
+        ...createDbDefaultSettingsCreateInput(division.id),
+        operatingDays: normalizeOperatingDays(input.operatingDays),
+        studyTracks: normalizeStudyTracks(input.studyTracks),
+      },
+    }),
+  ]);
 
   revalidateTag(`division-settings:${divisionSlug}`);
   revalidateTag(`division-theme:${divisionSlug}`);

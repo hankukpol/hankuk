@@ -3954,6 +3954,21 @@ table :is(a[class*="rounded"]:not(.admin-button), button[class*="rounded"]:not(.
   line-height: 1.25;
 }
 
+/* 제목 줄: 왼쪽 문서 제목, 오른쪽 작성일(작게). */
+.student-report .report-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+
+.student-report .report-title-row p {
+  color: var(--admin-text-muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
 /* 학생 정보 표: '이름 | 값' 짝. 이름 칸은 회색 머리 칸. */
 .student-report .report-info th {
   width: 11%;
@@ -4509,7 +4524,8 @@ table :is(a[class*="rounded"]:not(.admin-button), button[class*="rounded"]:not(.
   .student-report h1 { font-size: 15pt; margin-bottom: 3mm; }
   .student-report .report-section { margin-top: 5mm; }
   .student-report .report-section-head h2 { font-size: 11.5pt; }
-  .student-report :is(.report-section-head p, .report-note, .report-kpi-notes td, .report-arrival-weeks .report-day) { font-size: 7.5pt; }
+  /* 종이에서 읽히는 가장 작은 글자는 8pt 다(설명 줄·작은 날짜). */
+  .student-report :is(.report-section-head p, .report-note, .report-kpi-notes td, .report-arrival-weeks .report-day) { font-size: 8pt; }
   .student-report .report-kpi-values td { font-size: 11pt; }
   .student-report .report-table { font-size: 8.5pt; }
   /* 종이에서는 표가 인쇄 영역 폭을 넘지 않게 칸 안 줄바꿈을 허용한다(낱말은 자르지 않는다). */
@@ -4549,6 +4565,11 @@ table :is(a[class*="rounded"]:not(.admin-button), button[class*="rounded"]:not(.
 
   .score-print-sheet {
     page: score-sheet;
+  }
+
+  /* 성적표는 한 장에 들어가게 칸 위아래 여백을 조금 줄인다(시험 16회 기록 + 설명 줄 기준). */
+  .score-print-sheet .report-table :is(th, td) {
+    padding-block: 1.1mm;
   }
   @page score-sheet {
     size: A4 portrait;

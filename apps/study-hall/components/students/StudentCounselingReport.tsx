@@ -29,14 +29,14 @@ export function StudentCounselingReport({ report, today }: { report: Report; tod
     <article className="student-report" aria-label={`${student.name} 상담 자료`}>
       <PrintHeader
         title="학생 상담 자료"
+        side={`작성일 ${today}`}
         info={[
           ["이름", student.name],
           ["수험번호", student.studentNumber],
           ["직렬", student.studyTrack || "—"],
           ["좌석", student.seat || "—"],
-          ["과정", student.courseStartDate ? `${student.courseStartDate.slice(0, 10)} ~ ${student.courseEndDate?.slice(0, 10) ?? ""}` : "—"],
+          ["과정", student.courseStartDate ? (student.courseEndDate ? `${student.courseStartDate.slice(0, 10)} ~ ${student.courseEndDate.slice(0, 10)}` : `${student.courseStartDate.slice(0, 10)}부터`) : "—"],
           ["조회 기간", `${range.from} ~ ${range.to} (${days(range.from, range.to)}일)`],
-          ["작성일", today],
         ]}
       />
 
@@ -129,10 +129,11 @@ export function StudentCounselingReport({ report, today }: { report: Report; tod
       ) : null}
 
       {diagnosis ? (
-        <Section title="학습 진단" note="성적으로 만든 초안입니다. 원인은 면담에서 학생 설명을 듣고 정합니다." keep>
+        <Section title="학습 진단" note="성적으로 만든 초안입니다. 원인은 면담에서 학생 설명을 듣고 정합니다.">
           <PrintStatement rows={[
             { label: "진단", text: diagnosis.headline.text, tone: diagnosis.headline.tone },
             ...(diagnosis.strengths.length ? [{ label: "잘한 점", text: diagnosis.strengths.join(" ") }] : []),
+            ...(diagnosis.cautions.length ? [{ label: "참고", text: diagnosis.cautions.join(" ") }] : []),
           ]} />
           {diagnosis.priorities.length ? (
             <table className="report-table">
@@ -155,7 +156,6 @@ export function StudentCounselingReport({ report, today }: { report: Report; tod
               <PrintChecklist items={diagnosis.questions.map((q) => q.text)} />
             </>
           ) : null}
-          {diagnosis.cautions.length ? <p className="report-note">{diagnosis.cautions.join(" ")}</p> : null}
         </Section>
       ) : null}
 

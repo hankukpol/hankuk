@@ -7,13 +7,16 @@ import type { ReactNode } from "react";
 
 type InfoCell = [label: string, value: ReactNode];
 
-/** 문서 제목과 학생 정보 표. 정보는 '이름 | 값' 짝으로 한 줄에 perRow 개씩 놓는다. */
-export function PrintHeader({ title, info, perRow = 3 }: { title: string; info: InfoCell[]; perRow?: number }) {
+/** 문서 제목(오른쪽에 작성일 같은 짧은 정보)과 학생 정보 표. 정보는 '이름 | 값' 짝으로 한 줄에 perRow 개씩 놓는다. */
+export function PrintHeader({ title, info, perRow = 3, side }: { title: string; info: InfoCell[]; perRow?: number; side?: string }) {
   const rows: InfoCell[][] = [];
   for (let index = 0; index < info.length; index += perRow) rows.push(info.slice(index, index + perRow));
   return (
     <header className="report-header">
-      <h1>{title}</h1>
+      <div className="report-title-row">
+        <h1>{title}</h1>
+        {side ? <p>{side}</p> : null}
+      </div>
       <table className="report-table report-info">
         <tbody>
           {rows.map((row, rowIndex) => (

@@ -43,6 +43,7 @@ export function InterviewJournalPrint({ student, interviews, today }: { student:
     <article className="student-report interview-journal-print" aria-label={`${student.name} 면담 일지`}>
       <PrintHeader
         title="학생 면담 일지"
+        side={`작성일 ${today}`}
         info={[
           ["이름", student.name],
           ["수험번호", student.studentNumber],
@@ -50,7 +51,6 @@ export function InterviewJournalPrint({ student, interviews, today }: { student:
           ["누적 벌점", `${demerit}점`],
           ["경고 단계", student.warningStageLabel || "—"],
           ["면담", `${sorted.length}회${first ? ` (${first.date.slice(0, 10)} ~ ${sorted[0].date.slice(0, 10)})` : ""}`],
-          ["작성일", today],
         ]}
       />
 

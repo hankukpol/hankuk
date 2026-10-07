@@ -723,11 +723,15 @@ async function getAdminDashboardDataUncached(divisionSlug: string): Promise<Admi
   };
 }
 
-const getAdminDashboardDataCached = unstable_cache(
-  async (divisionSlug: string) => getAdminDashboardDataUncached(divisionSlug),
-  ["admin-dashboard-data"],
-  { revalidate: 60, tags: ["admin-dashboard"] },
-);
+// 학원마다 따로 캐시한다. 예전에는 태그 하나("admin-dashboard")를 모든 학원이 나눠 써서, 어느 학원이든 저장 한 번에
+// 모든 학원의 대시보드 캐시가 지워졌다. 학원 저장은 자기 태그만 지우고, 전체 설정 변경은 공용 태그로 모두 지운다.
+function getAdminDashboardDataCached(divisionSlug: string) {
+  return unstable_cache(
+    async () => getAdminDashboardDataUncached(divisionSlug),
+    ["admin-dashboard-data", divisionSlug],
+    { revalidate: 60, tags: ["admin-dashboard", `admin-dashboard:${divisionSlug}`] },
+  )();
+}
 
 export async function getAdminDashboardData(
   divisionSlug: string,

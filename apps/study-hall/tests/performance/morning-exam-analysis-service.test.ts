@@ -27,7 +27,8 @@ function harness(mock: boolean) {
   '@/lib/errors': Object.fromEntries([['badRequest', 400], ['forbidden', 403], ['notFound', 404]].map(([name, status]) => [name, (message: string) => Object.assign(new Error(message), { status })])),
   '@/lib/exam-analysis-assembler': regularAssembler, '@/lib/morning-exam-analysis-assembler': assembler, '@/lib/morning-exam-analysis-schemas': schemas,
   '@/lib/services/settings.service': { getExamAnalysisSettings: async () => { settingsReads++; return settings; } },
-  '@/lib/services/morning-exam.service': { getMorningExamWeeklySummary: async (slug: string, typeId: string, weekYear: number, weekNumber: number) => { assert.equal(slug, 'tenant'); assert.equal(typeId, 'e'); weekReads++; return { weekYear, weekNumber, rankings: [{ studentId: 's', weeklyRank: 2 }, { studentId: 'p', weeklyRank: 1 }] }; } },
+  // 주간 석차는 한 번의 호출로 여러 주를 읽는다(getMorningExamWeeklySummaries). weekReads 는 계산한 주 수다.
+  '@/lib/services/morning-exam.service': { getMorningExamWeeklySummaries: async (slug: string, typeId: string, weeks: Array<{ weekYear: number; weekNumber: number }>) => { assert.equal(slug, 'tenant'); assert.equal(typeId, 'e'); weekReads += weeks.length; return weeks.map(({ weekYear, weekNumber }) => ({ weekYear, weekNumber, rankings: [{ studentId: 's', weeklyRank: 2 }, { studentId: 'p', weeklyRank: 1 }] })); } },
  };
  const code = ts.transpileModule(readFileSync(new URL('../../lib/services/morning-exam-analysis.service.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
  const serviceModule = { exports: {} }; new Function('require', 'module', 'exports', code)((name: string) => { assert.ok(name in dependencies, name); return dependencies[name]; }, serviceModule, serviceModule.exports);

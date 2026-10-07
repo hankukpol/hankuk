@@ -10,7 +10,7 @@ export function revalidateDivisionOperationalViews(
   options?: OperationalRevalidationOptions,
 ) {
   revalidateTag(`exam-analysis:${divisionSlug}`);
-  revalidateTag("admin-dashboard");
+  revalidateTag(`admin-dashboard:${divisionSlug}`);
   revalidateTag("report-data");
   revalidateTag("super-admin-overview");
   revalidateTag("super-admin-student-trend");

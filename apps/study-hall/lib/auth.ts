@@ -165,6 +165,14 @@ export const getCurrentStudentSession = cache(async function getCurrentStudentSe
   }
 });
 
+/**
+ * 날짜가 된 학원 템플릿 예약을 적용한다. 공통 틀(layout)과 화면(page)이 같은 요청 안에서 각각 권한을 확인하므로
+ * 요청 하나에서는 한 번만 확인한다(React cache, 화면 렌더 안에서만 동작 — API 라우트는 호출마다 한 번).
+ */
+const applyDueTemplatesOncePerRequest = cache(async (divisionSlug: string) => {
+  await (await import("@/lib/services/academy-template.service")).applyDueAcademyTemplates(divisionSlug);
+});
+
 export async function requireDivisionAdminAccess(
   divisionSlug: string,
   allowedRoles: AdminSessionRole[] = ["ADMIN", "SUPER_ADMIN"],
@@ -175,7 +183,7 @@ export async function requireDivisionAdminAccess(
     redirect("/login");
   }
 
-  await (await import("@/lib/services/academy-template.service")).applyDueAcademyTemplates(divisionSlug);
+  await applyDueTemplatesOncePerRequest(divisionSlug);
   return session;
 }
 
@@ -190,7 +198,7 @@ export async function requireDivisionAssistantAccess(divisionSlug: string) {
     redirect("/login");
   }
 
-  await (await import("@/lib/services/academy-template.service")).applyDueAcademyTemplates(divisionSlug);
+  await applyDueTemplatesOncePerRequest(divisionSlug);
   return session;
 }
 
@@ -201,7 +209,7 @@ export async function requireDivisionStudentAccess(divisionSlug: string) {
     redirect(`/${divisionSlug}/student/login`);
   }
 
-  await (await import("@/lib/services/academy-template.service")).applyDueAcademyTemplates(divisionSlug);
+  await applyDueTemplatesOncePerRequest(divisionSlug);
   return session;
 }
 

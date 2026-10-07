@@ -442,64 +442,99 @@ export async function saveMorningExamScores(
   return { savedCount };
 }
 
-export async function getMorningExamWeeklySummary(
+type WeeklyRawScore = {
+  studentId: string;
+  subjectId: string;
+  examDate: string;
+  score: number | null;
+};
+
+type WeeklyContext = {
+  examTypeId: string;
+  examType: ExamTypeItem;
+  activeSubjects: ExamTypeItem["subjects"];
+  totalSubjectCount: number;
+  eligibleStudents: Awaited<ReturnType<typeof listStudents>>;
+};
+
+const weekKey = (weekYear: number, weekNumber: number) => `${weekYear}-${weekNumber}`;
+
+/** 주간 석차 계산에 공통으로 쓰는 시험 종류·대상 학생. 여러 주를 볼 때 한 번만 읽는다. */
+async function loadWeeklyContext(divisionSlug: string, examTypeId: string): Promise<WeeklyContext> {
+  const examType = await getMorningExamType(divisionSlug, examTypeId);
+  const activeSubjects = examType.subjects.filter((s) => s.isActive);
+  const students = await listStudents(divisionSlug);
+  return {
+    examTypeId,
+    examType,
+    activeSubjects,
+    totalSubjectCount: activeSubjects.length,
+    eligibleStudents: students.filter((s) => isStudentEligible(s, examType.studyTrack)),
+  };
+}
+
+/** 여러 주의 점수를 한 번에 읽어 주별로 나눈다(예전에는 주마다 따로 읽었다). */
+async function loadWeeklyRawScores(
   divisionSlug: string,
   examTypeId: string,
-  weekYear: number,
-  weekNumber: number,
-): Promise<MorningExamWeeklySummary> {
-  const examType = await getMorningExamType(divisionSlug, examTypeId);
-  const weekDateRange = getWeekDateRange(weekYear, weekNumber);
-  const activeSubjects = examType.subjects.filter((s) => s.isActive);
-  const totalSubjectCount = activeSubjects.length;
+  weeks: Array<{ weekYear: number; weekNumber: number }>,
+): Promise<Map<string, WeeklyRawScore[]>> {
+  const wanted = new Set(weeks.map((week) => weekKey(week.weekYear, week.weekNumber)));
+  const byWeek = new Map<string, WeeklyRawScore[]>();
+  const add = (weekYear: number, weekNumber: number, row: WeeklyRawScore) => {
+    const key = weekKey(weekYear, weekNumber);
+    if (!wanted.has(key)) return;
+    const list = byWeek.get(key);
+    if (list) list.push(row);
+    else byWeek.set(key, [row]);
+  };
 
-  const students = await listStudents(divisionSlug);
-  const eligibleStudents = students.filter((s) =>
-    isStudentEligible(s, examType.studyTrack),
-  );
-
-  let rawScores: Array<{
-    studentId: string;
-    subjectId: string;
-    examDate: string;
-    score: number | null;
-  }>;
+  if (weeks.length === 0) return byWeek;
 
   if (isMockMode()) {
     const state = await readMockState();
     const allScores = state.morningExamScoresByDivision[divisionSlug] ?? [];
-    rawScores = allScores
-      .filter(
-        (s) =>
-          s.examTypeId === examTypeId &&
-          s.weekYear === weekYear &&
-          s.weekNumber === weekNumber,
-      )
-      .map((s) => ({
+    for (const s of allScores) {
+      if (s.examTypeId !== examTypeId) continue;
+      add(s.weekYear, s.weekNumber, {
         studentId: s.studentId,
         subjectId: s.subjectId,
         examDate: s.examDate,
         score: s.score,
-      }));
+      });
+    }
   } else {
     const { prisma } = await import("@/lib/prisma");
     const dbScores = await prisma.morningExamScore.findMany({
       where: {
         examTypeId,
-        weekYear,
-        weekNumber,
+        OR: weeks.map((week) => ({ weekYear: week.weekYear, weekNumber: week.weekNumber })),
       },
     });
-    rawScores = dbScores.map((s) => ({
-      studentId: s.studentId,
-      subjectId: s.subjectId,
-      examDate:
-        s.examDate instanceof Date
-          ? s.examDate.toISOString().slice(0, 10)
-          : String(s.examDate).slice(0, 10),
-      score: s.score,
-    }));
+    for (const s of dbScores) {
+      add(s.weekYear, s.weekNumber, {
+        studentId: s.studentId,
+        subjectId: s.subjectId,
+        examDate:
+          s.examDate instanceof Date
+            ? s.examDate.toISOString().slice(0, 10)
+            : String(s.examDate).slice(0, 10),
+        score: s.score,
+      });
+    }
   }
+  return byWeek;
+}
+
+/** 한 주의 석차표. 계산은 예전 getMorningExamWeeklySummary 와 같다(읽기만 밖으로 뺐다). */
+function buildWeeklySummary(
+  context: WeeklyContext,
+  rawScores: WeeklyRawScore[],
+  weekYear: number,
+  weekNumber: number,
+): MorningExamWeeklySummary {
+  const { examTypeId, examType, activeSubjects, totalSubjectCount, eligibleStudents } = context;
+  const weekDateRange = getWeekDateRange(weekYear, weekNumber);
 
   const dateSubjectMap = new Map<string, string>();
   for (const s of rawScores) {
@@ -580,6 +615,31 @@ export async function getMorningExamWeeklySummary(
     dailyEntries,
     rankings,
   };
+}
+
+export async function getMorningExamWeeklySummary(
+  divisionSlug: string,
+  examTypeId: string,
+  weekYear: number,
+  weekNumber: number,
+): Promise<MorningExamWeeklySummary> {
+  const context = await loadWeeklyContext(divisionSlug, examTypeId);
+  const scores = await loadWeeklyRawScores(divisionSlug, examTypeId, [{ weekYear, weekNumber }]);
+  return buildWeeklySummary(context, scores.get(weekKey(weekYear, weekNumber)) ?? [], weekYear, weekNumber);
+}
+
+/** 여러 주의 석차표. 시험 종류·학생은 한 번, 점수는 한 번에 읽는다(아침 분석의 주간 석차). */
+export async function getMorningExamWeeklySummaries(
+  divisionSlug: string,
+  examTypeId: string,
+  weeks: Array<{ weekYear: number; weekNumber: number }>,
+): Promise<MorningExamWeeklySummary[]> {
+  if (weeks.length === 0) return [];
+  const context = await loadWeeklyContext(divisionSlug, examTypeId);
+  const scores = await loadWeeklyRawScores(divisionSlug, examTypeId, weeks);
+  return weeks.map((week) =>
+    buildWeeklySummary(context, scores.get(weekKey(week.weekYear, week.weekNumber)) ?? [], week.weekYear, week.weekNumber),
+  );
 }
 
 export async function listStudentMorningExamWeeks(

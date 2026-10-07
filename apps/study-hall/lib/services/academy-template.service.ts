@@ -269,8 +269,9 @@ export async function applyDueAcademyTemplates(slug: string, today = kstDate()) 
       if (row && apply(context, row)) { mockWrite(draft, slug, context, row.after, row.requestedById, row.requestedByName); applied = true; }
     });
   } else {
-    const prisma = await getPrismaClient(), division = await prisma.division.findUnique({ where: { slug }, select: { id: true } });
-    if (!division || !await prisma.academyConfigurationApplication.count({ where: { divisionId: division.id, status: "PENDING", effectiveFrom: { lte: new Date(today + "T00:00:00Z") } } })) return;
+    // 모든 화면·API 가 권한 확인 때 부르므로 "적용할 예약이 있는가"는 쿼리 하나로 본다(예전: 학원 조회 + 개수 = 2개).
+    const prisma = await getPrismaClient();
+    if (!await prisma.academyConfigurationApplication.count({ where: { division: { slug }, status: "PENDING", effectiveFrom: { lte: new Date(today + "T00:00:00Z") } } })) return;
     await prisma.$transaction(async tx => {
       const context = await dbContext(tx, slug);
       const pending = await tx.academyConfigurationApplication.findFirst({ where: { divisionId: context.divisionId, status: "PENDING", effectiveFrom: { lte: new Date(today + "T00:00:00Z") } }, orderBy: { effectiveFrom: "asc" } });

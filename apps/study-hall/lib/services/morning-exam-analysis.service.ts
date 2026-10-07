@@ -6,7 +6,7 @@ import { AnalysisAssemblyError, authorizeRegularViewer } from '@/lib/exam-analys
 import { assembleMorningCohort, assembleMorningStudentReport, morningWeek, selectMorningChoiceEvidence, selectMorningSessions } from '@/lib/morning-exam-analysis-assembler';
 import { defaultMorningAnalysisRange, morningAnalysisRangeSchema } from '@/lib/morning-exam-analysis-schemas';
 import { getExamAnalysisSettings } from '@/lib/services/settings.service';
-import { getMorningExamWeeklySummary } from '@/lib/services/morning-exam.service';
+import { getMorningExamWeeklySummaries } from '@/lib/services/morning-exam.service';
 import type { MorningRawSource, MorningRawBundle, MorningRange, MorningCohortAnalysis, MorningStudentReport } from '@/lib/morning-exam-analysis-types';
 import type { Viewer } from '@/lib/exam-analysis-types';
 async function translate<T>(work: () => Promise<T>): Promise<T> {
@@ -20,12 +20,13 @@ async function weeklyRows(slug: string, typeId: string, source: MorningRawSource
  const weeks = new Map<string, ReturnType<typeof morningWeek>>();
  for (const session of selectMorningSessions(source, typeId, range)) { const date = session.examDate instanceof Date ? session.examDate.toISOString().slice(0, 10) : session.examDate.slice(0, 10); const week = morningWeek(date); weeks.set(`${week.weekYear}-${week.weekNumber}`, week); }
  // One existing summary per distinct week, never per student. Keep only scalar rankings in the cache.
- const results = await Promise.all(Array.from(weeks.values()).map(async week => {
-  const summary = await getMorningExamWeeklySummary(slug, typeId, week.weekYear, week.weekNumber);
+ // 주마다 시험 종류·학생·점수를 다시 읽지 않고 한 번에 읽는다(getMorningExamWeeklySummaries).
+ const list = Array.from(weeks.values());
+ const summaries = await getMorningExamWeeklySummaries(slug, typeId, list);
+ return summaries.flatMap((summary, index) => {
   const ranked = summary.rankings.filter(r => r.weeklyRank !== null);
-  return ranked.map(r => ({ studentId: r.studentId, ...week, rank: r.weeklyRank!, count: ranked.length }));
- }));
- return results.flat();
+  return ranked.map(r => ({ studentId: r.studentId, ...list[index], rank: r.weeklyRank!, count: ranked.length }));
+ });
 }
 async function loadMock(slug: string, typeId: string, range: MorningRange): Promise<MorningRawSource> {
  const state = await readMockState(), division = state.divisions.find(d => d.slug === slug);

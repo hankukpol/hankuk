@@ -44,8 +44,12 @@ function getRuntimeDatabaseUrl() {
       url.searchParams.set("pgbouncer", "true");
     }
 
+    // 함수 인스턴스 하나가 쓰는 연결 수. 1 이면 화면 하나의 동시 조회(Promise.all)가 한 줄로 서고,
+    // 트랜잭션 중 다른 조회를 하는 코드가 자기 연결을 기다리며 멈출 수 있다(2026-09-17 휴가 QA).
+    // 트랜잭션 풀러(6543)가 실제 DB 연결을 나눠 쓰므로 4 로 둔다. 운영에서 조정하려면 PRISMA_CONNECTION_LIMIT.
     if (!url.searchParams.has("connection_limit")) {
-      url.searchParams.set("connection_limit", "1");
+      const configured = Number(process.env.PRISMA_CONNECTION_LIMIT);
+      url.searchParams.set("connection_limit", String(Number.isInteger(configured) && configured > 0 ? configured : 4));
     }
 
     return url.toString();

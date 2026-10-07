@@ -1,11 +1,16 @@
+import { shareInflight } from "@/lib/inflight";
 import { isMockMode } from "@/lib/mock-data";
 import { readMockState } from "@/lib/mock-store";
 import { notFound } from "@/lib/errors";
 import type { RegularRawSource } from "@/lib/exam-analysis-types";
 import { ymd } from "./metrics";
 
-/** Server-only adapter. Import tables and legacy score records remain the source of truth. */
-export async function loadAnalysisSource(
+/**
+ * Server-only adapter. Import tables and legacy score records remain the source of truth.
+ * 동시에 진행 중인 같은 학원 읽기는 한 번만 한다(shareInflight). 상담 자료·면담 권장처럼 아침·정기 분석을 함께 부르면
+ * 학원 전체 시험 자료를 두세 번 읽던 것을 줄인다. 돌려준 값은 읽기 전용으로만 쓴다(enrichSessions 등은 새 배열을 만든다).
+ */
+export const loadAnalysisSource = shareInflight((slug: string) => slug, async function loadAnalysisSource(
   slug: string,
 ): Promise<RegularRawSource> {
   if (isMockMode()) {
@@ -98,9 +103,9 @@ export async function loadAnalysisSource(
     participants: participants as RegularRawSource["participants"],
     responses,
   };
-}
+});
 
-export async function loadLegacyAnalysisScores(
+export const loadLegacyAnalysisScores = shareInflight((slug: string, divisionId: string, studentId?: string) => [slug, divisionId, studentId ?? ""].join("|"), async function loadLegacyAnalysisScores(
   slug: string,
   divisionId: string,
   studentId?: string,
@@ -156,7 +161,7 @@ export async function loadLegacyAnalysisScores(
     })),
     morning: morning.map((r) => ({ ...r, examDate: ymd(r.examDate) })),
   };
-}
+});
 
 export async function loadAnalysisCounseling(
   slug: string,

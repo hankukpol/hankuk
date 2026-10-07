@@ -6,14 +6,15 @@ import { DialogActions } from "@/components/ui/DialogActions";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
-import { CalendarDays, CreditCard, LoaderCircle, MessageSquareWarning, Plus, Star, Target } from "lucide-react";
+import { BookOpen, CalendarDays, CreditCard, LoaderCircle, MessageSquareWarning, Plus, Printer, Star, Target } from "lucide-react";
 import { toast } from "@/lib/sonner";
 
 import { PointCategoryBadge, PointValueBadge } from "@/components/points/PointBadges";
 import { PaymentMethodSelect } from "@/components/payments/PaymentMethodSelect";
 import { RefundModal } from "@/components/payments/RefundModal";
 import { SlideOver } from "@/components/ui/SlideOver";
-import { getInterviewResultTypeClasses, getInterviewResultTypeLabel } from "@/lib/interview-meta";
+import { JournalEntry } from "@/components/interviews/InterviewJournal";
+import { sortJournal } from "@/lib/interview-journal";
 import { getLeaveStatusClasses, getLeaveStatusLabel, getLeaveTypeLabel } from "@/lib/leave-meta";
 import { formatPaymentMethod } from "@/lib/payment-meta";
 import type { StudentAttendanceHistoryItem } from "@/lib/services/attendance.service";
@@ -1141,43 +1142,35 @@ export function StudentDetailTabs({
     );
   }
 
+  const journalHref = `/${divisionSlug}/admin/interviews?student=${encodeURIComponent(studentId)}`;
   return (
     <div className="space-y-5">
-      <div className="flex items-center gap-2 text-slate-600">
-        <MessageSquareWarning className="h-4 w-4" />
-        <span className="text-sm font-medium">면담</span>
+      <div className="admin-workspace-toolbar">
+        <div className="flex items-center gap-2 text-slate-600">
+          <MessageSquareWarning className="h-4 w-4" />
+          <span className="text-sm font-medium">면담 {interviews.length}회 · 최신순</span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <a className="admin-button admin-button-compact" href={journalHref}>
+            <BookOpen className="h-4 w-4" aria-hidden="true" />면담 일지 열기
+          </a>
+          {interviews.length ? (
+            <a className="admin-button admin-button-compact" href={`/${divisionSlug}/admin/students/${encodeURIComponent(studentId)}/interviews`} target="_blank" rel="noopener">
+              <Printer className="h-4 w-4" aria-hidden="true" />일지 인쇄
+            </a>
+          ) : null}
+        </div>
       </div>
 
       {interviews.length > 0 ? (
-        <div className="space-y-3">
-          {interviews.map((interview) => (
-            <article
-              key={interview.id}
-              className="admin-section"
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <span
-                  className={`rounded-lg border px-3 py-1 text-xs font-semibold ${getInterviewResultTypeClasses(interview.resultType)}`}
-                >
-                  {getInterviewResultTypeLabel(interview.resultType)}
-                </span>
-                <span className="admin-help">{formatDate(interview.date)}</span>
-                <span className="admin-help">기록자 {interview.createdByName}</span>
-              </div>
-              <h2 className="admin-section-title">{interview.reason}</h2>
-              <p className="admin-help mt-2">{interview.trigger || "트리거 기록 없음"}</p>
-              <p className="admin-help mt-3 leading-6">
-                {interview.content || "면담 내용이 없습니다."}
-              </p>
-              <p className="admin-help mt-3 leading-6">
-                후속 조치: {interview.result || "기록 없음"}
-              </p>
-            </article>
+        <div className="space-y-4">
+          {sortJournal(interviews).map((interview) => (
+            <JournalEntry key={interview.id} interview={interview} today={getKstTodayYmd()} />
           ))}
         </div>
       ) : (
-        <div className="admin-help py-6 text-center">
-          등록된 면담 기록이 없습니다.
+        <div className="admin-empty-state">
+          <p className="font-semibold">등록된 면담 기록이 없습니다.</p>
         </div>
       )}
     </div>

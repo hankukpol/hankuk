@@ -13,27 +13,21 @@ type AdminInterviewsPageProps = {
     studentId?: string;
     trigger?: string;
     reason?: string;
+    /** 학생 상세 "면담 일지 열기" — 폼은 열지 않고 그 학생의 일지를 고른다. */
+    student?: string;
   };
 };
-
-function getCurrentMonth() {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-  }).format(new Date());
-}
 
 export default async function AdminInterviewsPage({
   params,
   searchParams,
 }: AdminInterviewsPageProps) {
   await redirectIfDivisionFeatureDisabled(params.division, "interviewManagement");
-  const currentMonth = getCurrentMonth();
 
   const [students, interviews, followUps, settings] = await Promise.all([
     listStudents(params.division),
-    listInterviews(params.division, { month: currentMonth }),
+    // 학생별 일지는 기간을 나누지 않는다. 한 학원의 면담은 학생당 몇 건 수준이라 전체를 한 번에 읽는다.
+    listInterviews(params.division),
     listInterviews(params.division, { followUpDue: true }),
     getDivisionSettings(params.division),
   ]);
@@ -61,6 +55,7 @@ export default async function AdminInterviewsPage({
         initialFollowUps={followUps}
         warnInterview={students.some((s) => s.demeritPoints !== undefined) ? settings.warnLevel2 : settings.warnInterview}
         prefill={prefill}
+        initialStudentId={searchParams?.student}
       />
     </div>
   );

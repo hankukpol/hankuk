@@ -38,12 +38,13 @@ export const INTERVIEW_STATUS_VALUES = ["OPEN", "CLOSED"] as const;
 export type InterviewStatusValue = (typeof INTERVIEW_STATUS_VALUES)[number];
 
 export const INTERVIEW_STATUS_OPTIONS = [
-  { value: "OPEN", label: "진행 중" },
-  { value: "CLOSED", label: "종결" },
+  // 상태는 "면담"이 아니라 "약속을 확인했는가"를 말한다(운영자 결정 2026-10-07).
+  { value: "OPEN", label: "후속 확인 전" },
+  { value: "CLOSED", label: "확인 완료" },
 ] as const satisfies ReadonlyArray<{ value: InterviewStatusValue; label: string }>;
 
 export function getInterviewStatusLabel(value: string | null | undefined) {
-  return INTERVIEW_STATUS_OPTIONS.find((option) => option.value === value)?.label ?? "진행 중";
+  return INTERVIEW_STATUS_OPTIONS.find((option) => option.value === value)?.label ?? "후속 확인 전";
 }
 
 export function getInterviewStatusClasses(value: string | null | undefined) {

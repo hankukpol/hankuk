@@ -2127,6 +2127,11 @@ body:has(.admin-shell) {
   resize: none;
 }
 
+/* 면담 내용은 소제목 네 묶음이 한눈에 들어오는 높이로 시작한다. */
+.admin-shell textarea.interview-content-input {
+  min-height: 300px;
+}
+
 .admin-shell :is(input, select, textarea)::placeholder {
   color: var(--admin-text-disabled);
 }
@@ -4264,6 +4269,102 @@ table :is(a.admin-button, button.admin-button):hover {
   color: var(--admin-text-muted);
 }
 
+/* 면담 일지 표 — 왼쪽 소제목, 오른쪽 내용. 행 단위로만 쪽이 넘어간다. */
+.student-report .report-journal th {
+  width: 18%;
+  background: var(--admin-surface-soft);
+  text-align: left;
+  vertical-align: top;
+}
+
+.student-report .report-journal td.wrap {
+  vertical-align: top;
+  line-height: 1.6;
+}
+
+/* ==========================================================================
+   학생별 면담 일지 — /[division]/admin/interviews (DESIGN.md 0절 11항)
+   왼쪽 학생 목록(고정 폭, 화면에 붙어 따라옴) + 오른쪽 선택 학생 일지.
+   선택 표시는 왼쪽 막대가 아니라 칸 전체의 accent 바탕·테두리다.
+   ========================================================================== */
+.interview-journal-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  align-items: start;
+  gap: 24px;
+}
+
+.interview-journal-students {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+}
+
+.interview-student-list {
+  position: relative;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+}
+
+.interview-student-item {
+  display: grid;
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: var(--admin-text);
+  font-size: 15px;
+  text-align: left;
+}
+
+.interview-student-item:hover {
+  background: var(--admin-surface-soft);
+}
+
+.interview-student-item[aria-pressed="true"] {
+  border-color: var(--admin-accent-line);
+  background: var(--admin-accent-soft);
+}
+
+.interview-student-item:focus-visible {
+  outline: 2px solid var(--admin-accent);
+  outline-offset: 1px;
+}
+
+.interview-journal-list {
+  padding-left: 18px;
+  list-style: disc;
+}
+
+.interview-promise-list {
+  padding-left: 22px;
+  font-weight: 600;
+  list-style: decimal;
+}
+
+.interview-journal-list li + li,
+.interview-promise-list li + li {
+  margin-top: 4px;
+}
+
+@media (max-width: 767px) {
+  .interview-journal-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .interview-journal-students {
+    position: static;
+    max-height: none;
+  }
+}
+
 .report-toolbar {
   display: flex;
   flex-direction: column;
@@ -4366,5 +4467,18 @@ table :is(a.admin-button, button.admin-button):hover {
 
   .student-report :is(.report-section-head, .report-subhead) {
     break-after: avoid;
+  }
+  /* 면담 일지는 쪽 아래 이름만 다르다. */
+  .interview-journal-print {
+    page: interview-journal;
+  }
+  @page interview-journal {
+    size: A4 portrait;
+    margin: 12mm 12mm 14mm;
+    @bottom-right {
+      content: "학생 면담 일지 · " counter(page) " / " counter(pages);
+      color: #667085;
+      font-size: 8pt;
+    }
   }
 }

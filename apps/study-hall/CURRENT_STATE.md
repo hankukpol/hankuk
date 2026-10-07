@@ -1,5 +1,18 @@
 # 현재 구현·검증 상태
 
+## 2026-10-07 로컬 Docker 재실행·접속 포트 수정
+기존 study-hall-dev-1이 Exited255 상태. 재시작 시 Windows TCP 제외 범위2997~3096/3097~3196에 포함된3000/3110이 차단되는 것을 netsh 읽기조회 및 Docker bind 오류로 확인. compose 호스트포트를 STUDY_HALL_PORT(기본3300)로 설정하고 NEXT_PUBLIC_APP_URL을 일치시켰다. 내부3000/기존 dev-state·의존성·캐시 볼륨 유지, 이미지 재빌드/데이터 재시드/삭제 없음. docker compose up -d --no-build dev 성공·healthy.
+실제 브라우저 http://localhost:3300/login 관리자 mock로그인200, 학생명단 페이지/API 정상 로딩(로컬 전체40명·재원35명·테스트학생 포함). 소스 MorningPersonalReport의 호스트/컨테이너 SHA256동일 확인. MOCK_MODE=true, 기존 .local/mock-db.json 존재 확인. 운영 Supabase와 별개인 파일 목업 데이터이며 hankuk 그룹의 Supabase 실행만으로 웹서버가 켜지는 것은 아니다. 현재 클로드 미완료 면담 관련 파일은 보존. 앱브라우저 login열기는 queued 응답으로 실제탭 전환 확인과 구분한다. QA근거 .local/docker-3300-qa.cjs와 docker-3300-students.png. docs/docker-development.md·LOCAL_DEMO 주소/시작·종료·자동반영 안내 갱신. Git커밋/푸시/운영배포/운영DB쓰기 없음.
+
+
+## 최신 배포 — 2026-10-07 면담 기록을 학생별 일지로 재구성 (Claude, 사용자 승인 A안)
+
+- 배경: 운영 면담 화면이 월별·전 학생 혼합 목록에 사유/내용/후속을 같은 폭 3칸으로 보여 긴 내용이 세로로 끝없이 늘어났다(강선구·신희정 등 실제 기록).
+- 변경: 1차 탭 `학생별 일지`(왼쪽 학생 목록 + 오른쪽 일지), 맨 위 `지켜야 할 약속`(약속이 적힌 최근 면담, 번호 목록·확인 완료 버튼), 면담 회차 패널(`[소제목]` 줄 인식 → 소제목 행), 상태 말 `후속 확인 전/확인 완료`, 입력 폼 `기본 틀 넣기`·지난 약속 패널·면담 내용 칸 높이 300px, 후속 확인 탭은 약속 목록+`일지 보기`·`확인 완료`, 권장 탭 `일지 보기`. 학생 상세 면담 탭도 같은 패널 + `면담 일지 열기`(`/interviews?student=`)·`일지 인쇄`. 새 인쇄 경로 `/[division]/admin/students/[id]/interviews`(A4).
+- 파일: `lib/interview-journal.ts`(파싱·요약 순수 함수), `components/interviews/InterviewJournal.tsx`·`InterviewJournalPrint.tsx`·`InterviewManager.tsx`, `app/[division]/admin/interviews/page.tsx`(월 필터 없이 전체 조회), `app/[division]/admin/students/[id]/interviews/page.tsx`, `components/students/StudentDetailTabs.tsx`, `lib/interview-meta.ts`(상태 말), `app/globals.css`, DESIGN.md 0절 11항, `tests/unit/interview-journal.test.ts`.
+- **DB·API 변경 없음.** 기존 content/result 텍스트를 화면에서만 나눈다. 소제목 기본값(학습 현황·성적·생활·지도)은 입력 보조 틀일 뿐 계산 규칙이 아니며, 소제목은 자유롭게 바꿔 써도 같은 방식으로 나뉜다(학원별 설정 저장은 DB 칸이 필요해 이번에 하지 않음).
+- 검증: typecheck 통과, 테스트 982/982, 로컬 목업(3300)에서 데스크톱 2단·모바일 SlideOver·폼 틀 넣기·지난 약속·인쇄 미리보기 확인, 콘솔 오류 없음. 실제 인쇄 쪽 나눔과 운영 데이터 화면은 운영자 확인 필요.
+
 ## 최신 배포 — 2026-10-05 개인 성적표 인쇄의 문항 기준 통일 (Claude, 사용자 승인)
 
 - 원인: 성적표 인쇄의 문항 표가 학생마다 `가장 먼저 복습` 과목(없으면 최근 과목) 하나만 담아, 같은 날짜라도 학생마다 다른 과목의 정답률이 나왔다. 날짜 머리 줄에 과목명이 없어 같은 시험처럼 보였다(계산 자체는 회차별로 동일).

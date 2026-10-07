@@ -610,7 +610,7 @@ async function buildRenewPaymentResultFromPayload(
  * 직렬화 트랜잭션은 동시에 같은 학생 결제를 고치면 P2034(직렬화 충돌)로 실패한다. 한 번 다시 시도하고,
  * 그래도 충돌하면 500 대신 '다시 시도' 안내(409)로 알린다(외출·휴가 저장과 같은 처리).
  */
-async function withSerializableRetry<T>(run: () => Promise<T>): Promise<T> {
+export async function withSerializableRetry<T>(run: () => Promise<T>): Promise<T> {
   for (let attempt = 0; ; attempt++) {
     try {
       return await run();

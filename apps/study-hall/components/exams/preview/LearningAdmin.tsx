@@ -28,7 +28,8 @@ const suggested: LearningPolicy = {
   timeTracking: false,
   timeLimits: {},
 };
-export function LearningAdmin({ division, previewOnly = true }: { division: string; previewOnly?: boolean }) {
+/** embedded: 설정 > 성적 분석 기준 탭 안에서 연다. 제목·설명은 설정 화면이 이미 보여 준다. */
+export function LearningAdmin({ division, previewOnly = true, embedded = false }: { division: string; previewOnly?: boolean; embedded?: boolean }) {
   const formId = useId();
   const learning = useLearning(),
     [tab, setTab] = useState("topics"),
@@ -88,7 +89,7 @@ export function LearningAdmin({ division, previewOnly = true }: { division: stri
   return (
     <div className={`admin-flat-page ${styles.reportTables}`}>
       <div className="admin-workspace-toolbar">
-        <div>
+        <div className={embedded ? "sr-only" : undefined}>
           <h1 className="admin-page-title">진도·학습 분석 설정</h1>
           <p className="admin-help">
             이 학원의 표준 과목과 진도만 연결합니다. 변경 전 미리보기를

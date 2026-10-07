@@ -23,10 +23,10 @@ export default async function AdminStudyRankingPage({
     <div className="admin-flat-page">
       <section className="max-md:sr-only">
         <h1 className="admin-page-title">
-          월간 학습시간 랭킹
+          학습 랭킹
         </h1>
         <p className="admin-page-description">
-          달력에서 조회 월을 선택하면 학생별 해당 월 누적 학습시간과 랭킹을 1등부터
+          월간 누적 학습시간 순위입니다. 달력에서 조회 월을 선택하면 학생별 해당 월 누적 학습시간과 랭킹을 1등부터
           순서대로 확인할 수 있습니다.
         </p>
       </section>

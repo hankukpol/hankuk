@@ -1,17 +1,6 @@
-import { requireDivisionAdminAccess } from "@/lib/auth";
-import { redirectIfDivisionFeatureDisabled } from "@/lib/division-feature-guard";
-import { LearningProvider } from "@/components/exams/preview/LearningProvider";
-import { LearningAdmin } from "@/components/exams/preview/LearningAdmin";
-export default async function LearningPage({
-  params,
-}: {
-  params: { division: string };
-}) {
-  await requireDivisionAdminAccess(params.division, ["ADMIN", "SUPER_ADMIN"]);
-  await redirectIfDivisionFeatureDisabled(params.division, "examManagement");
-  return (
-    <LearningProvider division={params.division} preview={false}>
-      <LearningAdmin division={params.division} previewOnly={false} />
-    </LearningProvider>
-  );
+import { redirect } from "next/navigation";
+
+/** 진도·학습 분석 설정은 설정 > 성적 분석 기준으로 옮겼다. 예전 주소는 그리로 보낸다. */
+export default function LearningPage({ params }: { params: { division: string } }) {
+  redirect(`/${params.division}/admin/settings/exam-analysis`);
 }

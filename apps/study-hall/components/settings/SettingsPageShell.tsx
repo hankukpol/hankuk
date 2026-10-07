@@ -13,6 +13,7 @@ export type SettingsSectionId =
   | "seats"
   | "exams"
   | "exam-schedules"
+  | "exam-analysis"
   | "point-rules"
   | "staff";
 
@@ -30,6 +31,7 @@ const SETTINGS_TABS: ReadonlyArray<{
   { id: "seats", label: "자습실·좌석", path: "settings/seats" },
   { id: "exams", label: "시험 템플릿", path: "settings/exams" },
   { id: "exam-schedules", label: "시험 일정", path: "settings/exam-schedules" },
+  { id: "exam-analysis", label: "성적 분석 기준", path: "settings/exam-analysis" },
   { id: "point-rules", label: "상벌점 규칙", path: "points/rules" },
   { id: "staff", label: "직원", path: "staff" },
 ];
@@ -96,7 +98,8 @@ export function SettingsPageShell({
   return (
     <div className="admin-flat-page admin-compact-workspace admin-settings-workspace">
       <section className={mobileTitleInShell ? "max-md:sr-only" : undefined}>
-        <h1 className="admin-page-title">{title}</h1>
+        {/* 제목은 메뉴 이름 하나(DESIGN.md 0절 13항). 탭 이름(title)은 화면 판독기에만 덧붙인다. */}
+        <h1 className="admin-page-title">설정<span className="sr-only"> · {title}</span></h1>
         <p className="admin-page-description">{description}</p>
       </section>
 

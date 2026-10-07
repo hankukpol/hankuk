@@ -58,7 +58,7 @@ export default async function StudentsPage({ params, searchParams }: StudentsPag
     <div className="admin-flat-page">
       <section>
         <h1 className="admin-page-title">
-          학생 명단 관리
+          학생 명단
         </h1>
         <p className="admin-page-description">
           학생 검색, 상태 및 직렬 필터, 경고 단계 확인, 상세 페이지 이동까지 한 화면에서 처리합니다.

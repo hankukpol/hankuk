@@ -179,7 +179,7 @@ test("cohort defaults to today and distinguishes insufficient samples from no de
   analysis.insufficientSample = true;
 });
 
-test("both analysis tabs are enabled and busy import still blocks leaving", () => {
+test("score input tabs no longer carry analysis and busy import still blocks leaving", () => {
   let items: { id: string; disabled?: boolean }[] = [];
   const empty = () => null;
   const Component = load("components/exams/ExamSecondaryTabs.tsx", {
@@ -192,9 +192,10 @@ test("both analysis tabs are enabled and busy import still blocks leaving", () =
   }).ExamSecondaryTabs;
   for (const category of ["REGULAR", "MORNING"]) {
     renderToStaticMarkup(React.createElement(Component, { divisionSlug: "test", category, examTypes: [] }));
-    for (const id of ["cohort", "students"]) assert.equal(items.find((item) => item.id === id)?.disabled, false);
+    assert.equal(items.some((item) => item.id === "cohort" || item.id === "students"), false);
+    assert.equal(items.find((item) => item.id === "input")?.disabled, false);
   }
-  assert.match(fs.readFileSync(path.join(root, "components/exams/ExamSecondaryTabs.tsx"), "utf8"), /id: "cohort", label: "반 분석", disabled: busy/);
+  assert.match(fs.readFileSync(path.join(root, "components/exams/ExamSecondaryTabs.tsx"), "utf8"), /label: category === "MORNING" \? "일일 입력" : "입력",\s*disabled: busy/);
 });
 
 

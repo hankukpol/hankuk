@@ -262,7 +262,7 @@ test("cohort report: low-N warning, unavailable external averages and empty matc
   assert.match(ranked, /<td>선택 안 함<\/td><td>0<\/td><td>미응시<\/td>/);
 });
 
-test("secondary tabs: both analyses are enabled and import busy state still guards navigation", () => {
+test("secondary tabs: score input keeps only input tabs (analysis moved to the 성적 분석 route tab) and import busy state still guards navigation", () => {
   const source = fs.readFileSync(path.join(root, "components/exams/ExamSecondaryTabs.tsx"), "utf8");
   let items: { id: string; disabled?: boolean }[] = [];
   const empty = () => null;
@@ -275,7 +275,8 @@ test("secondary tabs: both analyses are enabled and import busy state still guar
   }).ExamSecondaryTabs;
   for (const category of ["REGULAR", "MORNING"]) {
     renderToStaticMarkup(React.createElement(Component, { divisionSlug: "test", category, examTypes: [] }));
-    for (const id of ["cohort", "students"]) assert.equal(items.find((item) => item.id === id)?.disabled, false);
+    // 2026-10-07 화면 계층: 반 분석·학생별은 성적 입력 탭에서 빠지고 1차 탭 `성적 분석`(/exams/analysis)으로 옮겼다.
+    assert.equal(items.map((item) => item.id).join(","), category === "MORNING" ? "input,weekly,import" : "input,import");
   }
   assert.match(source, /disabled: busy/);
 });

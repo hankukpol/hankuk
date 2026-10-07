@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { AdminTabs } from "@/components/ui/AdminTabs";
+import { ExamRouteTabs } from "@/components/exams/ExamRouteTabs";
 import { StudentSearchCombobox } from "@/components/ui/StudentSearchCombobox";
 import { MobileDisclosure } from "@/components/ui/MobileDisclosure";
 import { recentMorningAnalysisRange } from "@/lib/morning-exam-analysis-schemas";
@@ -34,6 +35,9 @@ export function PreviewWorkspace({
     embeddedKind ?? (initial.kind === "morning" ? "morning" : "regular"),
   );
   const [typeId, setTypeId] = useState(initial.examTypeId ?? "");
+  // 성적 분석 3차: 반 전체 / 학생별(학생을 골라 개인 분석을 연다). 개인 분석 화면에서는 쓰지 않는다.
+  const [view, setView] = useState<"cohort" | "students">(initial.view === "students" ? "students" : "cohort");
+  const [studentQuery, setStudentQuery] = useState("");
   const [date, setDate] = useState(initial.examDate ?? "");
   const [range, setRange] = useState({
     ...recentMorningAnalysisRange(),
@@ -109,7 +113,6 @@ export function PreviewWorkspace({
     ...(kind === "morning" ? range : { examDate: selectedDate }),
   }).toString();
   const root = `/${division}/admin/exams${preview ? "/preview" : ""}`;
-  const cohortRoot = preview ? root : `${root}/analysis`;
   const old =
     mode === "student"
       ? `/${division}/student/exams?${new URLSearchParams(kind === "morning" ? { morningType: selected?.id ?? "", morningFrom: range.from, morningTo: range.to } : { analysisSession: `${selected?.id}:${selectedDate}` })}`
@@ -126,28 +129,12 @@ export function PreviewWorkspace({
       <div className="admin-flat-page">
         {mode === "admin" && !embeddedKind && (
           <h1 className="admin-page-title">
-            {studentId ? "개인 성적 분석" : "전체 성적 분석"}
-            {preview ? " 미리보기" : ""}
+            시험 성적{preview ? " 미리보기" : ""}
           </h1>
         )}
         {preview && <p className="admin-help">로컬 테스트 데이터</p>}
         {mode === "admin" ? (
-          <nav className="admin-subtabs admin-subtabs-scroll" aria-label="성적 메뉴">
-            <a className="admin-subtab" href={`/${division}/admin/exams?tab=${kind}`}>
-              성적 입력·가져오기
-            </a>
-            <a className="admin-subtab" href={`${cohortRoot}?${navigation}`}
-              aria-current={!studentId ? "page" : undefined}>
-              전체 분석
-            </a>
-            {studentId && (
-              <a className="admin-subtab" href={`${root}/students/${encodeURIComponent(studentId)}?${navigation}`}
-                aria-current="page">개인 분석</a>
-            )}
-            <a className="admin-subtab" href={`${root}/learning`}>
-              진도·학습 분석 설정
-            </a>
-          </nav>
+          <ExamRouteTabs division={division} active="analysis" />
         ) : preview ? (
           <a className="admin-text-action" href={old}>성적 분석 보기</a>
         ) : null}
@@ -177,7 +164,7 @@ export function PreviewWorkspace({
         )}
         {!embeddedKind && mode === "admin" && (
           <AdminTabs
-            variant="primary"
+            variant="secondary"
             label="시험 구분"
             idPrefix="preview-kind"
             panelId="preview-result"
@@ -194,11 +181,58 @@ export function PreviewWorkspace({
           />
         )}
         {mode === "admin" && !studentId && (
-          <p className="admin-help">
-            현재 전체 응시자 분석입니다. 개인 점수와 문항별 정오를 보려면
-            아래에서 학생을 선택하세요.
-          </p>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <AdminTabs
+              variant="secondary"
+              className="admin-subtabs-underline"
+              label="분석 범위"
+              idPrefix="analysis-view"
+              panelId="analysis-view-panel"
+              items={[
+                { id: "cohort", label: "반 전체" },
+                { id: "students", label: <>학생별 <span className="tabular-nums">({students.length})</span></> },
+              ]}
+              activeId={view}
+              onChange={(id) => setView(id)}
+            />
+            {!preview && (
+              <a className="admin-text-action" href={`/${division}/admin/settings/exam-analysis`}>
+                성적 분석 기준 설정
+              </a>
+            )}
+          </div>
         )}
+        {mode === "admin" && !studentId && view === "students" && (
+          <section id="analysis-view-panel" role="tabpanel" aria-labelledby="analysis-view-students" className="admin-section">
+            <div className="admin-filter-bar">
+              <label className="admin-label">
+                학생 검색
+                <input type="search" value={studentQuery} onChange={(e) => setStudentQuery(e.target.value)} placeholder="이름 또는 수험번호" />
+              </label>
+            </div>
+            <div className="admin-table-frame">
+              <table aria-label="학생별 개인 분석">
+                <thead><tr><th>수험번호</th><th>이름</th><th>개인 분석</th></tr></thead>
+                <tbody>
+                  {students
+                    .filter((s) => !studentQuery.trim() || s.name.includes(studentQuery.trim()) || s.studentNumber.includes(studentQuery.trim()))
+                    .map((s) => (
+                      <tr key={s.id}>
+                        <td className="tabular-nums">{s.studentNumber}</td>
+                        <td className="admin-table-name">
+                          <a className="admin-table-link" href={`${root}/students/${encodeURIComponent(s.id)}?${navigation}`}>{s.name}</a>
+                        </td>
+                        <td>
+                          <a className="admin-button admin-button-compact" href={`${root}/students/${encodeURIComponent(s.id)}?${navigation}`}>열기</a>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+        <div hidden={mode === "admin" && !studentId && view === "students"}>
         <MobileDisclosure title={mode === "admin" ? "시험·학생 조회 조건" : "조회 조건"}>
           <div className={`admin-filter-bar ${styles.filterFrame}`}>
             {mode === "admin" && (
@@ -381,6 +415,7 @@ export function PreviewWorkspace({
               성적 분석을 불러오는 중입니다.
             </p>
           )}
+        </div>
         </div>
       </div>
     </LearningProvider>

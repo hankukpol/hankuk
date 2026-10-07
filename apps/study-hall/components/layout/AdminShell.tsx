@@ -6,6 +6,7 @@ import { LogOut, Menu, X } from "lucide-react";
 
 import { AdminSidebar, getShellMenuLabel, getShellScreenLabel, type ShellRole } from "@/components/layout/AdminSidebar";
 import { AppSwitchMenu } from "@/components/layout/AppSwitchMenu";
+import { AdminBreadcrumb } from "@/components/layout/AdminBreadcrumb";
 import { StaffChatDock } from "@/components/chat/StaffChatDock";
 import type { DivisionFeatureFlags } from "@/lib/division-features";
 import { CheckDraftOwner } from "@/components/ui/CheckDraftSafety";
@@ -164,6 +165,8 @@ export function AdminShell({
                 <Menu className="h-5 w-5" />
               </button>
               <p className="admin-mobile-topbar-title md:hidden">{screenLabel ?? divisionName}</p>
+              {/* 768px 이상: 같은 줄 왼쪽에 현재 위치(메뉴 묶음 › 메뉴 › 하위 화면). 오른쪽은 채팅·앱 전환. */}
+              <AdminBreadcrumb role={role} divisionSlug={divisionSlug} pathname={pathname ?? ""} />
               <div ref={setMobileToolsHost} className="contents md:hidden" />
               <StaffChatDock
                 divisionSlug={divisionSlug}

@@ -2,7 +2,7 @@ export function normalizeAnalysisSelection(
   params: Record<string, string | string[] | undefined> = {},
 ) {
   const initial: Record<string, string> = Object.fromEntries(
-    ["kind", "examTypeId", "examDate", "from", "to"].flatMap((key) =>
+    ["kind", "examTypeId", "examDate", "from", "to", "view"].flatMap((key) =>
       typeof params[key] === "string" ? [[key, params[key] as string]] : [],
     ),
   );

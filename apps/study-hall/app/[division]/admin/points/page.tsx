@@ -30,7 +30,7 @@ export default async function AdminPointsPage({ params }: AdminPointsPageProps) 
   return (
     <div className="admin-flat-page">
       <section className="max-md:sr-only">
-        <h1 className="admin-page-title">상벌점 관리</h1>
+        <h1 className="admin-page-title">상벌점</h1>
       </section>
 
       <PointGrantManager

@@ -56,6 +56,12 @@
 실제 브라우저 http://localhost:3300/login 관리자 mock로그인200, 학생명단 페이지/API 정상 로딩(로컬 전체40명·재원35명·테스트학생 포함). 소스 MorningPersonalReport의 호스트/컨테이너 SHA256동일 확인. MOCK_MODE=true, 기존 .local/mock-db.json 존재 확인. 운영 Supabase와 별개인 파일 목업 데이터이며 hankuk 그룹의 Supabase 실행만으로 웹서버가 켜지는 것은 아니다. 현재 클로드 미완료 면담 관련 파일은 보존. 앱브라우저 login열기는 queued 응답으로 실제탭 전환 확인과 구분한다. QA근거 .local/docker-3300-qa.cjs와 docker-3300-students.png. docs/docker-development.md·LOCAL_DEMO 주소/시작·종료·자동반영 안내 갱신. Git커밋/푸시/운영배포/운영DB쓰기 없음.
 
 
+## 배포 — 2026-10-07 화면 계층 정리 + 시험 성적 구조 (Claude, 운영자 승인)
+
+- 점검 결과: ① 설정 탭 `상벌점 규칙`(/points/rules)에서 사이드바 `상벌점`이 켜지고 `직원`(/staff)은 아무 메뉴도 켜지지 않음 ② 메뉴 첫 화면 제목이 메뉴 이름과 다름 ③ 하위 화면 위치 표시 없음 ④ 시험 성적에서 분석으로 가는 길이 둘(`/exams` 2차 `반 분석·학생별`, 별도 `/exams/analysis`의 자체 메뉴).
+- 수정: `getShellLocation`(가장 긴 경로 하나만 활성, `alsoMatches`) + 사이드바 강조 일원화, 위치 표시 `AdminBreadcrumb`·`lib/admin-breadcrumbs.ts`, 제목 = 메뉴 이름(설정 h1 `설정`, 대시보드 `대시보드`), 시험 성적 = 1차 `성적 입력|성적 분석`(`ExamRouteTabs`) → 2차 아침/정기 → 3차(입력: 일일 입력·주간 현황·가져오기 / 분석: 반 전체·학생별), 개인 분석은 하위 화면, `진도·학습 분석 설정` → `설정 › 성적 분석 기준`(/settings/exam-analysis), 예전 주소 자동 이동. DESIGN.md 0절 13항.
+- 검증: typecheck·lint, 테스트 1013/1013(위치 표시 단위 테스트, 성적 입력 탭 구성 렌더 테스트 갱신), 로컬 /points/rules·/exams·/exams/analysis 에서 위치·메뉴 강조·탭 단계 확인.
+
 ## 배포 — 2026-10-07 운영 확인 후 수정 4건 (Claude, 운영자 승인)
 
 - 버튼 hover 흰 글자: 앞 레이어 `.admin-button:hover`(밝은 면)가 `.admin-button-primary:hover`를 같은 특이도·뒤 순서로 덮어 채움 버튼이 흰 바탕+흰 글자가 됨. CSS 끝에 종류별 hover·누름 규칙 추가. 자동 점검(scratchpad/hover-audit.mjs, 강제 hover·대비 3:1)으로 자가 시험 통과(일부러 깨면 1.04:1 검출).

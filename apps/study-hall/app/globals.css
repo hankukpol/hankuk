@@ -4995,3 +4995,56 @@ table :is(a[class*="rounded"]:not(.admin-button), button[class*="rounded"]:not(.
 .admin-shell [hidden] {
   display: none !important;
 }
+
+/* 현재 위치(브레드크럼) — 모든 관리자 화면 상단 줄 왼쪽, 제목 위 (DESIGN.md 0절 13항).
+   회색 13px, 구분은 작은 꺾쇠, 마지막(현재 화면)만 본문색 600. 768px 미만은 상단 바 제목이 대신한다. */
+.admin-breadcrumb {
+  min-width: 0;
+  margin-right: auto;
+}
+
+.admin-breadcrumb ol {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--admin-text-muted);
+  font-size: 13px;
+}
+
+.admin-breadcrumb li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.admin-breadcrumb svg {
+  width: 14px;
+  height: 14px;
+  color: var(--admin-text-disabled);
+}
+
+.admin-breadcrumb a {
+  color: var(--admin-text-muted);
+  text-decoration: none;
+}
+
+.admin-breadcrumb a:hover {
+  color: var(--admin-text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.admin-breadcrumb [aria-current="page"] {
+  color: var(--admin-text);
+  font-weight: 600;
+}
+
+@media (max-width: 767px) {
+  .admin-breadcrumb {
+    display: none;
+  }
+}

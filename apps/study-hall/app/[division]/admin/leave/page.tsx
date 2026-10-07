@@ -34,7 +34,7 @@ export default async function AdminLeavePage({ params }: AdminLeavePageProps) {
   return (
     <div className="admin-flat-page">
       <section className="max-md:sr-only">
-        <h1 className="admin-page-title">외출/휴가 관리</h1>
+        <h1 className="admin-page-title">외출/휴가</h1>
       </section>
 
       <LeaveManager

@@ -29,6 +29,8 @@ type NavItem = {
   icon: React.ElementType;
   featureKey?: DivisionFeatureKey;
   divisionOnly?: string;
+  /** 경로는 다른 곳에 있지만 이 메뉴에 속하는 화면(설정 탭의 상벌점 규칙·직원 등). */
+  alsoMatches?: string[];
 };
 
 type NavSection = {
@@ -137,7 +139,7 @@ const navSections: NavSection[] = [
         icon: FileSpreadsheet,
         featureKey: "reporting",
       },
-      { href: "settings", label: "설정", icon: Settings },
+      { href: "settings", label: "설정", icon: Settings, alsoMatches: ["points/rules", "staff"] },
     ],
   },
 ];
@@ -170,6 +172,32 @@ const shellNav: Record<ShellRole, { sections: NavSection[]; basePath: string; me
   assistant: { sections: assistantNavSections, basePath: "assistant", menuLabel: "조교 메뉴" },
 };
 
+/**
+ * 지금 화면이 속한 메뉴 한 개. 사이드바 강조·모바일 상단 제목·위치 표시가 모두 이 결과를 쓴다.
+ * 가장 긴 경로가 이긴다: `/admin/points/rules` 는 `상벌점`(points)보다 `설정`(alsoMatches)이 길게 맞는다.
+ */
+export function getShellLocation(role: ShellRole, divisionSlug: string, pathname: string) {
+  const { sections, basePath } = shellNav[role];
+  let matched: { section: string; label: string; href: string; length: number } | null = null;
+
+  for (const section of sections) {
+    for (const item of section.items) {
+      const href = `/${divisionSlug}/${basePath}${item.href ? `/${item.href}` : ""}`;
+      const candidates = [href, ...(item.alsoMatches ?? []).map((path) => `/${divisionSlug}/${basePath}/${path}`)];
+      for (const candidate of candidates) {
+        const isActive = item.href === "" && candidate === href
+          ? pathname === href
+          : pathname === candidate || pathname.startsWith(`${candidate}/`);
+        if (isActive && (!matched || candidate.length > matched.length)) {
+          matched = { section: section.label, label: item.label, href, length: candidate.length };
+        }
+      }
+    }
+  }
+
+  return matched ? { section: matched.section, label: matched.label, href: matched.href, basePath: `/${divisionSlug}/${basePath}` } : null;
+}
+
 export function getShellMenuLabel(role: ShellRole) {
   return shellNav[role].menuLabel;
 }
@@ -183,25 +211,7 @@ export function getShellScreenLabel(role: ShellRole, divisionSlug: string, pathn
   if (role === "admin" && pathname === `/${divisionSlug}/admin/settings/rules/arrivals`) return "등원 설정";
   if (role === "admin" && pathname === `/${divisionSlug}/admin/staff`) return "직원 관리";
   if (role === "admin" && pathname === `/${divisionSlug}/admin/points/rules`) return "상벌점 규칙";
-  const { sections, basePath } = shellNav[role];
-  let matched: { label: string; length: number } | null = null;
-
-  for (const section of sections) {
-    for (const item of section.items) {
-      const href = `/${divisionSlug}/${basePath}${item.href ? `/${item.href}` : ""}`;
-      const isActive =
-        item.href === ""
-          ? pathname === href
-          : pathname === href || pathname.startsWith(`${href}/`);
-
-      // 더 긴 경로가 이긴다. `/admin` 과 `/admin/exams` 가 함께 맞으면 뒤가 화면 이름이다.
-      if (isActive && (!matched || href.length > matched.length)) {
-        matched = { label: item.label, length: href.length };
-      }
-    }
-  }
-
-  return matched?.label ?? null;
+  return getShellLocation(role, divisionSlug, pathname)?.label ?? null;
 }
 
 type AdminSidebarProps = {
@@ -242,6 +252,7 @@ export function AdminSidebar({
     .filter((section) => section.items.length > 0);
 
   const isMobile = variant === "mobile";
+  const activeHref = getShellLocation(role, divisionSlug, pathname ?? "")?.href ?? null;
 
   return (
     <div className={isMobile ? "flex flex-col" : "admin-sidebar"}>
@@ -258,10 +269,7 @@ export function AdminSidebar({
             <p className="admin-sidebar-group">{section.label}</p>
             {section.items.map((item) => {
               const href = `/${divisionSlug}/${basePath}${item.href ? `/${item.href}` : ""}`;
-              const isActive =
-                item.href === ""
-                  ? pathname === href
-                  : pathname === href || pathname.startsWith(`${href}/`);
+              const isActive = activeHref === href;
               const Icon = item.icon;
 
               return (

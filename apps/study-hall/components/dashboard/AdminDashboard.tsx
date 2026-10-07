@@ -644,9 +644,9 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
       {/* 제목 · 주요 작업 */}
       <section className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 max-md:sr-only">
-          <h1 className="admin-page-title">{data.division.name} 운영 현황</h1>
+          <h1 className="admin-page-title">대시보드</h1>
           <p className="admin-page-description">
-            {data.summary.todayDate} 기준
+            {data.division.name} · {data.summary.todayDate} 기준
             {data.summary.uncheckedPeriodCount > 0
               ? ` · ${data.summary.uncheckedPeriodCount}개 교시가 아직 미처리 상태입니다.`
               : " · 오늘 필수 교시는 모두 처리되었습니다."}

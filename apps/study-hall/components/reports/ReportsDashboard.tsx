@@ -214,7 +214,7 @@ export function ReportsDashboard({
       <section className="admin-section admin-compact-workspace">
         <div className="flex flex-wrap items-center justify-between gap-4 max-md:sr-only">
           <div>
-            <h1 className="admin-page-title">통계 / 보고서</h1>
+            <h1 className="admin-page-title">통계/보고서</h1>
             <p className="admin-page-description">
               출결 추이, 학생 요약, 관리자 활동 로그를 기간별로 확인합니다.
             </p>

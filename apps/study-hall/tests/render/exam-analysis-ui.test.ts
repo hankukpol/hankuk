@@ -716,7 +716,9 @@ test("counseling report prints only tables: grouped excused rows, weekly arrival
   const weeks = html.slice(html.indexOf("report-arrival-weeks"));
   assert.match(weeks, /<th scope="col">목<\/th><th scope="col">일<\/th><\/tr>/, "기록이 있는 요일 열만");
   assert.match(weeks, /<td class="report-down"><span class="report-day">9\/20<\/span>10:01<\/td>/, "지각한 날 시각은 빨간 글자");
-  assert.match(html, /<table class="report-table report-signs">/);
+  // 2쪽 맞춤(2026-10-07): 서명은 상담 기록 표의 마지막 줄(학생 확인 | 상담자)로 합쳤다.
+  assert.match(html, /<table class="report-table report-write report-write-compact">/);
+  assert.match(html, /<th scope="row">학생 확인<\/th><td><\/td><th scope="row">상담자<\/th><td><\/td>/);
   for (const card of ["report-kpis", "report-callout", "report-arrivals", "<dl", "<ul", "<p class=\"report-empty"]) assert.doesNotMatch(html, new RegExp(card), card);
 
   // 면담용 상담 자료는 학생용 성적표와 겹치지 않는다: 아침 성적은 결론·과목표만, 먼저 공부할 것 표는 없다.

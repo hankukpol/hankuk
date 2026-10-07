@@ -1,4 +1,5 @@
-import { PrintChecklist, PrintEmpty, PrintHeader, PrintSection as Section, PrintSigns, PrintStatement } from "@/components/print/PrintParts";
+import { PrintChecklist, PrintEmpty, PrintHeader, PrintSection as Section, PrintStatement } from "@/components/print/PrintParts";
+import { ReportFitPages } from "@/components/students/ReportFitPages";
 import { gapText } from "@/lib/exam-preview/morning-personal";
 import { subjectVerdict, weekLabel } from "@/lib/exam-preview/report-summary";
 import type { StudentCounselingReport as Report } from "@/lib/services/student-report.service";
@@ -11,6 +12,14 @@ const md = (date: string) => `${Number(date.slice(5, 7))}/${Number(date.slice(8,
 const days = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000) + 1;
 const tone = (gap: number | null) => gap === null || Math.round(gap * 10) === 0 ? undefined : gap > 0 ? "report-up" : "report-down";
 const verdictLabel = VERDICT_WORDS;
+
+/** 2쪽 맞춤(운영자 요청 2026-10-07): 긴 목록은 최근 것만 싣고 생략 건수를 적는다. 전체는 학생 상세 화면에 있다. */
+const LIST_CAP = { daily: 10, grouped: 6, points: 10, interviews: 3, questions: 4 } as const;
+const latest = <T,>(rows: T[], cap: number) => (rows.length > cap ? rows.slice(-cap) : rows);
+function Omitted({ count, span }: { count: number; span: number }) {
+  if (count <= 0) return null;
+  return <tr><td colSpan={span} className="wrap report-note-cell">앞선 {count}건은 생략했습니다. 전체 기록은 학생 상세 화면에서 확인합니다.</td></tr>;
+}
 
 /**
  * 학생 상담 자료(A4). 면담 때 학생과 함께 보며 적는 종이다.
@@ -26,7 +35,8 @@ export function StudentCounselingReport({ report, today }: { report: Report; tod
   const regularRank = regular?.report.ranks.external;
 
   return (
-    <article className="student-report" aria-label={`${student.name} 상담 자료`}>
+    <article className="student-report student-report-fit" aria-label={`${student.name} 상담 자료`}>
+      <ReportFitPages selector=".student-report-fit" pages={2} />
       <PrintHeader
         title="학생 상담 자료"
         side={`작성일 ${today}`}
@@ -153,7 +163,7 @@ export function StudentCounselingReport({ report, today }: { report: Report; tod
           {diagnosis.questions.length ? (
             <>
               <h3 className="report-subhead">면담 때 확인할 것</h3>
-              <PrintChecklist items={diagnosis.questions.map((q) => q.text)} />
+              <PrintChecklist items={diagnosis.questions.slice(0, LIST_CAP.questions).map((q) => q.text)} />
             </>
           ) : null}
         </Section>
@@ -170,7 +180,7 @@ export function StudentCounselingReport({ report, today }: { report: Report; tod
             {attendance.daily.length ? (
               <table className="report-table">
                 <thead><tr><th scope="col">날짜</th><th scope="col">상태</th><th scope="col">교시</th><th scope="col">사유</th></tr></thead>
-                <tbody>{attendance.daily.map((r) => <tr key={`${r.date}-${r.status}-${r.reason ?? ""}`}><td>{md(r.date)}({weekdayLabel(r.date)})</td><td className="report-down">{r.label}</td><td>{r.periods}</td><td className="wrap">{r.reason || "—"}</td></tr>)}</tbody>
+                <tbody>{latest(attendance.daily, LIST_CAP.daily).map((r) => <tr key={`${r.date}-${r.status}-${r.reason ?? ""}`}><td>{md(r.date)}({weekdayLabel(r.date)})</td><td className="report-down">{r.label}</td><td>{r.periods}</td><td className="wrap">{r.reason || "—"}</td></tr>)}<Omitted count={attendance.daily.length - LIST_CAP.daily} span={4} /></tbody>
               </table>
             ) : <PrintEmpty>기간 내 지각·결석이 없습니다.</PrintEmpty>}
             {attendance.grouped.length ? (
@@ -178,7 +188,7 @@ export function StudentCounselingReport({ report, today }: { report: Report; tod
                 <h3 className="report-subhead">사유결석 · 휴무 · 반휴</h3>
                 <table className="report-table">
                   <thead><tr><th scope="col">상태</th><th scope="col">사유</th><th scope="col">교시</th><th scope="col">날짜</th><th scope="col">일수</th><th scope="col">교시 수</th></tr></thead>
-                  <tbody>{attendance.grouped.map((r) => <tr key={`${r.status}-${r.reason ?? ""}`}><td>{r.label}</td><td className="wrap">{r.reason || "사유 없음"}</td><td>{r.periods}</td><td className="wrap">{r.dates}</td><td>{r.days}일</td><td>{r.count}회</td></tr>)}</tbody>
+                  <tbody>{attendance.grouped.slice(0, LIST_CAP.grouped).map((r) => <tr key={`${r.status}-${r.reason ?? ""}`}><td>{r.label}</td><td className="wrap">{r.reason || "사유 없음"}</td><td>{r.periods}</td><td className="wrap">{r.dates}</td><td>{r.days}일</td><td>{r.count}회</td></tr>)}<Omitted count={attendance.grouped.length - LIST_CAP.grouped} span={6} /></tbody>
                 </table>
               </>
             ) : null}
@@ -199,7 +209,7 @@ export function StudentCounselingReport({ report, today }: { report: Report; tod
         {points?.rows.length ? (
           <table className="report-table">
             <thead><tr><th>날짜</th><th>항목</th><th>점수</th><th>메모</th></tr></thead>
-            <tbody>{points.rows.map((r, i) => <tr key={`${r.date}-${i}`}><td>{md(r.date)}({weekdayLabel(r.date)})</td><td className="wrap">{r.name}</td><td className={`num ${r.points < 0 ? "report-down" : "report-up"}`}>{r.points > 0 ? `+${r.points}` : r.points}점</td><td className="wrap">{r.notes || "—"}</td></tr>)}</tbody>
+            <tbody>{latest(points.rows, LIST_CAP.points).map((r, i) => <tr key={`${r.date}-${i}`}><td>{md(r.date)}({weekdayLabel(r.date)})</td><td className="wrap">{r.name}</td><td className={`num ${r.points < 0 ? "report-down" : "report-up"}`}>{r.points > 0 ? `+${r.points}` : r.points}점</td><td className="wrap">{r.notes || "—"}</td></tr>)}<Omitted count={points.rows.length - LIST_CAP.points} span={4} /></tbody>
           </table>
         ) : <PrintEmpty>조회 기간에 상벌점 기록이 없습니다.</PrintEmpty>}
       </Section>
@@ -208,21 +218,21 @@ export function StudentCounselingReport({ report, today }: { report: Report; tod
         <Section title="최근 면담" keep>
           <table className="report-table">
             <thead><tr><th>날짜</th><th>사유</th><th>결과</th><th>후속 확인일</th></tr></thead>
-            <tbody>{interviews.map((r) => <tr key={r.id}><td>{r.date.slice(0, 10)}</td><td className="wrap">{r.reason}</td><td>{r.category === "STUDY" ? "학습 면담" : getInterviewResultTypeLabel(r.resultType)}</td><td>{r.followUpDate?.slice(0, 10) ?? "—"}</td></tr>)}</tbody>
+            <tbody>{interviews.slice(0, LIST_CAP.interviews).map((r) => <tr key={r.id}><td>{r.date.slice(0, 10)}</td><td className="wrap">{r.reason}</td><td>{r.category === "STUDY" ? "학습 면담" : getInterviewResultTypeLabel(r.resultType)}</td><td>{r.followUpDate?.slice(0, 10) ?? "—"}</td></tr>)}</tbody>
           </table>
         </Section>
       ) : null}
 
       <Section title="상담 기록" keep>
-        <table className="report-table report-write">
+        {/* 2쪽 맞춤(운영자 요청 2026-10-07): 칸을 한 표로 줄였다. 서명도 같은 표의 마지막 줄. */}
+        <table className="report-table report-write report-write-compact">
           <tbody>
-            <tr><th scope="row">상담 내용</th><td className="report-write-tall" /></tr>
-            <tr><th scope="row">학생과 정한 목표</th><td className="report-write-mid" /></tr>
-            <tr><th scope="row">다음 주 과제</th><td className="report-write-mid" /></tr>
-            <tr><th scope="row">다음 점검일</th><td /></tr>
+            <tr><th scope="row">상담 내용</th><td colSpan={3} className="report-write-tall" /></tr>
+            <tr><th scope="row">학생과 정한 목표</th><td className="report-write-mid" /><th scope="row">다음 주 과제</th><td className="report-write-mid" /></tr>
+            <tr><th scope="row">다음 점검일</th><td colSpan={3} /></tr>
+            <tr><th scope="row">학생 확인</th><td /><th scope="row">상담자</th><td /></tr>
           </tbody>
         </table>
-        <PrintSigns staff="상담자" />
       </Section>
     </article>
   );

@@ -4454,7 +4454,8 @@ table :is(a[class*="rounded"]:not(.admin-button), button[class*="rounded"]:not(.
   gap: 16px;
 }
 
-@media (max-width: 767px) {
+@media screen and (max-width: 767px) {
+  /* screen 한정: 인쇄 영역(A4 약 703px)도 767px 미만이라 인쇄에서 표가 내용 폭으로 줄어들었다(2026-10-07 운영 지적). */
   .student-report {
     padding: 16px;
   }
@@ -4919,4 +4920,29 @@ table :is(a[class*="rounded"]:not(.admin-button), button[class*="rounded"]:not(.
   .admin-breadcrumb {
     display: none;
   }
+}
+
+/* ==========================================================================
+   상담 자료 2쪽 맞춤 (운영자 요청 2026-10-07)
+   - 화면 A4 미리보기도 인쇄와 같은 글자·여백을 쓴다 → ReportFitPages 가 화면 높이로 인쇄 쪽수를 잰다.
+   - 상담 기록은 한 표(상담 내용 · 목표|과제 · 다음 점검일 · 학생 확인|상담자)로 줄였다.
+   - 그래도 2쪽을 넘으면 인쇄에서만 --report-fit 비율로 줄인다(최소 0.72).
+   ========================================================================== */
+.student-report { font-size: 9.5pt; }
+.student-report h1 { font-size: 15pt; }
+.student-report .report-section { margin-top: 5mm; }
+.student-report .report-section-head h2 { font-size: 11.5pt; }
+.student-report :is(.report-section-head p, .report-note, .report-kpi-notes td, .report-arrival-weeks .report-day) { font-size: 8pt; }
+.student-report .report-kpi-values td { font-size: 11pt; }
+.student-report .report-table { width: 100%; font-size: 8.5pt; }
+.student-report .report-table :is(th, td) { padding: 1.4mm 1.6mm; white-space: normal; word-break: keep-all; overflow-wrap: break-word; }
+
+.student-report .report-write-compact th { width: 16%; }
+.student-report .report-write-compact td { height: 9mm; }
+.student-report .report-write-compact td.report-write-tall { height: 26mm; }
+.student-report .report-write-compact td.report-write-mid { height: 15mm; }
+.student-report td.report-note-cell { color: var(--admin-text-muted); font-size: 8pt; text-align: left; }
+
+@media print {
+  .student-report-fit { zoom: var(--report-fit, 1); }
 }

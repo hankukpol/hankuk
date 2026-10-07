@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { TopicLearning, ReviewWorkbench, ExamTimeEntry } from './LearningViews';
 import { AdminTabs } from '@/components/ui/AdminTabs';
-import { PreviewPrintButton } from './PreviewPrintButton';
+import { ScorePrintButton } from './ScorePrintButton';
 import { FileText, MessageSquareText } from 'lucide-react';
 import { reviewGroups } from '@/lib/exam-preview/metrics';
 import { weekLabel } from '@/lib/exam-preview/report-summary';
@@ -52,7 +52,8 @@ export function MorningPersonalReport({data,mode,division}:{data:PreviewData;mod
  const [itemFilter,setItemFilter]=useState('wrong');
  const [itemDate,setItemDate]=useState('');
  const [focusRequest,setFocusRequest]=useState<ItemFocusRequest|null>(null);
- const [printing,setPrinting]=useState(false);
+ // 인쇄는 인쇄 전용 서식(ScorePrintSheet)이 맡는다. 화면 성적표를 펼쳐 복사하던 인쇄 상태는 쓰지 않는다(정리 예정).
+ const printing=false;
  const [expanded,setExpanded]=useState<Record<string,boolean>>({});
  const [mobile,setMobile]=useState(false);
  const [reviewSelection,setReviewSelection]=useState<ReviewSelection|null>(null);
@@ -81,7 +82,8 @@ export function MorningPersonalReport({data,mode,division}:{data:PreviewData;mod
  const jump=(item:PreviewItem)=>{setSubject(item.subjectId);setItemDate(item.date);setReviewSelection(null);setItemFilter('all');setTab('items');setFocusRequest({id:item.id,date:item.date,page:Math.floor(data.items.filter(i=>i.subjectId===item.subjectId&&i.date===item.date).findIndex(i=>i.id===item.id)/20),serial:Date.now()});focusPanel('morning-items');};
  const openWrong=(row:StudyRow)=>{setSubject(row.subjectId);setReviewSelection({title:`${shortDate(row.date)} ${row.subjectName} 틀린 문항`,ids:[...row.easy,...row.other].map(i=>i.id)});setItemFilter('wrong');setTab('items');setFocusRequest({date:'all',page:0,serial:Date.now()});focusPanel('morning-items');};
  const visibleItem=(i:PreviewItem)=>reviewSelection?reviewSelection.ids.includes(i.id):itemFilter==='all'||(itemFilter==='wrong'&&i.correct===false)||(itemFilter==='easy'&&groups.easy.includes(i));
- const print=<PreviewPrintButton single prepare={()=>{const prior=itemFilter,priorExpanded=expanded;setPrinting(true);setItemFilter('all');setExpanded(Object.fromEntries(items.map(i=>[i.id,true])));return()=>{setPrinting(false);setItemFilter(prior);setExpanded(priorExpanded);};}}/>;
+ // 성적표 인쇄는 화면 복사가 아니라 인쇄 전용 표 서식이다(ScorePrintSheet, 운영자 요청 2026-10-07).
+ const print=<ScorePrintButton data={data} mode={mode}/>;
  const rankText=thisWeek?`${thisWeek.rank}위 / ${thisWeek.count}명`:'자료 없음';
  const rankCaption=!thisWeek||!lastWeek?undefined:thisWeek.rank<lastWeek.rank?`지난주보다 ${lastWeek.rank-thisWeek.rank}계단 올라감`:thisWeek.rank>lastWeek.rank?`지난주보다 ${thisWeek.rank-lastWeek.rank}계단 내려감`:'지난주와 같음';
 

@@ -156,7 +156,9 @@ export function PreviewPrintButton({ prepare, wholeExam = false, single = false 
         strip.classList.add('admin-metric-strip');
         Array.from(strip.children).forEach(box => {
           box.classList.add('admin-metric-box');
-          box.querySelector('.admin-label')?.classList.add('admin-metric-box-label');
+          // 학생 요약 칸(PortalMetricCard)은 이름·값 클래스가 다르다. 맞춰 주지 않으면 '주요 지표' 표가 빈칸으로 찍힌다.
+          box.querySelector('.admin-label, .admin-portal-summary-label')?.classList.add('admin-metric-box-label');
+          box.querySelector('.admin-portal-summary-value')?.classList.add('admin-metric-box-value');
         });
       });
       formatPrintDocument(copy, doc);

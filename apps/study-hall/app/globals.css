@@ -3489,7 +3489,7 @@ body:has(.admin-shell) {
   .paper-review-answers dd { margin: 0; font-size: var(--admin-type-body); font-weight: 600; line-height: 1.5; text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
   .paper-review-row .admin-disclosure { border: 0; border-radius: 0; background: transparent; }
   .paper-review-row .admin-disclosure > summary { min-height: 44px; padding: 0; border-radius: 0; border-bottom: 0; }
-  .paper-review-row .admin-disclosure-body { padding: 0 0 12px; font-size: var(--admin-type-body); line-height: 1.5; overflow-wrap: anywhere; }
+  .paper-review-row .admin-disclosure-body { padding: 0 0 12px; font-size: var(--admin-type-body); line-height: 1.5; overflow-wrap: break-word; }
 }
 
 /* 등원 전용 확장: 기존 셸과 컨트롤 정규화 다음에 적용한다. */
@@ -3539,7 +3539,7 @@ body:has(.admin-shell) {
 .admin-arrival-day-number[data-today="true"] { font-weight: 700; text-decoration: underline; }
 .admin-shell .admin-arrival-calendar button:disabled { color: var(--admin-text-muted); background: var(--admin-surface-soft); }
 .admin-shell table.admin-arrival-list { table-layout: fixed; }
-.admin-shell .admin-arrival-list .admin-table-name { min-width: 0; overflow-wrap: anywhere; }
+.admin-shell .admin-arrival-list .admin-table-name { min-width: 0; overflow-wrap: break-word; }
 .admin-shell .admin-arrival-list .admin-table-link { min-height: var(--admin-control-height); }
 @media (max-width: 767px) {
   .admin-shell .admin-arrival-calendar .admin-arrival-day { min-height: var(--admin-arrival-calendar-height-mobile); }
@@ -3943,59 +3943,27 @@ table :is(a[class*="rounded"]:not(.admin-button), button[class*="rounded"]:not(.
 }
 
 .student-report .report-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
   border-bottom: 2px solid var(--admin-text);
-  padding-bottom: 12px;
-}
-
-.student-report .report-eyebrow {
-  color: var(--admin-accent);
-  font-size: 13px;
-  font-weight: 700;
+  padding-bottom: 10px;
 }
 
 .student-report h1 {
-  margin-top: 2px;
-  font-size: 24px;
+  margin-bottom: 8px;
+  font-size: 22px;
   font-weight: 700;
   line-height: 1.25;
 }
 
-.student-report h1 span {
-  margin-left: 8px;
-  color: var(--admin-text-muted);
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.student-report .report-meta {
-  margin-top: 4px;
+/* 학생 정보 표: '이름 | 값' 짝. 이름 칸은 회색 머리 칸. */
+.student-report .report-info th {
+  width: 11%;
+  background: var(--admin-surface-soft);
   color: var(--admin-text-secondary);
 }
 
-.student-report .report-header-side {
-  display: grid;
-  gap: 2px;
-  text-align: right;
-}
-
-.student-report .report-header-side div {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.student-report .report-header-side dt {
-  color: var(--admin-text-muted);
-}
-
-.student-report .report-header-side dd {
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
+.student-report .report-info td {
+  white-space: normal;
+  word-break: keep-all;
 }
 
 .student-report .report-section {
@@ -4018,6 +3986,11 @@ table :is(a[class*="rounded"]:not(.admin-button), button[class*="rounded"]:not(.
   font-weight: 700;
 }
 
+/* 설명 줄이 길면 제목 아래로 내려 접는다(오른쪽 여백 밖으로 넘치지 않게). */
+.student-report .report-section-head p {
+  min-width: 0;
+}
+
 .student-report .report-section-head p,
 .student-report .report-note {
   color: var(--admin-text-muted);
@@ -4034,61 +4007,42 @@ table :is(a[class*="rounded"]:not(.admin-button), button[class*="rounded"]:not(.
   font-weight: 700;
 }
 
-.student-report .report-kpis {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  overflow: hidden;
-  border: 1px solid var(--admin-line-soft);
-  border-radius: var(--admin-radius);
+/* 한눈에 보기: 머리 칸(항목) · 값 줄(굵게) · 설명 줄(작게). 6칸이 A4 폭 안에 들도록 고정 폭·줄바꿈 허용. */
+.student-report .report-kpi-table {
+  table-layout: fixed;
 }
 
-.student-report .report-kpis > div {
-  min-width: 0;
-  border-right: 1px solid var(--admin-line-soft);
-  border-bottom: 1px solid var(--admin-line-soft);
-  padding: 10px 12px;
+.student-report .report-kpi-table :is(th, td) {
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }
 
-.student-report .report-kpis > div:nth-child(3n) {
-  border-right: 0;
-}
-
-.student-report .report-kpis > div:nth-last-child(-n + 3) {
-  border-bottom: 0;
-}
-
-.student-report .report-kpis dt {
-  color: var(--admin-text-muted);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.student-report .report-kpis dd {
-  margin-top: 2px;
-  font-size: 19px;
+.student-report .report-kpi-values td {
+  font-size: 16px;
   font-weight: 700;
-  font-variant-numeric: tabular-nums;
 }
 
-.student-report .report-kpis p {
-  margin-top: 2px;
+.student-report .report-kpi-notes td {
   color: var(--admin-text-muted);
-  font-size: 13px;
+  font-size: 12px;
+  white-space: normal;
   word-break: keep-all;
 }
 
-.student-report .report-callout {
-  margin-top: 10px;
-  border: 1px solid var(--admin-line-soft);
-  border-radius: 6px;
-  padding: 10px 12px;
+/* 결론 문장: '이름 | 문장' 표 줄. 색은 글자에만 쓴다(색 바탕 상자 없음). */
+.student-report .report-statement th {
+  width: 16%;
   background: var(--admin-surface-soft);
+}
+
+.student-report .report-statement td {
   font-weight: 600;
 }
 
-.student-report .report-callout-warning { border-color: var(--admin-warning-line); background: var(--admin-warning-soft); color: var(--admin-warning); }
-.student-report .report-callout-danger { border-color: var(--admin-danger-line); background: var(--admin-danger-soft); color: var(--admin-danger); }
-.student-report .report-callout-success { border-color: var(--admin-success-line); background: var(--admin-success-soft); color: var(--admin-success); }
+.student-report .report-tone-danger { color: var(--admin-danger); }
+.student-report .report-tone-warning { color: var(--admin-warning); }
+.student-report .report-tone-success { color: var(--admin-success); }
 
 .student-report .report-table {
   width: 100%;
@@ -4097,7 +4051,8 @@ table :is(a[class*="rounded"]:not(.admin-button), button[class*="rounded"]:not(.
   font-variant-numeric: tabular-nums;
 }
 
-.student-report .report-table + .report-table {
+.student-report .report-table + .report-table,
+.student-report .report-table + .report-note {
   margin-top: 10px;
 }
 
@@ -4130,7 +4085,7 @@ table :is(a[class*="rounded"]:not(.admin-button), button[class*="rounded"]:not(.
 }
 
 .student-report .report-table td.num {
-  text-align: right;
+  text-align: center;
 }
 
 .student-report .report-table td.wrap {
@@ -4152,51 +4107,40 @@ table :is(a[class*="rounded"]:not(.admin-button), button[class*="rounded"]:not(.
 .student-report .report-up { color: var(--admin-success); }
 .student-report .report-down { color: var(--admin-danger); }
 
-.student-report .report-arrivals {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 6px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
+/* 등원 시각 주 단위 표: 칸 = 날짜(작게) + 시각. 기간 밖 날은 회색 빈칸. */
+.student-report .report-arrival-weeks th[scope="row"] {
+  width: 12%;
+  background: var(--admin-surface-soft);
 }
 
-.student-report .report-arrivals li {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: baseline;
-  gap: 0 6px;
-  border: 1px solid var(--admin-line-soft);
-  border-radius: 6px;
-  padding: 6px 8px;
+.student-report .report-arrival-weeks .report-day {
+  display: block;
+  color: var(--admin-text-muted);
+  font-size: 11px;
+  font-weight: 400;
 }
 
-.student-report .report-arrivals span {
-  grid-column: 1 / -1;
+.student-report .report-arrival-weeks td.report-down .report-day {
+  color: inherit;
+}
+
+.student-report .report-arrival-weeks td.report-out {
+  background: var(--admin-surface-soft);
+}
+
+/* 기록 없음: 표 한 칸(점선 상자 없음). */
+.student-report .report-empty td {
   color: var(--admin-text-muted);
 }
 
-.student-report .report-arrivals strong {
-  font-variant-numeric: tabular-nums;
+.student-report .report-checklist th:first-child,
+.student-report .report-checklist td:first-child {
+  width: 8%;
 }
 
-.student-report .report-arrivals em {
-  color: var(--admin-danger);
-  font-size: 13px;
-  font-style: normal;
-  font-weight: 700;
-}
-
-.student-report .report-arrivals .report-arrival-tardy {
-  border-color: var(--admin-danger-line);
-  background: var(--admin-danger-soft);
-}
-
-.student-report .report-empty {
-  border: 1px dashed var(--admin-line);
-  border-radius: 6px;
-  padding: 10px 12px;
-  color: var(--admin-text-muted);
+.student-report .report-checklist th:last-child,
+.student-report .report-checklist td:last-child {
+  width: 10%;
 }
 
 .student-report .report-write th {
@@ -4216,18 +4160,18 @@ table :is(a[class*="rounded"]:not(.admin-button), button[class*="rounded"]:not(.
   height: 20mm;
 }
 
+/* 서명 칸: 학생 확인 | 빈칸 | 상담자 | 빈칸. */
 .student-report .report-signs {
-  display: flex;
-  justify-content: flex-end;
-  gap: 24px;
-  margin-top: 14px;
+  margin-top: 10px;
 }
 
-.student-report .report-signs span {
-  min-width: 52mm;
-  border-bottom: 1px solid var(--admin-text);
-  padding-bottom: 2px;
-  color: var(--admin-text-muted);
+.student-report .report-signs th {
+  width: 14%;
+  background: var(--admin-surface-soft);
+}
+
+.student-report .report-signs td {
+  height: 12mm;
 }
 
 /* 면담 일지 표 — 왼쪽 소제목, 오른쪽 내용. 행 단위로만 쪽이 넘어간다. */
@@ -4580,19 +4524,6 @@ table :is(a[class*="rounded"]:not(.admin-button), button[class*="rounded"]:not(.
     padding: 16px;
   }
 
-  .student-report .report-kpis {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .student-report .report-kpis > div:nth-child(n) {
-    border-right: 1px solid var(--admin-line-soft);
-    border-bottom: 1px solid var(--admin-line-soft);
-  }
-
-  .student-report .report-arrivals {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
   .student-report .report-table {
     display: block;
     overflow-x: auto;
@@ -4655,17 +4586,18 @@ table :is(a[class*="rounded"]:not(.admin-button), button[class*="rounded"]:not(.
     font-size: 9.5pt;
   }
 
-  .student-report h1 { font-size: 17pt; }
-  .student-report h1 span { font-size: 11pt; }
+  .student-report h1 { font-size: 15pt; margin-bottom: 3mm; }
   .student-report .report-section { margin-top: 5mm; }
   .student-report .report-section-head h2 { font-size: 11.5pt; }
-  .student-report :is(.report-section-head p, .report-note, .report-kpis dt, .report-kpis p, .report-eyebrow, .report-arrivals em) { font-size: 8.5pt; }
-  .student-report .report-kpis dd { font-size: 13pt; }
+  .student-report :is(.report-section-head p, .report-note, .report-kpi-notes td, .report-arrival-weeks .report-day) { font-size: 7.5pt; }
+  .student-report .report-kpi-values td { font-size: 11pt; }
   .student-report .report-table { font-size: 8.5pt; }
-  .student-report .report-table :is(th, td) { padding: 1.4mm 1.6mm; }
+  /* 종이에서는 표가 인쇄 영역 폭을 넘지 않게 칸 안 줄바꿈을 허용한다(낱말은 자르지 않는다). */
+  .student-report .report-table { width: 100%; }
+  .student-report .report-table :is(th, td) { padding: 1.4mm 1.6mm; white-space: normal; word-break: keep-all; overflow-wrap: break-word; }
   .student-report .report-table thead { display: table-header-group; }
 
-  .student-report :is(.report-keep, .report-kpis, .report-callout, .report-arrivals li, .report-table tr, .report-signs, .report-empty) {
+  .student-report :is(.report-keep, .report-header, .report-statement, .report-kpi-table, .report-table tr, .report-signs, .report-empty) {
     break-inside: avoid;
   }
 
@@ -4685,6 +4617,33 @@ table :is(a[class*="rounded"]:not(.admin-button), button[class*="rounded"]:not(.
       font-size: 8pt;
     }
   }
+
+  /* 성적표 인쇄(ScorePrintButton): 문서 끝의 인쇄 서식만 남기고 화면은 모두 숨긴다. */
+  html[data-print-sheet] body > :not(.print-sheet-root) {
+    display: none !important;
+  }
+
+  html[data-print-sheet] .print-sheet-root {
+    display: block !important;
+  }
+
+  .score-print-sheet {
+    page: score-sheet;
+  }
+  @page score-sheet {
+    size: A4 portrait;
+    margin: 12mm 12mm 14mm;
+    @bottom-right {
+      content: "성적표 · " counter(page) " / " counter(pages);
+      color: #667085;
+      font-size: 8pt;
+    }
+  }
+}
+
+/* 성적표 인쇄 서식은 화면에 그리지 않는다(인쇄할 때만 위 규칙으로 보인다). */
+.print-sheet-root {
+  display: none;
 }
 
 /* ==========================================================================

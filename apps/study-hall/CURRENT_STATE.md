@@ -1,12 +1,20 @@
 # 현재 구현·검증 상태
 
-## 커밋(미배포) — 2026-10-07 검색칸·반 분석 과목 탭·학생별 취약점 표 정리 (Claude, 운영자 요청)
+## 커밋(미배포) — 2026-10-07 인쇄물 표 서식 통일·상담 자료 출결 정리·성적표 인쇄 전용 서식 (Claude, 운영자 요청·승인)
+
+- 운영자 지적: ① 상담 자료 출결이 교시마다 한 줄이라 `수업: 기본이론` 사유결석이 71줄 ② 등원 시각이 카드 20장 ③ 성적표 인쇄가 화면을 새 창에 통째로 복사해 안내 문구·버튼 창, 빈 `주요 지표` 표, `형사소송법10/7` 같은 휴대폰용 칸, `누르면 …` 화면 안내, 긴 분석 표가 찍힘 ④ 인쇄물을 표 형태로. 오케스트라 메인 전달: 성적표가 A4 좌우를 다 쓰지 않음, 상담 자료 `한눈에 보기` 6칸 표가 오른쪽으로 넘침.
+- 공통 인쇄 조각 `components/print/PrintParts.tsx`(제목+학생 정보 표, 구획, 결론 표 줄, 기록 없음 칸, 확인할 것 표, 서명 표). 상담 자료(`StudentCounselingReport.tsx`)·면담 일지(`InterviewJournalPrint.tsx`)가 사용 — 카드(`report-kpis`)·색 상자(`report-callout`)·등원 카드(`report-arrivals`)·점선 상자·목록·서명 줄 제거. 표 숫자 가운데 정렬, 인쇄 시 표 폭 100%·칸 안 줄바꿈(낱말 유지), `한눈에 보기` 표 고정 폭.
+- 출결 집계 `lib/student-report.ts`: `exceptions`(교시별) → `daily`(지각·결석, 날짜별 한 줄) + `grouped`(사유결석·휴무·반휴, 같은 상태·사유를 기간 한 줄: 교시 `1~4교시`·날짜 `9/14~18, 9/21~25`·일수·교시 수). `periodsText`·`datesText`·`arrivalWeeks`(등원 주 단위 표).
+- 성적표 인쇄: `ScorePrintButton`이 인쇄 전용 서식 `ScorePrintSheet`(+ `lib/exam-preview/score-print.ts`)를 문서 끝에 그리고 바로 인쇄 창(중간 창 없음, `html[data-print-sheet]` 동안 서식 외 숨김, 쪽 아래 `성적표 · n / m`). 아침: 학생 정보 → 성적 요약 → 과목별 성적 → 먼저 공부할 것 → 시험 기록(시험마다 점수·평균·차이·틀린 문항). 정기: 학생 정보(석차) → 성적 요약(화면과 같은 문장) → 과목별(과목 석차는 관리자만) → 점수 변화 5회 → 먼저 공부할 것. `MorningPersonalReport`·`RegularPersonalReport`는 버튼 한 줄만 교체(다른 세션 미커밋 파일 — 예전 인쇄 상태 `printing` 은 `false` 고정, 펼침 분기 정리는 후속). 반 분석 인쇄(`PreviewReport`)는 아직 새 창 방식이며, 학생 요약 칸이 빈 `주요 지표`로 찍히던 변환을 고침(`PreviewPrintButton`).
+- 검증: typecheck·lint 0, 테스트 1019/1019(출결 묶음·표기·등원 주 표 단위 3, 성적표 서식 아침·정기·상담 자료 표 전용 렌더 3 추가). 로컬 3300 A4 PDF(`.local/print-tables-qa/`): 상담 자료·면담 일지·아침 성적표(1쪽) 모두 표, 좌우 여백 12mm 안 전체 폭, `한눈에 보기` 넘침 없음. 운영 화면과 같은 모양의 가짜 자료로 사유결석 76교시 → 2줄, 등원 20장 → 주 5줄 확인(`sample.pdf`). 학생 포털(91001) 성적표 인쇄도 서식만 인쇄 대상. 정기 성적표는 로컬 목업에 전과목 성적 자료가 없어 렌더 테스트로만 확인.
+
+## 배포 — 2026-10-07 검색칸·반 분석 과목 탭·학생별 취약점 표 정리 (Claude, 운영자 요청)
 
 - 학생 선택 검색칸(`StudentSearchCombobox`)·공지 검색: 안쪽 input 에 공통 입력 규칙(모서리·그림자·초점 링)이 겹쳐 클릭하면 상자 안에 둥근 상자가 생겼다 → `app/globals.css` 입력 규칙 바로 뒤에 `.admin-input-group` 정규화(그룹이 40px·테두리·그림자·초점 링을 그리고 안쪽 input 은 비움). 글자는 공통 입력 규격(15px).
 - 반 분석 `분석 과목` 탭: 상자형(`scopeTabs`) → 3차 밑줄 탭(`admin-subtabs-underline`, scrollable). `PreviewReport.tsx`, `preview.module.css`.
 - `학생별 취약점` 표(`CohortWeaknessTable.tsx`): 이름·수험번호 열 분리(이름은 table-link), 전 칸 가운데 정렬, 필터 칩 → 세그먼트, `확인할 내용`은 문제 종류만 한 줄씩(+ `응시 부족`, `report-summary.ts` `lowAttendance` 추가), 행마다 있던 `과목별 판단 근거` 접힘 상자 제거.
 - 검증: typecheck·lint 통과, 테스트 1013/1013(렌더 테스트 1개 추가·1개 수정), 로컬 3300 Playwright 캡처(`.local/study-diagnosis-qa/search-focus.png`, `cohort-top.png`): 검색칸 높이 40·초점 시 바깥 테두리만 accent+링, 과목 탭 한 줄·밑줄, 표 9열 모두 center, details 0.
-- 커밋: `globals.css`·`DESIGN.md`·`CURRENT_STATE.md`에 함께 있던 다른 세션의 미커밋 작업(브레드크럼·화면 계층)은 빼고 이 변경 부분만 골라 넣었다. 운영 배포는 운영자 승인 후.
+- 커밋: `globals.css`·`DESIGN.md`·`CURRENT_STATE.md`에 함께 있던 다른 세션의 미커밋 작업(브레드크럼·화면 계층)은 빼고 이 변경 부분만 골라 넣었다. 운영 배포: 운영자 승인 후 `c76ae0b` push → Vercel `dpl_GH34o4zXEZxmsoYSE6uXr9fREQXe` READY(study-hall-six). 스모크 `/`·`/login` 200, 관리자 경로 307, API 401, 운영 CSS에 `.admin-input-group:focus-within` 포함, 최근 1시간 런타임 오류 0. 로그인한 운영 화면은 직접 보지 못했다.
 
 ## 최신 배포 — 2026-10-07 학습 면담 시작 지점·기간 맞춤 (Claude, 운영자 요청 1·2·3)
 

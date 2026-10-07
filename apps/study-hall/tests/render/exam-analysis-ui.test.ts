@@ -658,3 +658,79 @@ test("interview journal header offers a study interview only when the academy us
   assert.doesNotMatch(without, /학습 면담/);
 });
 
+
+test("score print sheet: student info, subject table, study list and every exam as table rows — no screen copy", () => {
+  const { ScorePrintSheet } = load("components/exams/preview/ScorePrintSheet.tsx");
+  const c = (date: string, subjectId: string, subjectName: string, my: number | null) => ({ sessionId: `${date}-${subjectId}`, date, subjectId, subjectName, topic: "진도 범위", fullScore: 100, my, internal: 60, external: 60, top10: null, top30: null, internalCount: 20, externalCount: 200, externalFileCount: 200, internalRank: 3, externalRank: 30 });
+  const item = (itemNo: number, answer: string | null, externalRate: number) => ({ id: `c-${itemNo}`, sessionId: "2026-09-23-c", date: "2026-09-23", subjectId: "c", subjectName: "형법", itemNo, answerKey: "2", answer, correct: false, points: 5, externalRate, internalRate: null, responseCount: 0, choices: { 1: 10 }, mostCommonWrong: null });
+  const data = { kind: "morning", scope: "student", examType: { id: "m", name: "아침 모의고사" }, student: { id: "s", name: "학생", studentNumber: "90001" },
+    range: { from: "2026-09-01", to: "2026-09-25" }, dates: [], subjects: [{ id: "a", name: "헌법" }, { id: "c", name: "형법" }, { id: "d", name: "누적" }],
+    items: [item(3, "1", 90), item(5, null, 90)], easyThreshold: 70, failCutoffPercent: 40, records: [],
+    comparisons: [c("2026-09-14", "a", "헌법", 80), c("2026-09-23", "c", "형법", 35), c("2026-09-24", "a", "헌법", null)],
+    morning: { settings: { diagnosis: { maxTasks: 2, minWrongItems: 3 } } } };
+  const html = renderToStaticMarkup(React.createElement(ScorePrintSheet, { data, mode: "student", today: "2026-10-07" }));
+  assert.match(html, /<h1>아침 모의고사 성적표<\/h1>/);
+  assert.match(html, /<th scope="row">이름<\/th><td>학생<\/td><th scope="row">수험번호<\/th><td>90001<\/td>/);
+  assert.match(html, /<th scope="row">성적 요약<\/th><td class="wrap report-tone-danger">형법에서 과락 점수가 있었습니다\./);
+  assert.deepEqual(Array.from(html.matchAll(/<h2>([^<]+)<\/h2>/g)).map(m => m[1]), ["과목별 성적", "먼저 공부할 것", "시험 기록"]);
+  assert.doesNotMatch(html, /누적<\/th>/, "시험이 없는 과목은 뺀다");
+  const records = html.slice(html.indexOf("<h2>시험 기록</h2>"));
+  assert.equal((records.match(/<tr>/g) ?? []).length, 4, "머리 1줄 + 시험 3줄");
+  assert.match(records, /<td>9\/24\(목\)<\/td><td>헌법<\/td><td class="wrap">진도 범위<\/td><td>결시<\/td>/);
+  assert.match(records, /<td class="report-down">35<\/td>/, "과락 점수는 빨간 글자");
+  assert.match(records, /<strong>3<\/strong>, 5번/, "많이 맞힌 문제의 오답은 굵게");
+  for (const hidden of ["선택비율", "누르면", "admin-notice", "admin-portal", "<details", "<dl", "<ul", "<svg"]) assert.doesNotMatch(html, new RegExp(hidden), hidden);
+});
+
+test("counseling report prints only tables: grouped excused rows, weekly arrival grid, no cards or dashed boxes", () => {
+  const { StudentCounselingReport } = load("components/students/StudentCounselingReport.tsx");
+  const report = {
+    range: { from: "2026-09-14", to: "2026-09-20" },
+    student: { name: "학생", studentNumber: "90001", studyTrack: "경찰", seat: "A-1", courseStartDate: null, courseEndDate: null },
+    attendance: {
+      counts: [{ status: "PRESENT", label: "출석", count: 10 }, { status: "TARDY", label: "지각", count: 0 }, { status: "EXCUSED", label: "사유결석", count: 20 }],
+      daily: [],
+      grouped: [{ status: "EXCUSED", label: "사유결석", reason: "수업: 기본이론", periods: "1~4교시", dates: "9/14~18", firstDate: "2026-09-14", days: 5, count: 20 }],
+      recorded: 30,
+    },
+    arrivals: { rows: [{ date: "2026-09-17", weekday: "목", time: "07:45", minutes: 465, tardy: false }, { date: "2026-09-20", weekday: "일", time: "10:01", minutes: 601, tardy: true }], days: 2, average: "08:53", earliest: "07:45", latest: "10:01" },
+    points: null, standing: null, interviews: [], morning: null, diagnosis: null, studyTasks: null, regular: null,
+  };
+  const html = renderToStaticMarkup(React.createElement(StudentCounselingReport, { report, today: "2026-10-07" }));
+  assert.match(html, /<td>사유결석<\/td><td class="wrap">수업: 기본이론<\/td><td>1~4교시<\/td><td class="wrap">9\/14~18<\/td><td>5일<\/td><td>20회<\/td>/);
+  assert.match(html, /기간 내 지각·결석이 없습니다/);
+  const weeks = html.slice(html.indexOf("report-arrival-weeks"));
+  assert.match(weeks, /<th scope="col">목<\/th><th scope="col">일<\/th><\/tr>/, "기록이 있는 요일 열만");
+  assert.match(weeks, /<td class="report-down"><span class="report-day">9\/20<\/span>10:01<\/td>/, "지각한 날 시각은 빨간 글자");
+  assert.match(html, /<table class="report-table report-signs">/);
+  for (const card of ["report-kpis", "report-callout", "report-arrivals", "<dl", "<ul", "<p class=\"report-empty"]) assert.doesNotMatch(html, new RegExp(card), card);
+});
+
+test("regular score print sheet: total rank in the header, subject rank only for admin, recent totals and study rows", () => {
+  const { ScorePrintSheet } = load("components/exams/preview/ScorePrintSheet.tsx");
+  const subject = (subjectId: string, name: string, my: number, grade: "우수" | "보통" | "취약") => ({ ...report.stats.subjects[0], subjectId, name, my, fullScore: 100, scoreRate: my, externalAvg: 60, externalRank: 3, externalCount: 12, grade });
+  const regular = { ...report,
+    myScore: { total: 120, subjectScores: { a: 30, b: 90 }, isPartial: false },
+    ranks: { ...report.ranks, external: { rank: 3, count: 12, topPercent: 25, percentile: 75 } },
+    stats: { ...report.stats, external: { ...report.stats.external, average: 110 }, subjects: [subject("a", "과목 A", 30, "보통"), subject("b", "과목 B", 90, "우수")] },
+    session: { ...report.session, fullScore: 200 }, flags: [],
+    history: { from: "2026-07-01", to: "2026-09-08", months: [], coveredMonths: 2, rows: [
+      { date: "2026-08-11", total: 110, fullScore: 200, subjectScores: {}, internalRank: 2, externalRank: 5, externalCount: 12, externalTopPercent: 40, isPartial: false },
+      { date: "2026-09-08", total: 120, fullScore: 200, subjectScores: {}, internalRank: 1, externalRank: 3, externalCount: 12, externalTopPercent: 25, isPartial: false },
+    ] } };
+  const comparisons = [{ sessionId: "s", date: "2026-09-08", subjectId: "a", subjectName: "과목 A", topic: null, fullScore: 100, my: 30, internal: null, external: 60, top10: null, top30: null, internalCount: 0, externalCount: 12, externalFileCount: 12, internalRank: null, externalRank: 3 }];
+  const items = [7, 9].map(itemNo => ({ id: `a-${itemNo}`, sessionId: "s", date: "2026-09-08", subjectId: "a", subjectName: "과목 A", itemNo, answerKey: "1", answer: "2", correct: false, points: 5, externalRate: itemNo === 7 ? 90 : 30, internalRate: null, responseCount: 0, choices: {}, mostCommonWrong: null }));
+  const data = { kind: "regular", scope: "student", examType: { id: "type", name: "정기 시험" }, student: { id: "student", name: "학생", studentNumber: "90001" },
+    range: { from: "2026-03-01", to: "2026-09-08" }, dates: ["2026-09-08"], subjects: [{ id: "a", name: "과목 A" }, { id: "b", name: "과목 B" }],
+    comparisons, items, easyThreshold: 70, failCutoffPercent: 40, records: [], regular };
+  const student = renderToStaticMarkup(React.createElement(ScorePrintSheet, { data, mode: "student", today: "2026-10-07", headline: { text: "총점 120/200점", tone: "danger" } }));
+  assert.match(student, /<th scope="row">석차<\/th><td>3위 \/ 12명<\/td>/);
+  assert.match(student, /<td class="wrap report-tone-danger">총점 120\/200점<\/td>/, "화면과 같은 결론 문장을 받는다");
+  assert.doesNotMatch(student.slice(student.indexOf("<h2>과목별 성적</h2>"), student.indexOf("<h2>점수 변화</h2>")), /<th scope="col">석차<\/th>/, "학생 인쇄에는 과목 석차 열이 없다");
+  assert.match(student, /<td class="report-down">30 \/ 100<\/td>/, "과락 점수는 빨간 글자");
+  assert.match(student, /<td>9\/8\(화\)<\/td><td>120 \/ 200<\/td><td>3위 \/ 12명<\/td>/);
+  assert.match(student, /<strong>7<\/strong>, 9번/);
+  const admin = renderToStaticMarkup(React.createElement(ScorePrintSheet, { data, mode: "admin", today: "2026-10-07" }));
+  assert.match(admin, /<th scope="col">석차<\/th><th scope="col">상태<\/th>/, "관리자 인쇄는 과목 석차 열이 있다");
+  assert.match(admin, /<td>3위 \/ 12명<\/td><td>과락<\/td>/);
+});

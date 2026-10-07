@@ -232,7 +232,7 @@ export function PreviewWorkspace({
             </div>
           </section>
         )}
-        <div hidden={mode === "admin" && !studentId && view === "students"}>
+        <div className="admin-flat-page" hidden={mode === "admin" && !studentId && view === "students"}>
         <MobileDisclosure title={mode === "admin" ? "시험·학생 조회 조건" : "조회 조건"}>
           <div className={`admin-filter-bar ${styles.filterFrame}`}>
             {mode === "admin" && (

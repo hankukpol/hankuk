@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Modal } from "@/components/ui/Modal";
+import { SlideOver } from "@/components/ui/SlideOver";
 import { toast } from "@/lib/sonner";
 import type { correctAcademyApplicationDate } from "@/lib/services/academy-application-date.service";
 type Preview = Awaited<ReturnType<typeof correctAcademyApplicationDate>>;
@@ -24,7 +24,7 @@ export function ApplicationDateCorrection({divisionSlug, application, onSaved}:{
   return <><button type="button" className="admin-button" onClick={()=>{
     setDate(application.effectiveFrom);setReason("");setPreview(null);setError("");setAudit([]);setOpen(true);
     void post("date-history").then(setAudit).catch(e=>setError(e.message));
-  }}>적용일 정정</button><Modal open={open} title="적용일 정정" onClose={()=>{if(!busy)setOpen(false);}} footer={<>
+  }}>적용일 정정</button><SlideOver open={open} title="적용일 정정" onClose={()=>{if(!busy)setOpen(false);}} footer={<>
     <button className="admin-button" disabled={busy} onClick={()=>setOpen(false)}>취소</button>
     <button className="admin-button admin-button-primary" disabled={busy||!date||!reason.trim()||date===application.effectiveFrom} onClick={()=>void submit()}>{preview?"정정 적용":"정정 미리보기"}</button>
   </>}><div className="space-y-4"><p>{application.templateName} · 기존 적용일 {application.effectiveFrom}</p>
@@ -34,5 +34,5 @@ export function ApplicationDateCorrection({divisionSlug, application, onSaved}:{
     {preview&&<div className="admin-table-frame"><table><thead><tr><th>기존 적용일</th><th>정정 적용일</th><th>판정 기준이 달라지는 기간</th></tr></thead><tbody><tr><td>{preview.before}</td><td>{preview.after}</td><td>{preview.affectedFrom} ~ {preview.affectedUntil}</td></tr></tbody></table></div>}
     {error&&<p role="alert" className="admin-notice">{error}</p>}
     {audit.filter(a=>a.changes.some(c=>c.field===`application:${application.id}:effectiveFrom`)).map(a=><p key={a.id} className="admin-help">{a.changedAt.slice(0,10)} · {a.changedByName} · {String(a.changes[0].before)} → {String(a.changes[0].after)} · {String(a.changes[1]?.after??"")}</p>)}
-  </div></Modal></>;
+  </div></SlideOver></>;
 }

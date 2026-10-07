@@ -24,7 +24,7 @@ export function ArrivalSettingsManager({ divisionSlug }: { divisionSlug: string 
 
   return <div className="space-y-4">
     <div className="admin-workspace-toolbar"><Link className="admin-text-action" href={`/${divisionSlug}/admin/settings/rules`}>운영 규칙으로</Link><button type="button" className="admin-text-action" disabled={query.loading || editing} onClick={() => void query.reload()}>설정 새로고침</button></div>
-    <AdminTabs items={[{ id: "settings", label: "현재 설정·예약" }, { id: "devices", label: "공용 기기" }, { id: "history", label: "변경 이력" }]} activeId={tab} onChange={setTab} variant="secondary" idPrefix="arrival-settings" label="등원 설정 업무" />
+    <AdminTabs items={[{ id: "settings", label: "현재 설정·예약" }, { id: "devices", label: "공용 기기" }, { id: "history", label: "변경 이력" }]} activeId={tab} onChange={setTab} variant="secondary" className="admin-subtabs-underline" idPrefix="arrival-settings" label="등원 설정 업무" />
     <ArrivalFeedback error={query.error} loading={!settings && query.loading} onRetry={() => void query.reload()} loginHref="/login" />
     {notice && <p className="admin-notice admin-notice-success" role="status">{notice}</p>}
     {settings && <>

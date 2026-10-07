@@ -4,6 +4,7 @@ import { applyPolicyAttendancePoints } from "@/lib/services/policy-attendance.se
 import { isMockMode } from "@/lib/mock-data";
 import { readMockState, updateMockState } from "@/lib/mock-store";
 import { getPrismaClient } from "@/lib/service-helpers";
+import { logServerError } from "@/lib/server-log";
 import { getDivisionSettings } from "@/lib/services/settings.service";
 import { syncPeriodicPerfectAttendancePoints } from "@/lib/services/perfect-attendance.service";
 import { revalidateDivisionOperationalViews } from "@/lib/revalidation";
@@ -68,7 +69,7 @@ export async function closeAllAttendance() {
     ? (await readMockState()).divisions.filter(row=>row.isActive).map(row=>({slug:row.slug}))
     : await (await getPrismaClient()).division.findMany({where: {isActive: true}, select: {slug:true}});
   const deadline = Date.now() + 20_000;
-  const results: Array<{division: string; closedDays?: number; pending?: boolean; failed?: boolean}> = [];
+  const results: Array<{division: string; closedDays?: number; pending?: boolean; failed?: boolean; errorId?: string}> = [];
   for (let index = 0; index < divisions.length; index++) {
     const division = divisions[index];
     try {
@@ -78,8 +79,9 @@ export async function closeAllAttendance() {
       if(Date.now() >= deadline) { results.push({division:division.slug,...result,pending:true}); continue; }
       await closeDivisionExamPoints(division.slug);
       results.push({division:division.slug, ...result});
-    } catch {
-      results.push({division:division.slug, failed:true});
+    } catch (error) {
+      // 실패한 학원은 다음 실행에서 다시 마감한다. 원인을 찾을 수 있게 서버 기록과 오류 번호를 남긴다.
+      results.push({division:division.slug, failed:true, errorId: logServerError(`cron:attendance-close:${division.slug}`, error)});
     }
   }
   return results;

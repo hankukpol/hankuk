@@ -1734,7 +1734,7 @@ export async function assignStudentToSeat(
           throw notFound("학생 정보를 찾을 수 없습니다.");
         }
         if (!["ACTIVE", "ON_LEAVE"].includes(targetStudent.status)) {
-          throw badRequest("재원 또는 휴가 상태 학생만 좌석을 배정할 수 없습니다.");
+          throw badRequest("재원 또는 휴가 상태 학생만 좌석을 배정할 수 있습니다.");
         }
         const occupiedByOtherStudent = students.find((student) => {
           if (student.id === studentId) {
@@ -1814,7 +1814,7 @@ export async function assignStudentToSeat(
         }
 
         if (!["ACTIVE", "ON_LEAVE"].includes(targetStudent.status)) {
-          throw new Error("재원 또는 휴가 상태 학생만 좌석을 배정할 수 없습니다.");
+          throw new Error("재원 또는 휴가 상태 학생만 좌석을 배정할 수 있습니다.");
         }
 
         await tx.student.update({

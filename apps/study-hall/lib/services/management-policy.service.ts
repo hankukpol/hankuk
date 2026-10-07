@@ -5,6 +5,7 @@ import { isMockMode } from "@/lib/mock-data";
 import { readMockState, updateMockState } from "@/lib/mock-store";
 import { getPrismaClient } from "@/lib/service-helpers";
 import { badRequest, notFound } from "@/lib/errors";
+import { getKstTodayYmd } from "@/lib/date-utils";
 import { revalidateDivisionOperationalViews } from "@/lib/revalidation";
 
 export const getManagementPolicy = cache(async (divisionSlug: string, onDate?: string): Promise<ManagementPolicy | null> => {
@@ -49,7 +50,7 @@ export async function getPolicyPointTotals(divisionSlug: string, range?: { dateF
     where: { student: { division: { slug: divisionSlug } }, date: { gte: new Date(`${bounds.dateFrom}T00:00:00Z`), lt: end } },
     select: { studentId: true, points: true, date: true, student: { select: { courseStartDate: true, enrolledAt: true } } },
   });
-  return separatePointTotals(rows.filter(record => !courseScope || record.date.toISOString().slice(0, 10) >= (record.student.courseStartDate ?? record.student.enrolledAt).toISOString().slice(0, 10)), bounds.dateFrom, bounds.dateTo);
+  return separatePointTotals(rows.filter(record => !courseScope || getKstTodayYmd(record.date) >= getKstTodayYmd(record.student.courseStartDate ?? record.student.enrolledAt)), bounds.dateFrom, bounds.dateTo);
 }
 
 export async function getPolicyHolidayUsage(divisionSlug: string, dateFrom: string, dateTo: string) {

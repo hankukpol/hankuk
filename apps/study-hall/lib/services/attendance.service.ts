@@ -759,77 +759,43 @@ export async function syncPerfectAttendancePoints(
     })
     .map((student) => student.id);
 
-  if (candidateStudentIds.length === 0) {
-    const existingAutoRecords = await prisma.pointRecord.findMany({
+  // 두 직원이 같은 날 다른 교시를 동시에 저장하면 둘 다 '아직 없음'을 보고 개근 상점을 두 번 줄 수 있었다.
+  // 학원·날짜 단위 잠금 안에서 '기존 확인 → 지우기·만들기'를 한 번에 한다(정책 경로와 같은 방식).
+  const candidateStudentIdSet = new Set(candidateStudentIds);
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`perfect-attendance:${division.id}:${date}`}))`;
+    const existingAutoRecords = await tx.pointRecord.findMany({
       where: {
         student: { divisionId: division.id },
         date: start,
         notes: dupCheckNotes,
       },
-      select: { id: true },
+      select: { id: true, studentId: true },
     });
+    const alreadyGranted = new Set(existingAutoRecords.map((record) => record.studentId));
+    const finalStudentIds = candidateStudentIds.filter((id) => !alreadyGranted.has(id));
+    const revokeRecordIds = existingAutoRecords
+      .filter((record) => !candidateStudentIdSet.has(record.studentId))
+      .map((record) => record.id);
 
-    if (existingAutoRecords.length === 0) {
-      return { grantedCount: 0, revokedCount: 0 };
+    if (revokeRecordIds.length > 0) {
+      await tx.pointRecord.deleteMany({ where: { id: { in: revokeRecordIds } } });
+    }
+    if (finalStudentIds.length > 0) {
+      await tx.pointRecord.createMany({
+        data: finalStudentIds.map((studentId) => ({
+          studentId,
+          ruleId: null,
+          points: settings.perfectAttendancePts,
+          date: start,
+          notes: dupCheckNotes,
+          recordedById: actorId,
+        })),
+      });
     }
 
-    await prisma.pointRecord.deleteMany({
-      where: {
-        id: { in: existingAutoRecords.map((record) => record.id) },
-      },
-    });
-
-    return { grantedCount: 0, revokedCount: existingAutoRecords.length };
-  }
-
-  // 이미 부여된 학생 확인
-  const existingAutoRecords = await prisma.pointRecord.findMany({
-    where: {
-      student: { divisionId: division.id },
-      date: start,
-      notes: dupCheckNotes,
-    },
-    select: { id: true, studentId: true },
+    return { grantedCount: finalStudentIds.length, revokedCount: revokeRecordIds.length };
   });
-
-  const alreadyGranted = new Set(existingAutoRecords.map((record) => record.studentId));
-  const finalStudentIds = candidateStudentIds.filter((id) => !alreadyGranted.has(id));
-  const candidateStudentIdSet = new Set(candidateStudentIds);
-  const revokeRecordIds = existingAutoRecords
-    .filter((record) => !candidateStudentIdSet.has(record.studentId))
-    .map((record) => record.id);
-
-  if (finalStudentIds.length === 0 && revokeRecordIds.length === 0) {
-    return { grantedCount: 0, revokedCount: 0 };
-  }
-
-  await prisma.$transaction([
-    ...(revokeRecordIds.length > 0
-      ? [
-          prisma.pointRecord.deleteMany({
-            where: {
-              id: { in: revokeRecordIds },
-            },
-          }),
-        ]
-      : []),
-    ...(finalStudentIds.length > 0
-      ? [
-          prisma.pointRecord.createMany({
-            data: finalStudentIds.map((studentId) => ({
-              studentId,
-              ruleId: null,
-              points: settings.perfectAttendancePts,
-              date: start,
-              notes: dupCheckNotes,
-              recordedById: actorId,
-            })),
-          }),
-        ]
-      : []),
-  ]);
-
-  return { grantedCount: finalStudentIds.length, revokedCount: revokeRecordIds.length };
 }
 
 async function syncAttendancePenaltyPoints(
@@ -944,18 +910,7 @@ async function syncAttendancePenaltyPoints(
       ),
     ),
   );
-  const [dayRecords, periods, rules, existingAutoRecords] = await Promise.all([
-    prisma.attendance.findMany({
-      where: {
-        date: start,
-        student: { divisionId: division.id },
-      },
-      select: {
-        studentId: true,
-        periodId: true,
-        status: true,
-      },
-    }),
+  const [periods, rules] = await Promise.all([
     getPeriods(divisionSlug, date),
     prisma.pointRule.findMany({
       where: {
@@ -970,150 +925,155 @@ async function syncAttendancePenaltyPoints(
         points: true,
       },
     }),
-    prisma.pointRecord.findMany({
-      where: {
-        student: { divisionId: division.id },
-        date: start,
-        notes: {
-          startsWith: notePrefix,
-        },
-      },
-      select: {
-        id: true,
-        studentId: true,
-        ruleId: true,
-        points: true,
-        notes: true,
-      },
-    }),
   ]);
 
-  const periodMap = new Map(
-    periods.map((period) => [
-      period.id,
+  // 두 직원이 같은 날 다른 교시를 동시에 저장하면 같은 지각·결석 벌점이 두 번 생길 수 있었다.
+  // 학원·날짜 단위 잠금 안에서 출결과 기존 자동 벌점을 읽고 맞춘다(정책 경로와 같은 방식).
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`attendance-penalty:${division.id}:${date}`}))`;
+    const [dayRecords, existingAutoRecords] = await Promise.all([
+      tx.attendance.findMany({
+        where: {
+          date: start,
+          student: { divisionId: division.id },
+        },
+        select: {
+          studentId: true,
+          periodId: true,
+          status: true,
+        },
+      }),
+      tx.pointRecord.findMany({
+        where: {
+          student: { divisionId: division.id },
+          date: start,
+          notes: {
+            startsWith: notePrefix,
+          },
+        },
+        select: {
+          id: true,
+          studentId: true,
+          ruleId: true,
+          points: true,
+          notes: true,
+        },
+      }),
+    ]);
+
+    const periodMap = new Map(
+      periods.map((period) => [
+        period.id,
+        {
+          id: period.id,
+          name: period.name,
+          label: period.label,
+        },
+      ]),
+    );
+    const ruleMap = new Map((historical?.pointRules.filter(rule => rule.isActive && selectedRuleIds.includes(rule.id)) ?? rules).map((rule) => [rule.id, rule] as const));
+    const existingAutoByKey = new Map<
+      string,
       {
-        id: period.id,
-        name: period.name,
-        label: period.label,
-      },
-    ]),
-  );
-  const ruleMap = new Map((historical?.pointRules.filter(rule => rule.isActive && selectedRuleIds.includes(rule.id)) ?? rules).map((rule) => [rule.id, rule] as const));
-  const existingAutoByKey = new Map<
-    string,
-    {
-      id: string;
+        id: string;
+        studentId: string;
+        ruleId: string | null;
+        points: number;
+        notes: string;
+      }
+    >();
+    const revokeRecordIds: string[] = [];
+
+    for (const record of existingAutoRecords) {
+      if (!record.notes) {
+        continue;
+      }
+
+      const key = buildAttendancePenaltyRecordKey(record.studentId, record.notes);
+      if (!existingAutoByKey.has(key)) {
+        existingAutoByKey.set(key, {
+          ...record,
+          notes: record.notes,
+        });
+        continue;
+      }
+
+      revokeRecordIds.push(record.id);
+    }
+
+    const createData: Array<{
       studentId: string;
       ruleId: string | null;
       points: number;
+      date: Date;
       notes: string;
-    }
-  >();
-  const revokeRecordIds: string[] = [];
+      recordedById: string;
+    }> = [];
+    const desiredKeys = new Set<string>();
 
-  for (const record of existingAutoRecords) {
-    if (!record.notes) {
-      continue;
-    }
+    for (const record of dayRecords) {
+      const period = periodMap.get(record.periodId);
 
-    const key = buildAttendancePenaltyRecordKey(record.studentId, record.notes);
-    if (!existingAutoByKey.has(key)) {
-      existingAutoByKey.set(key, {
-        ...record,
-        notes: record.notes,
+      if (!isAttendancePenaltyStatus(record.status) || !period) {
+        continue;
+      }
+
+      const penaltyStatus = record.status;
+      const note = buildAttendancePenaltyNote(date, period, penaltyStatus);
+      const key = buildAttendancePenaltyRecordKey(record.studentId, note);
+      const ruleId = getAttendancePenaltyRuleId(penaltyStatus, settings);
+      const rule = ruleId ? ruleMap.get(ruleId) ?? null : null;
+      const existing = existingAutoByKey.get(key);
+
+      if (!rule) {
+        continue;
+      }
+
+      desiredKeys.add(key);
+      const points = rule.points;
+
+      if (existing && existing.ruleId === ruleId && existing.points === points) {
+        continue;
+      }
+
+      if (existing) {
+        revokeRecordIds.push(existing.id);
+      }
+
+      createData.push({
+        studentId: record.studentId,
+        ruleId,
+        points,
+        date: start,
+        notes: note,
+        recordedById: actorId,
       });
-      continue;
     }
 
-    revokeRecordIds.push(record.id);
-  }
-
-  const createData: Array<{
-    studentId: string;
-    ruleId: string | null;
-    points: number;
-    date: Date;
-    notes: string;
-    recordedById: string;
-  }> = [];
-  const desiredKeys = new Set<string>();
-
-  for (const record of dayRecords) {
-    const period = periodMap.get(record.periodId);
-
-    if (!isAttendancePenaltyStatus(record.status) || !period) {
-      continue;
-    }
-
-    const penaltyStatus = record.status;
-    const note = buildAttendancePenaltyNote(date, period, penaltyStatus);
-    const key = buildAttendancePenaltyRecordKey(record.studentId, note);
-    const ruleId = getAttendancePenaltyRuleId(penaltyStatus, settings);
-    const rule = ruleId ? ruleMap.get(ruleId) ?? null : null;
-    const existing = existingAutoByKey.get(key);
-
-    if (!rule) {
-      continue;
-    }
-
-    desiredKeys.add(key);
-    const points = rule.points;
-
-    if (existing && existing.ruleId === ruleId && existing.points === points) {
-      continue;
-    }
-
-    if (existing) {
-      revokeRecordIds.push(existing.id);
-    }
-
-    createData.push({
-      studentId: record.studentId,
-      ruleId,
-      points,
-      date: start,
-      notes: note,
-      recordedById: actorId,
+    existingAutoByKey.forEach((record, key) => {
+      if (!desiredKeys.has(key)) {
+        revokeRecordIds.push(record.id);
+      }
     });
-  }
 
-  existingAutoByKey.forEach((record, key) => {
-    if (!desiredKeys.has(key)) {
-      revokeRecordIds.push(record.id);
+    const uniqueRevokeIds = Array.from(new Set(revokeRecordIds));
+
+    if (uniqueRevokeIds.length === 0 && createData.length === 0) {
+      return { grantedCount: 0, revokedCount: 0 };
     }
+
+    if (uniqueRevokeIds.length > 0) {
+      await tx.pointRecord.deleteMany({ where: { id: { in: uniqueRevokeIds } } });
+    }
+    if (createData.length > 0) {
+      await tx.pointRecord.createMany({ data: createData });
+    }
+
+    return {
+      grantedCount: createData.length,
+      revokedCount: uniqueRevokeIds.length,
+    };
   });
-
-  const uniqueRevokeIds = Array.from(new Set(revokeRecordIds));
-
-  if (uniqueRevokeIds.length === 0 && createData.length === 0) {
-    return { grantedCount: 0, revokedCount: 0 };
-  }
-
-  await prisma.$transaction([
-    ...(uniqueRevokeIds.length > 0
-      ? [
-          prisma.pointRecord.deleteMany({
-            where: {
-              id: {
-                in: uniqueRevokeIds,
-              },
-            },
-          }),
-        ]
-      : []),
-    ...(createData.length > 0
-      ? [
-          prisma.pointRecord.createMany({
-            data: createData,
-          }),
-        ]
-      : []),
-  ]);
-
-  return {
-    grantedCount: createData.length,
-    revokedCount: uniqueRevokeIds.length,
-  };
 }
 
 export async function syncAttendanceDerivedPoints(

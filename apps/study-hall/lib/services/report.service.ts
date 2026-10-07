@@ -9,7 +9,7 @@ import {
 } from "@/lib/attendance-meta";
 import type { DivisionFeatureFlags } from "@/lib/division-features";
 import { isMockMode } from "@/lib/mock-data";
-import { normalizeYmMonth, normalizeYmdDate } from "@/lib/date-utils";
+import { normalizeYmMonth, normalizeYmdDate, getKstTodayYmd } from "@/lib/date-utils";
 import { readMockState } from "@/lib/mock-store";
 import {
   getLatestExamSummariesForStudents,
@@ -721,7 +721,7 @@ async function listAttendanceEditLogs(
     return (state.attendanceByDivision[divisionSlug] ?? [])
       .filter((record) => record.updatedAt !== record.createdAt)
       .filter((record) => {
-        const updatedDate = record.updatedAt.slice(0, 10);
+        const updatedDate = getKstTodayYmd(new Date(record.updatedAt));
         return updatedDate >= dateFrom && updatedDate <= dateTo;
       })
       .map((record) => {
@@ -809,7 +809,7 @@ async function listStudentStatusLogs(
   return students
     .filter((student) => student.status !== "ACTIVE")
     .filter((student) => {
-      const updatedDate = student.updatedAt.slice(0, 10);
+      const updatedDate = getKstTodayYmd(new Date(student.updatedAt));
       return updatedDate >= dateFrom && updatedDate <= dateTo;
     })
     .map((student) => ({
@@ -861,7 +861,7 @@ export async function getActivityLogData(
 
   const pointLogs = pointRecords
     .filter((record) => {
-      const createdDate = record.createdAt.slice(0, 10);
+      const createdDate = getKstTodayYmd(new Date(record.createdAt));
       return createdDate >= selection.dateFrom && createdDate <= selection.dateTo;
     })
     .map((record) => ({
@@ -879,7 +879,7 @@ export async function getActivityLogData(
 
   const interviewLogs = interviews
     .filter((record) => {
-      const createdDate = record.createdAt.slice(0, 10);
+      const createdDate = getKstTodayYmd(new Date(record.createdAt));
       return createdDate >= selection.dateFrom && createdDate <= selection.dateTo;
     })
     .map((record) => ({

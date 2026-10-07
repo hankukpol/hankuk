@@ -7,7 +7,7 @@ import { Prisma } from "@prisma/client";
 
 import { getMockAdminSession, getMockDivisionBySlug, isMockMode } from "@/lib/mock-data";
 import { revalidateDivisionOperationalViews } from "@/lib/revalidation";
-import { parseUtcDateFromYmd } from "@/lib/date-utils";
+import { parseUtcDateFromYmd, getKstTodayYmd } from "@/lib/date-utils";
 import { badRequest, notFound } from "@/lib/errors";
 import {
   readMockState,
@@ -206,7 +206,7 @@ function toPointDateKey(value: Date | string | null | undefined) {
     return null;
   }
 
-  return typeof value === "string" ? value.slice(0, 10) : value.toISOString().slice(0, 10);
+  return getKstTodayYmd(new Date(value));
 }
 
 function getWarningPointStartDate(student: Pick<StudentListItem, "courseStartDate" | "enrolledAt">) {

@@ -13,6 +13,7 @@ test("automatic attendance closure fails closed and reports incomplete runs for 
   const dependencies: Record<string, unknown> = {
     "node:crypto": { timingSafeEqual },
     "next/server": { NextResponse },
+    "@/lib/server-log": { logServerError: () => "err-test" },
     "@/lib/services/attendance-close.service": { closeAllAttendance: async () => {
       calls++;
       if (fail) throw new Error("private database details");
@@ -44,5 +45,8 @@ test("automatic attendance closure fails closed and reports incomplete runs for 
   fail = true;
   const failure = await GET(request("Bearer test-secret"));
   assert.equal(failure.status, 503);
-  assert.doesNotMatch(await failure.text(), /private database/);
+  const failureText = await failure.text();
+  assert.doesNotMatch(failureText, /private database/);
+  // 실패 원인은 서버 기록에만 남고, 응답에는 기록을 찾을 오류 번호만 준다.
+  assert.match(failureText, /"errorId":"err-test"/);
 });

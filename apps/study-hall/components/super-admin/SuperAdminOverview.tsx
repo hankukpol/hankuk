@@ -152,6 +152,10 @@ function DivisionCard({ division }: { division: DivisionOverviewSummary }) {
         </div>
       </div>
 
+      {division.loadFailed ? (
+        <p className="admin-notice admin-notice-warning mx-6 mb-4" role="status">이 학원 자료를 불러오지 못했습니다. 아래 숫자는 0으로 보일 수 있으니 새로고침해 주세요.</p>
+      ) : null}
+
       <div className="flex divide-x divide-slate-100">
         <div className="flex min-w-[220px] flex-col items-center justify-center gap-2 px-8 py-6">
           {attendanceEnabled ? (

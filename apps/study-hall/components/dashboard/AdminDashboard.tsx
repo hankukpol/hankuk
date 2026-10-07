@@ -688,6 +688,13 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
         </div>
       </section>
 
+      {data.unavailableSections?.length ? (
+        // 보조 구획을 못 불러오면 0건처럼 보이지 않게 알린다(서버 기록 남음).
+        <p className="admin-notice admin-notice-warning" role="status">
+          일부 항목을 불러오지 못했습니다: {data.unavailableSections.join(", ")}. 해당 숫자는 0으로 보일 수 있으니 새로고침해 주세요.
+        </p>
+      ) : null}
+
       {/* 교시 타이머 */}
       <PeriodTimerWidget schedules={data.periodSchedules} />
 

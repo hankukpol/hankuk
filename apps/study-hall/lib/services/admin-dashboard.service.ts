@@ -15,6 +15,7 @@ import { listExamSchedules, type ExamScheduleItem } from "@/lib/services/exam-sc
 import { listInterviews } from "@/lib/services/interview.service";
 import { listLeavePermissions } from "@/lib/services/leave.service";
 import { getPrismaClient } from "@/lib/service-helpers";
+import { logServerError } from "@/lib/server-log";
 import { toDemeritPoints } from "@/lib/student-meta";
 import {
   getAttendanceCountStatus,
@@ -36,6 +37,8 @@ export type AdminDashboardData = {
     color: string;
   };
   featureFlags: DivisionFeatureFlags;
+  /** 불러오지 못한 구획 이름(예: "수납"). 비어 있으면 모두 정상. 실패를 0건으로 보이지 않게 화면에 알린다. */
+  unavailableSections: string[];
   summary: {
     todayDate: string;
     attendanceRate: number;
@@ -434,6 +437,15 @@ async function getAdminDashboardDataUncached(divisionSlug: string): Promise<Admi
   const examScheduleManagementEnabled = settings.featureFlags.examScheduleManagement;
   const paymentManagementEnabled = settings.featureFlags.paymentManagement;
 
+  // 보조 구획은 하나가 실패해도 대시보드를 띄운다. 대신 기록을 남기고 화면에 "불러오지 못함"으로 알린다(예전에는 조용히 0건).
+  const unavailableSections: string[] = [];
+  const degrade = <T,>(section: string, promise: Promise<T>, fallback: T) =>
+    promise.catch((error: unknown) => {
+      logServerError(`admin-dashboard:${section}`, error);
+      unavailableSections.push(section);
+      return fallback;
+    });
+
   const [students, snapshots, recentPoints, thisMonthPayments, todayLeaves, interviewGroups, followUpInterviews, examSchedules, repeatedTardy, repeatedAbsent] = await Promise.all([
     listStudents(divisionSlug),
     attendanceManagementEnabled
@@ -443,29 +455,25 @@ async function getAdminDashboardDataUncached(divisionSlug: string): Promise<Admi
       ? listPointRecords(divisionSlug, { limit: 5 })
       : Promise.resolve([] as PointRecordItem[]),
     paymentManagementEnabled
-      ? listPayments(divisionSlug, { dateFrom: firstDayOfMonth, dateTo: today }).catch(() => [] as Awaited<ReturnType<typeof listPayments>>)
+      ? degrade("수납", listPayments(divisionSlug, { dateFrom: firstDayOfMonth, dateTo: today }), [] as Awaited<ReturnType<typeof listPayments>>)
       : Promise.resolve([] as Awaited<ReturnType<typeof listPayments>>),
     leaveManagementEnabled
-      ? listLeavePermissions(divisionSlug, { month: today.slice(0, 7) }).catch(() => [] as Awaited<ReturnType<typeof listLeavePermissions>>)
+      ? degrade("외출·휴가", listLeavePermissions(divisionSlug, { month: today.slice(0, 7) }), [] as Awaited<ReturnType<typeof listLeavePermissions>>)
       : Promise.resolve([] as Awaited<ReturnType<typeof listLeavePermissions>>),
     interviewManagementEnabled
-      ? listRecentInterviewGroups(divisionSlug, thirtyDaysAgo).catch(
-          () => [] as RecentInterviewGroup[],
-        )
+      ? degrade("최근 면담", listRecentInterviewGroups(divisionSlug, thirtyDaysAgo), [] as RecentInterviewGroup[])
       : Promise.resolve([] as RecentInterviewGroup[]),
     interviewManagementEnabled
-      ? listInterviews(divisionSlug, { followUpDue: true }).catch(
-          () => [] as Awaited<ReturnType<typeof listInterviews>>,
-        )
+      ? degrade("면담 후속 확인", listInterviews(divisionSlug, { followUpDue: true }), [] as Awaited<ReturnType<typeof listInterviews>>)
       : Promise.resolve([] as Awaited<ReturnType<typeof listInterviews>>),
     examScheduleManagementEnabled
-      ? listExamSchedules(divisionSlug, { onlyActive: true }).catch(() => [] as Awaited<ReturnType<typeof listExamSchedules>>)
+      ? degrade("시험 일정", listExamSchedules(divisionSlug, { onlyActive: true }), [] as Awaited<ReturnType<typeof listExamSchedules>>)
       : Promise.resolve([] as Awaited<ReturnType<typeof listExamSchedules>>),
     attendanceManagementEnabled
-      ? detectRepeatedTardy(divisionSlug).catch(() => [] as Awaited<ReturnType<typeof detectRepeatedTardy>>)
+      ? degrade("반복 지각", detectRepeatedTardy(divisionSlug), [] as Awaited<ReturnType<typeof detectRepeatedTardy>>)
       : Promise.resolve([] as Awaited<ReturnType<typeof detectRepeatedTardy>>),
     attendanceManagementEnabled
-      ? detectRepeatedAbsent(divisionSlug).catch(() => [] as Awaited<ReturnType<typeof detectRepeatedAbsent>>)
+      ? degrade("반복 결석", detectRepeatedAbsent(divisionSlug), [] as Awaited<ReturnType<typeof detectRepeatedAbsent>>)
       : Promise.resolve([] as Awaited<ReturnType<typeof detectRepeatedAbsent>>),
   ]);
   const snapshotMap = new Map(snapshots.map((snapshot) => [snapshot.date, snapshot]));
@@ -660,6 +668,7 @@ async function getAdminDashboardDataUncached(divisionSlug: string): Promise<Admi
       color: division.color,
     },
     featureFlags: settings.featureFlags,
+    unavailableSections,
     summary: {
       todayDate: today,
       attendanceRate: todaySummary.attendanceRate,

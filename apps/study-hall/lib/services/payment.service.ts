@@ -646,6 +646,22 @@ async function buildRenewPaymentResultFromPayload(
   };
 }
 
+/**
+ * 직렬화 트랜잭션은 동시에 같은 학생 결제를 고치면 P2034(직렬화 충돌)로 실패한다. 한 번 다시 시도하고,
+ * 그래도 충돌하면 500 대신 '다시 시도' 안내(409)로 알린다(외출·휴가 저장과 같은 처리).
+ */
+async function withSerializableRetry<T>(run: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await run();
+    } catch (error) {
+      const conflicted = error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034";
+      if (!conflicted) throw error;
+      if (attempt >= 1) throw conflict("같은 학생의 결제가 동시에 처리되어 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    }
+  }
+}
+
 export async function listPaymentCategories(
   divisionSlug: string,
   options?: {
@@ -1311,7 +1327,7 @@ export async function refundPayment(
 
     const refundGroupId = input.originalPaymentId ? createPaymentGroupId() : null;
 
-    const payment = await prisma.$transaction(async (tx) => {
+    const payment = await withSerializableRetry(() => prisma.$transaction(async (tx) => {
       const currentBalance = await getStudentPaymentBalance(tx, student.id);
       ensureNonNegativePaymentBalance(currentBalance + refundAmount);
 
@@ -1367,7 +1383,7 @@ export async function refundPayment(
       });
     }, {
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-    });
+    }));
 
     revalidateDivisionOperationalViews(divisionSlug, { studentId: student.id });
     return {
@@ -1459,7 +1475,7 @@ export async function refundPayment(
 
   const originalPaymentDate = toDateString(originalPayment.paymentDate);
   const refundGroupId = createPaymentGroupId();
-  const result = await prisma.$transaction(async (tx) => {
+  const result = await withSerializableRetry(() => prisma.$transaction(async (tx) => {
     const txOriginalPayment = await tx.payment.findFirst({
       where: {
         id: input.originalPaymentId,
@@ -1537,7 +1553,7 @@ export async function refundPayment(
     };
   }, {
     isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-  });
+  }));
 
   revalidateDivisionOperationalViews(divisionSlug, { studentId: student.id });
   return {
@@ -1844,7 +1860,7 @@ export async function renewAndPay(
   const idempotencyKey = input.idempotencyKey.trim();
   const lockKey = `${division.id}:${input.studentId}:${operationType}:${idempotencyKey}`;
 
-  const resultPayload = await prisma.$transaction(async (tx) => {
+  const resultPayload = await withSerializableRetry(() => prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
 
     const existingOperation = await tx.paymentOperation.findUnique({
@@ -1987,7 +2003,7 @@ export async function renewAndPay(
     return payload;
   }, {
     isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-  });
+  }));
 
   revalidateDivisionOperationalViews(divisionSlug, { studentId: resultPayload.studentId });
   return buildRenewPaymentResultFromPayload(divisionSlug, resultPayload);

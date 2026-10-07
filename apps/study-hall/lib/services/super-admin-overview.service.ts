@@ -9,6 +9,7 @@ import { DEFAULT_DIVISION_FEATURE_FLAGS } from "@/lib/division-features";
 import { parseUtcDateFromYmd } from "@/lib/date-utils";
 import { isMockMode } from "@/lib/mock-data";
 import { getPrismaClient } from "@/lib/service-helpers";
+import { logServerError } from "@/lib/server-log";
 import { getAttendanceSnapshot } from "@/lib/services/attendance.service";
 import {
   getDivisionFeatureSettings,
@@ -35,6 +36,8 @@ export type DivisionOverviewSummary = {
   fullName: string;
   color: string;
   isActive: boolean;
+  /** 이 학원 자료를 불러오지 못해 숫자가 0으로 채워졌다. 화면이 "정상 0"과 구분해 알린다. */
+  loadFailed?: boolean;
   featureFlags: DivisionFeatureFlags;
   studentCount: number;
   activeStudentCount: number;
@@ -326,7 +329,9 @@ async function getSuperAdminOverviewUncached(): Promise<DivisionOverviewSummary[
 
   const summaries = await Promise.all(
     divisions.map(async (division) => {
-      const summary = await getDivisionSummary(division, allAdmins, today).catch(() => ({
+      const summary = await getDivisionSummary(division, allAdmins, today).catch((error: unknown) => ({
+        // 한 학원이 실패해도 다른 학원은 보인다. 실패는 기록하고 화면에 알린다(예전에는 조용히 0).
+        loadFailed: Boolean(logServerError(`super-admin-overview:${division.slug}`, error)),
         slug: division.slug,
         featureFlags: { ...DEFAULT_DIVISION_FEATURE_FLAGS },
         studentCount: 0,

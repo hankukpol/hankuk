@@ -9,6 +9,7 @@ import * as versionedCalculator from "../../lib/versioned-exam-points";
 import * as calculator from "../../lib/exam-point-automation";
 import { mapPolicy } from "../../scripts/restart-police-policy";
 import * as policy from "../../lib/management-policy";
+import * as dateUtils from "../../lib/date-utils";
 import { createAcademyPolicyDraft } from "../../lib/academy-policy-settings";
 
 function fixture() {
@@ -32,7 +33,7 @@ function fixture() {
     "@/lib/versioned-exam-points":versionedCalculator,
     "@/lib/services/academy-configuration-history.service":{getHistoricalAcademyConfiguration:async()=>null},
     "@/lib/exam-point-automation":calculator,"@/lib/management-policy":{...policy,kstDate:()=>today},
-    "@/lib/mock-data":{isMockMode:()=>true},"@/lib/mock-store":{readMockState:async()=>state,updateMockState:async(fn:(state:unknown)=>unknown)=>fn(state)},
+    "@/lib/mock-data":{isMockMode:()=>true},"@/lib/date-utils":dateUtils,"@/lib/mock-store":{readMockState:async()=>state,updateMockState:async(fn:(state:unknown)=>unknown)=>fn(state)},
     "@/lib/service-helpers":{},"@/lib/revalidation":{revalidateDivisionOperationalViews(){}},
     "@/lib/errors":{badRequest:(text:string)=>new Error(text),notFound:(text:string)=>new Error(text)},
     "@/lib/services/settings-history.service":{recordDivisionSettingsChange:async()=>{}},

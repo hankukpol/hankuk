@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { closeAllAttendance } from "@/lib/services/attendance-close.service";
+import { logServerError } from "@/lib/server-log";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -16,7 +17,8 @@ export async function GET(request: NextRequest) {
     const results = await closeAllAttendance();
     const incomplete = results.some(row=>row.failed || row.pending);
     return NextResponse.json({results}, {status: incomplete ? 503 : 200, headers:{"Cache-Control":"no-store"}});
-  } catch {
-    return NextResponse.json({error:"출결 자동 마감에 실패했습니다. 다시 실행해 주세요."}, {status:503});
+  } catch (error) {
+    const errorId = logServerError("cron:attendance-close", error);
+    return NextResponse.json({error:"출결 자동 마감에 실패했습니다. 다시 실행해 주세요.", errorId}, {status:503});
   }
 }

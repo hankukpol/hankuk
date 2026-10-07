@@ -35,26 +35,6 @@ type PointActor = {
   name?: string;
 };
 
-type LegacyPointCategoryDbValue =
-  | "ATTENDANCE"
-  | "BEHAVIOR"
-  | "EXAM"
-  | "LIFE"
-  | "OTHER";
-
-type PointRuleRow = {
-  id: string;
-  divisionId: string;
-  category: string;
-  name: string;
-  points: number;
-  description: string | null;
-  isActive: boolean;
-  displayOrder: number;
-  createdAt: Date;
-  updatedAt: Date;
-};
-
 export type PointRuleItem = {
   id: string;
   divisionId: string;
@@ -166,30 +146,6 @@ function toLegacyPointCategoryLabel(category: string | null | undefined) {
     default:
       return category?.trim() || "기타";
   }
-}
-
-function toLegacyPointCategoryDbValue(category: string): LegacyPointCategoryDbValue | null {
-  if (isSameCategoryName(category, "출결")) {
-    return "ATTENDANCE";
-  }
-
-  if (isSameCategoryName(category, "생활")) {
-    return "BEHAVIOR";
-  }
-
-  if (isSameCategoryName(category, "시험")) {
-    return "EXAM";
-  }
-
-  if (isSameCategoryName(category, "자습")) {
-    return "LIFE";
-  }
-
-  if (isSameCategoryName(category, "기타")) {
-    return "OTHER";
-  }
-
-  return null;
 }
 
 function parseDateString(value: string) {
@@ -398,16 +354,6 @@ function toPointRuleItem(rule: {
   } satisfies PointRuleItem;
 }
 
-function isPointRuleCategoryCompatibilityError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-
-  return (
-    message.includes('Error converting field "category"') ||
-    (message.includes('expected non-nullable type "String"') && message.includes("category")) ||
-    message.includes('invalid input value for enum "PointCategory"')
-  );
-}
-
 const getDivisionOrThrow = cache(async function getDivisionOrThrow(divisionSlug: string) {
   const prisma = await getPrismaClient();
   const division = await prisma.division.findUnique({
@@ -425,79 +371,8 @@ const getDivisionOrThrow = cache(async function getDivisionOrThrow(divisionSlug:
 
 // 상벌점 규칙 분류 칸은 문자열(마이그레이션 20260401), 학원별 분류 칸(point_categories)도 운영 DB 에 있다
 // (2026-10-07 migrate status 35/35). 예전에는 규칙을 읽을 때마다 information_schema 를 두 번 조회했다.
-async function getPointRuleCategoryMode(): Promise<"text" | "legacy-enum"> {
-  return "text";
-}
-
 export async function supportsPointCategoryCustomization() {
   return true;
-}
-
-async function listLegacyPointRuleRows(
-  divisionId: string,
-  options?: { activeOnly?: boolean },
-) {
-  const prisma = await getPrismaClient();
-
-  if (options?.activeOnly) {
-    return prisma.$queryRaw<PointRuleRow[]>`
-      SELECT
-        id,
-        division_id AS "divisionId",
-        category::text AS category,
-        name,
-        points,
-        description,
-        is_active AS "isActive",
-        display_order AS "displayOrder",
-        created_at AS "createdAt",
-        created_at AS "updatedAt"
-      FROM study_hall.point_rules
-      WHERE division_id = ${divisionId}
-        AND is_active = true
-      ORDER BY display_order ASC
-    `;
-  }
-
-  return prisma.$queryRaw<PointRuleRow[]>`
-    SELECT
-      id,
-      division_id AS "divisionId",
-      category::text AS category,
-      name,
-      points,
-      description,
-      is_active AS "isActive",
-      display_order AS "displayOrder",
-      created_at AS "createdAt",
-      created_at AS "updatedAt"
-    FROM study_hall.point_rules
-    WHERE division_id = ${divisionId}
-    ORDER BY display_order ASC
-  `;
-}
-
-async function getLegacyPointRuleRow(divisionId: string, ruleId: string) {
-  const prisma = await getPrismaClient();
-  const rows = await prisma.$queryRaw<PointRuleRow[]>`
-    SELECT
-      id,
-      division_id AS "divisionId",
-      category::text AS category,
-      name,
-      points,
-      description,
-      is_active AS "isActive",
-      display_order AS "displayOrder",
-      created_at AS "createdAt",
-      created_at AS "updatedAt"
-    FROM study_hall.point_rules
-    WHERE division_id = ${divisionId}
-      AND id = ${ruleId}
-    LIMIT 1
-  `;
-
-  return rows[0] ?? null;
 }
 
 async function getLegacyPointRuleCategoryMap(ruleIds: string[]) {
@@ -515,16 +390,6 @@ async function getLegacyPointRuleCategoryMap(ruleIds: string[]) {
   `;
 
   return new Map(rows.map((row) => [row.id, toLegacyPointCategoryLabel(row.category)]));
-}
-
-function assertLegacyPointCategorySupported(category: string) {
-  const legacyValue = toLegacyPointCategoryDbValue(category);
-
-  if (!legacyValue) {
-    throw badRequest("현재 운영 DB에서는 기본 카테고리(출결, 생활, 시험, 자습, 기타)만 사용할 수 있습니다.");
-  }
-
-  return legacyValue;
 }
 
 async function getMockRuleMap(divisionSlug: string) {
@@ -860,30 +725,15 @@ export async function listPointRules(divisionSlug: string, options?: { activeOnl
   }
 
   const division = await getDivisionOrThrow(divisionSlug);
-  const mode = await getPointRuleCategoryMode();
-  let rules: Array<Parameters<typeof toPointRuleItem>[0]>;
-
-  if (mode === "legacy-enum") {
-    rules = await listLegacyPointRuleRows(division.id, options);
-  } else {
-    try {
-      rules = await (await getPrismaClient()).pointRule.findMany({
-        where: {
-          divisionId: division.id,
-          ...(options?.activeOnly ? { isActive: true } : {}),
-        },
-        orderBy: {
-          displayOrder: "asc",
-        },
-      });
-    } catch (error) {
-      if (!isPointRuleCategoryCompatibilityError(error)) {
-        throw error;
-      }
-
-      rules = await listLegacyPointRuleRows(division.id, options);
-    }
-  }
+  const rules: Array<Parameters<typeof toPointRuleItem>[0]> = await (await getPrismaClient()).pointRule.findMany({
+    where: {
+      divisionId: division.id,
+      ...(options?.activeOnly ? { isActive: true } : {}),
+    },
+    orderBy: {
+      displayOrder: "asc",
+    },
+  });
 
   return rules.map((rule) => toPointRuleItem(rule));
 }
@@ -925,131 +775,27 @@ export async function createPointRule(divisionSlug: string, input: PointRuleInpu
 
   const division = await getDivisionOrThrow(divisionSlug);
   const prisma = await getPrismaClient();
-  const mode = await getPointRuleCategoryMode();
 
-  if (mode === "legacy-enum") {
-    const legacyCategory = assertLegacyPointCategorySupported(category);
-    const current = await listLegacyPointRuleRows(division.id);
-    const displayOrder = current.length;
-    const rows = await prisma.$queryRawUnsafe<PointRuleRow[]>(
-      `
-        INSERT INTO study_hall.point_rules (
-          division_id,
-          category,
-          name,
-          points,
-          description,
-          is_active,
-          display_order
-        ) VALUES (
-          $1,
-          '${legacyCategory}',
-          $2,
-          $3,
-          $4,
-          $5,
-          $6
-        )
-        RETURNING
-          id,
-          division_id AS "divisionId",
-          category::text AS category,
-          name,
-          points,
-          description,
-          is_active AS "isActive",
-          display_order AS "displayOrder",
-          created_at AS "createdAt",
-          created_at AS "updatedAt"
-      `,
-      division.id,
-      name,
-      normalizedPoints,
-      description,
-      input.isActive ?? true,
-      displayOrder,
-    );
-
-    if (!rows[0]) {
-      throw new Error("상벌점 규칙 저장에 실패했습니다.");
-    }
-
-    return toPointRuleItem(rows[0]);
-  }
-
+  
   const count = await prisma.pointRule.count({
     where: {
       divisionId: division.id,
     },
   });
 
-  try {
-    const rule = await prisma.pointRule.create({
-      data: {
-        divisionId: division.id,
-        category,
-        name,
-        points: normalizedPoints,
-        description,
-        isActive: input.isActive ?? true,
-        displayOrder: count,
-      },
-    });
-
-    return toPointRuleItem(rule);
-  } catch (error) {
-    if (!isPointRuleCategoryCompatibilityError(error)) {
-      throw error;
-    }
-
-    const legacyCategory = assertLegacyPointCategorySupported(category);
-    const current = await listLegacyPointRuleRows(division.id);
-    const displayOrder = current.length;
-    const rows = await prisma.$queryRawUnsafe<PointRuleRow[]>(
-      `
-        INSERT INTO study_hall.point_rules (
-          division_id,
-          category,
-          name,
-          points,
-          description,
-          is_active,
-          display_order
-        ) VALUES (
-          $1,
-          '${legacyCategory}',
-          $2,
-          $3,
-          $4,
-          $5,
-          $6
-        )
-        RETURNING
-          id,
-          division_id AS "divisionId",
-          category::text AS category,
-          name,
-          points,
-          description,
-          is_active AS "isActive",
-          display_order AS "displayOrder",
-          created_at AS "createdAt",
-          created_at AS "updatedAt"
-      `,
-      division.id,
+  const rule = await prisma.pointRule.create({
+    data: {
+      divisionId: division.id,
+      category,
       name,
-      normalizedPoints,
+      points: normalizedPoints,
       description,
-      input.isActive ?? true,
-      displayOrder,
-    );
+      isActive: input.isActive ?? true,
+      displayOrder: count,
+    },
+  });
 
-    if (!rows[0]) {
-      throw new Error("상벌점 규칙 저장에 실패했습니다.");
-    }
-
-    return toPointRuleItem(rows[0]);
-  }
+  return toPointRuleItem(rule);
 }
 
 export async function updatePointRule(
@@ -1103,56 +849,8 @@ export async function updatePointRule(
 
   const division = await getDivisionOrThrow(divisionSlug);
   const prisma = await getPrismaClient();
-  const mode = await getPointRuleCategoryMode();
 
-  if (mode === "legacy-enum") {
-    const rule = await getLegacyPointRuleRow(division.id, ruleId);
-
-    if (!rule) {
-      throw notFound("상벌점 규칙을 찾을 수 없습니다.");
-    }
-
-    const nextPoints = input.points === undefined ? rule.points : normalizeRulePoints(input.points);
-    const nextCategory = normalizedCategory ?? toLegacyPointCategoryLabel(rule.category);
-    const legacyCategory = assertLegacyPointCategorySupported(nextCategory);
-    const rows = await prisma.$queryRawUnsafe<PointRuleRow[]>(
-      `
-        UPDATE study_hall.point_rules
-        SET
-          category = '${legacyCategory}',
-          name = $2,
-          points = $3,
-          description = $4,
-          is_active = $5
-        WHERE id = $1
-          AND division_id = $6
-        RETURNING
-          id,
-          division_id AS "divisionId",
-          category::text AS category,
-          name,
-          points,
-          description,
-          is_active AS "isActive",
-          display_order AS "displayOrder",
-          created_at AS "createdAt",
-          created_at AS "updatedAt"
-      `,
-      ruleId,
-      input.name ? normalizeText(input.name) : rule.name,
-      nextPoints,
-      input.description === undefined ? rule.description : normalizeOptionalText(input.description),
-      input.isActive ?? rule.isActive,
-      division.id,
-    );
-
-    if (!rows[0]) {
-      throw notFound("상벌점 규칙을 찾을 수 없습니다.");
-    }
-
-    return toPointRuleItem(rows[0]);
-  }
-
+  
   const rule = await prisma.pointRule.findFirst({
     where: {
       id: ruleId,
@@ -1177,74 +875,21 @@ export async function updatePointRule(
   const nextPoints =
     input.points === undefined ? undefined : normalizeRulePoints(input.points);
 
-  try {
-    const updated = await prisma.pointRule.update({
-      where: {
-        id: ruleId,
-      },
-      data: {
-        category: normalizedCategory ?? undefined,
-        name: input.name ? normalizeText(input.name) : undefined,
-        points: nextPoints,
-        description:
-          input.description === undefined ? undefined : normalizeOptionalText(input.description),
-        isActive: input.isActive ?? undefined,
-      },
-    });
+  const updated = await prisma.pointRule.update({
+    where: {
+      id: ruleId,
+    },
+    data: {
+      category: normalizedCategory ?? undefined,
+      name: input.name ? normalizeText(input.name) : undefined,
+      points: nextPoints,
+      description:
+        input.description === undefined ? undefined : normalizeOptionalText(input.description),
+      isActive: input.isActive ?? undefined,
+    },
+  });
 
-    return toPointRuleItem(updated);
-  } catch (error) {
-    if (!isPointRuleCategoryCompatibilityError(error)) {
-      throw error;
-    }
-
-    const legacyRule = await getLegacyPointRuleRow(division.id, ruleId);
-
-    if (!legacyRule) {
-      throw notFound("상벌점 규칙을 찾을 수 없습니다.");
-    }
-
-    const legacyNextPoints =
-      input.points === undefined ? legacyRule.points : normalizeRulePoints(input.points);
-    const legacyNextCategory = normalizedCategory ?? toLegacyPointCategoryLabel(legacyRule.category);
-    const legacyCategory = assertLegacyPointCategorySupported(legacyNextCategory);
-    const rows = await prisma.$queryRawUnsafe<PointRuleRow[]>(
-      `
-        UPDATE study_hall.point_rules
-        SET
-          category = '${legacyCategory}',
-          name = $2,
-          points = $3,
-          description = $4,
-          is_active = $5
-        WHERE id = $1
-          AND division_id = $6
-        RETURNING
-          id,
-          division_id AS "divisionId",
-          category::text AS category,
-          name,
-          points,
-          description,
-          is_active AS "isActive",
-          display_order AS "displayOrder",
-          created_at AS "createdAt",
-          created_at AS "updatedAt"
-      `,
-      ruleId,
-      input.name ? normalizeText(input.name) : legacyRule.name,
-      legacyNextPoints,
-      input.description === undefined ? legacyRule.description : normalizeOptionalText(input.description),
-      input.isActive ?? legacyRule.isActive,
-      division.id,
-    );
-
-    if (!rows[0]) {
-      throw notFound("상벌점 규칙을 찾을 수 없습니다.");
-    }
-
-    return toPointRuleItem(rows[0]);
-  }
+  return toPointRuleItem(updated);
 }
 
 export async function deletePointRule(divisionSlug: string, ruleId: string) {

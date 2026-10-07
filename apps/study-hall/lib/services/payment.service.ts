@@ -128,10 +128,6 @@ export type SettlementSummary = {
   payments: PaymentItem[];
 };
 
-type PaymentSchemaCompatibility = {
-  supportsGroupedPayments: boolean;
-};
-
 type PaymentPrismaClient = Awaited<ReturnType<typeof getPrismaClient>> | Prisma.TransactionClient;
 
 type PaymentCreateMeta = {
@@ -155,14 +151,6 @@ function parseDateString(value: string) {
   return parseUtcDateFromYmd(value, "날짜");
 }
 
-// 결제 묶음·환불 연결 칸(마이그레이션 20260402)은 운영 DB 에 적용돼 있다(2026-10-07 migrate status 확인).
-// 예전에는 information_schema 로 확인하고 실패를 인스턴스 수명 동안 캐시해, DB 가 잠깐 흔들리면
-// 환불 연결 확인이 꺼진 채 원결제를 지울 수 있었다. 이제 확인하지 않고 항상 지금 구조를 쓴다.
-const PAYMENT_SCHEMA: PaymentSchemaCompatibility = { supportsGroupedPayments: true };
-
-async function getPaymentSchemaCompatibility() {
-  return PAYMENT_SCHEMA;
-}
 
 function createPaymentGroupId() {
   return `payment-group-${randomUUID()}`;
@@ -521,12 +509,6 @@ async function getRefundedAmountForOriginalPayment(
   prisma: PaymentPrismaClient,
   originalPaymentId: string,
 ) {
-  const paymentSchema = await getPaymentSchemaCompatibility();
-
-  if (!paymentSchema.supportsGroupedPayments) {
-    return 0;
-  }
-
   const aggregate = await prisma.payment.aggregate({
     _sum: {
       amount: true,
@@ -543,7 +525,6 @@ async function getRefundedAmountForOriginalPayment(
 }
 
 function toPrismaPaymentCreateInput(
-  supportsGroupedPayments: boolean,
   actor: PaymentActor,
   studentId: string,
   payment: PaymentEntryInput,
@@ -557,12 +538,9 @@ function toPrismaPaymentCreateInput(
     method: normalizeMethodForStorage(payment.method),
     notes: normalizeOptionalText(payment.notes),
     recordedById: actor.id,
+    paymentGroupId: normalizePaymentGroupId(meta?.paymentGroupId),
+    originalPaymentId: normalizePaymentGroupId(meta?.originalPaymentId),
   };
-
-  if (supportsGroupedPayments) {
-    data.paymentGroupId = normalizePaymentGroupId(meta?.paymentGroupId);
-    data.originalPaymentId = normalizePaymentGroupId(meta?.originalPaymentId);
-  }
 
   return data;
 }
@@ -573,7 +551,7 @@ const paymentRelationSelect = {
   recordedBy: { select: { id: true, name: true } },
 } as const;
 
-const legacyPaymentSelect = {
+const basePaymentSelect = {
   id: true,
   amount: true,
   paymentDate: true,
@@ -584,18 +562,12 @@ const legacyPaymentSelect = {
 } satisfies Prisma.PaymentSelect;
 
 const paymentSelect = {
-  ...legacyPaymentSelect,
+  ...basePaymentSelect,
   paymentGroupId: true,
   originalPaymentId: true,
 } satisfies Prisma.PaymentSelect;
 
-type PaymentWithIncludes =
-  | Prisma.PaymentGetPayload<{ select: typeof paymentSelect }>
-  | Prisma.PaymentGetPayload<{ select: typeof legacyPaymentSelect }>;
-
-function getPaymentSelect(supportsGroupedPayments: boolean) {
-  return supportsGroupedPayments ? paymentSelect : legacyPaymentSelect;
-}
+type PaymentWithIncludes = Prisma.PaymentGetPayload<{ select: typeof paymentSelect }>;
 
 function ensureNonNegativePaymentBalance(balance: number) {
   if (balance < 0) {
@@ -721,7 +693,6 @@ export async function listPayments(
   await ensureDefaultPaymentCategories(division.id);
   const prisma = await getPrismaClient();
   const { from, to } = toUtcRange(options?.dateFrom, options?.dateTo);
-  const paymentSchema = await getPaymentSchemaCompatibility();
   const paymentWhere = {
     student: {
       divisionId: division.id,
@@ -739,7 +710,7 @@ export async function listPayments(
   } satisfies Prisma.PaymentWhereInput;
   const payments: PaymentWithIncludes[] = await prisma.payment.findMany({
     where: paymentWhere,
-    select: getPaymentSelect(paymentSchema.supportsGroupedPayments),
+    select: paymentSelect,
     orderBy: [{ paymentDate: "desc" }, { createdAt: "desc" }],
   });
 
@@ -806,8 +777,7 @@ export async function createPaymentsBatch(
   const division = await getDivisionOrThrow(divisionSlug);
   await ensureDefaultPaymentCategories(division.id);
   const prisma = await getPrismaClient();
-  const paymentSchema = await getPaymentSchemaCompatibility();
-  const paymentSelectForWrite = getPaymentSelect(paymentSchema.supportsGroupedPayments);
+  const paymentSelectForWrite = paymentSelect;
 
   const [student, categories] = await Promise.all([
     prisma.student.findFirst({
@@ -854,7 +824,7 @@ export async function createPaymentsBatch(
     Promise.all(
       normalizedPayments.map((payment) =>
         tx.payment.create({
-          data: toPrismaPaymentCreateInput(paymentSchema.supportsGroupedPayments, actor, input.studentId, payment, {
+          data: toPrismaPaymentCreateInput(actor, input.studentId, payment, {
             paymentGroupId,
           }),
           select: paymentSelectForWrite,
@@ -960,8 +930,7 @@ export async function updatePayment(
   const division = await getDivisionOrThrow(divisionSlug);
   await ensureDefaultPaymentCategories(division.id);
   const prisma = await getPrismaClient();
-  const paymentSchema = await getPaymentSchemaCompatibility();
-  const paymentSelectForWrite = getPaymentSelect(paymentSchema.supportsGroupedPayments);
+  const paymentSelectForWrite = paymentSelect;
 
   const payment = await prisma.payment.findFirst({
     where: {
@@ -974,7 +943,7 @@ export async function updatePayment(
       id: true,
       studentId: true,
       amount: true,
-      ...(paymentSchema.supportsGroupedPayments ? { originalPaymentId: true } : {}),
+      originalPaymentId: true,
     },
   });
 
@@ -1070,7 +1039,6 @@ export async function deletePayment(divisionSlug: string, paymentId: string) {
 
   const division = await getDivisionOrThrow(divisionSlug);
   const prisma = await getPrismaClient();
-  const paymentSchema = await getPaymentSchemaCompatibility();
 
   const payment = await prisma.payment.findFirst({
     where: {
@@ -1089,16 +1057,14 @@ export async function deletePayment(divisionSlug: string, paymentId: string) {
     throw notFound("수납 기록을 찾을 수 없습니다.");
   }
 
-  const linkedRefundCount = paymentSchema.supportsGroupedPayments
-    ? await prisma.payment.count({
-        where: {
-          originalPaymentId: paymentId,
-          student: {
-            divisionId: division.id,
-          },
-        },
-      })
-    : 0;
+  const linkedRefundCount = await prisma.payment.count({
+    where: {
+      originalPaymentId: paymentId,
+      student: {
+        divisionId: division.id,
+      },
+    },
+  });
 
   if (linkedRefundCount > 0) {
     throw badRequest("연결된 환불 이력이 있는 원결제는 삭제할 수 없습니다.");
@@ -1284,12 +1250,7 @@ export async function refundPayment(
   const division = await getDivisionOrThrow(divisionSlug);
   await ensureDefaultPaymentCategories(division.id);
   const prisma = await getPrismaClient();
-  const paymentSchema = await getPaymentSchemaCompatibility();
-  const paymentSelectForWrite = getPaymentSelect(paymentSchema.supportsGroupedPayments);
-
-  if (!paymentSchema.supportsGroupedPayments) {
-    throw badRequest("현재 데이터베이스에 최신 결제 환불 마이그레이션이 적용되지 않아 환불 기능을 사용할 수 없습니다.");
-  }
+  const paymentSelectForWrite = paymentSelect;
 
   if (input.mode === "simple") {
     const refundAmount = normalizePaymentAmount(input.amount * -1);
@@ -1364,7 +1325,6 @@ export async function refundPayment(
 
       return tx.payment.create({
         data: toPrismaPaymentCreateInput(
-          paymentSchema.supportsGroupedPayments,
           actor,
           student.id,
           {
@@ -1664,8 +1624,7 @@ export async function enrollAndPay(
   const division = await getDivisionOrThrow(divisionSlug);
   await ensureDefaultPaymentCategories(division.id);
   const prisma = await getPrismaClient();
-  const paymentSchema = await getPaymentSchemaCompatibility();
-  const paymentSelectForWrite = getPaymentSelect(paymentSchema.supportsGroupedPayments);
+  const paymentSelectForWrite = paymentSelect;
 
   const [duplicate, plan, categories] = await Promise.all([
     prisma.student.findFirst({
@@ -1743,7 +1702,7 @@ export async function enrollAndPay(
       const payments = await Promise.all(
         paymentEntries.map((payment) =>
           tx.payment.create({
-            data: toPrismaPaymentCreateInput(paymentSchema.supportsGroupedPayments, actor, student.id, payment, {
+            data: toPrismaPaymentCreateInput(actor, student.id, payment, {
               paymentGroupId,
             }),
             select: paymentSelectForWrite,
@@ -1852,8 +1811,7 @@ export async function renewAndPay(
   const division = await getDivisionOrThrow(divisionSlug);
   await ensureDefaultPaymentCategories(division.id);
   const prisma = await getPrismaClient();
-  const paymentSchema = await getPaymentSchemaCompatibility();
-  const paymentSelectForWrite = getPaymentSelect(paymentSchema.supportsGroupedPayments);
+  const paymentSelectForWrite = paymentSelect;
 
   const normalizedPaymentEntries = resolvePaymentEntries(input.payment, input.payments);
   const operationType = "RENEW_PAYMENT";
@@ -1979,7 +1937,7 @@ export async function renewAndPay(
     const payments = await Promise.all(
       paymentEntries.map((payment) =>
         tx.payment.create({
-          data: toPrismaPaymentCreateInput(paymentSchema.supportsGroupedPayments, actor, student.id, payment, {
+          data: toPrismaPaymentCreateInput(actor, student.id, payment, {
             paymentGroupId,
           }),
           select: paymentSelectForWrite,

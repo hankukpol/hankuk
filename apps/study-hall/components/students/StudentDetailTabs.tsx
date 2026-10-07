@@ -13,6 +13,7 @@ import { PointCategoryBadge, PointValueBadge } from "@/components/points/PointBa
 import { PaymentMethodSelect } from "@/components/payments/PaymentMethodSelect";
 import { RefundModal } from "@/components/payments/RefundModal";
 import { SlideOver } from "@/components/ui/SlideOver";
+import { AdminTabs } from "@/components/ui/AdminTabs";
 import { JournalEntry } from "@/components/interviews/InterviewJournal";
 import { sortJournal } from "@/lib/interview-journal";
 import { getLeaveStatusClasses, getLeaveStatusLabel, getLeaveTypeLabel } from "@/lib/leave-meta";
@@ -216,6 +217,8 @@ export function StudentDetailTabs({
   const router = useRouter();
 
   // Payment add/refund state
+  // 출결 탭 안의 3차 구분(DESIGN.md 0절 4항 — 얇은 밑줄). 한 화면에 표 세 개를 쌓지 않는다.
+  const [attendanceView, setAttendanceView] = useState<"weekly" | "history" | "leave">("weekly");
   const [isAddPaymentOpen, setIsAddPaymentOpen] = useState(false);
   const [isRefundOpen, setIsRefundOpen] = useState(false);
   const [paymentTypeId, setPaymentTypeId] = useState("");
@@ -456,10 +459,21 @@ export function StudentDetailTabs({
           </table>
         </section>
 
-        <section className="admin-section">
-          <div className="border-b border-slate-200 px-4 py-3">
-            <p className="text-sm font-semibold text-slate-900">이번 주 출결표</p>
-          </div>
+        <AdminTabs
+          items={[
+            { id: "weekly", label: "이번 주 출결표" },
+            { id: "history", label: <>출결 상세 이력 <span className="tabular-nums">({attendanceHistory.length})</span></> },
+            ...(leaveManagementEnabled ? [{ id: "leave", label: <>외출·휴가 <span className="tabular-nums">({leavePermissions.length})</span></> }] : []),
+          ]}
+          activeId={attendanceView}
+          onChange={(id) => setAttendanceView(id as typeof attendanceView)}
+          label="출결 기록 구분"
+          idPrefix="student-attendance-view"
+          variant="secondary"
+          className="admin-subtabs-underline"
+        />
+
+        <section className={`admin-section ${attendanceView === "weekly" ? "" : "hidden"}`}>
           <div className="admin-table-frame overflow-x-auto">
             <table className="w-full min-w-[900px]">
               <thead>
@@ -503,14 +517,9 @@ export function StudentDetailTabs({
           </div>
         </section>
 
-        <section className="admin-section">
-          <div className="space-y-3 border-b border-slate-200 px-4 py-3">
-            <div>
-              <p className="text-sm font-semibold text-slate-900">출결 상세 이력</p>
-              <p className="admin-help mt-1">
-                결석, 수업, 사유결석, 휴무와 사유 작성 및 수정 시점을 확인합니다.
-              </p>
-            </div>
+        <section className={`admin-section ${attendanceView === "history" ? "" : "hidden"}`}>
+          <div className="admin-filter-bar flex-col items-stretch">
+            <p className="admin-help">결석, 수업, 사유결석, 휴무와 사유 작성 및 수정 시점을 확인합니다.</p>
 
             <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
               <div className="grid gap-2 sm:grid-cols-2">
@@ -520,7 +529,7 @@ export function StudentDetailTabs({
                     type="date"
                     value={attendanceDateFrom}
                     onChange={(event) => setAttendanceDateFrom(event.target.value)}
-                    className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
+                    className="mt-2 w-full"
                   />
                 </label>
                 <label className="admin-label">
@@ -529,7 +538,7 @@ export function StudentDetailTabs({
                     type="date"
                     value={attendanceDateTo}
                     onChange={(event) => setAttendanceDateTo(event.target.value)}
-                    className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
+                    className="mt-2 w-full"
                   />
                 </label>
               </div>
@@ -625,10 +634,7 @@ export function StudentDetailTabs({
         </section>
 
         {leaveManagementEnabled ? (
-          <section className="admin-section">
-            <div className="border-b border-slate-200 px-4 py-3">
-              <p className="text-sm font-semibold text-slate-900">최근 외출/휴가</p>
-            </div>
+          <section className={`admin-section ${attendanceView === "leave" ? "" : "hidden"}`}>
             <div className="admin-table-frame overflow-x-auto">
               <table className="w-full min-w-[680px]">
                 <thead>
@@ -641,7 +647,7 @@ export function StudentDetailTabs({
                 </thead>
                 <tbody>
                   {leavePermissions.length > 0 ? (
-                    leavePermissions.slice(0, 5).map((permission) => (
+                    leavePermissions.map((permission) => (
                       <tr key={permission.id} className="border-b border-slate-100 last:border-b-0">
                         <td>{formatDate(permission.date)}</td>
                         <td>{getLeaveTypeLabel(permission.type)}</td>

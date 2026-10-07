@@ -5,6 +5,15 @@
 실제 브라우저 http://localhost:3300/login 관리자 mock로그인200, 학생명단 페이지/API 정상 로딩(로컬 전체40명·재원35명·테스트학생 포함). 소스 MorningPersonalReport의 호스트/컨테이너 SHA256동일 확인. MOCK_MODE=true, 기존 .local/mock-db.json 존재 확인. 운영 Supabase와 별개인 파일 목업 데이터이며 hankuk 그룹의 Supabase 실행만으로 웹서버가 켜지는 것은 아니다. 현재 클로드 미완료 면담 관련 파일은 보존. 앱브라우저 login열기는 queued 응답으로 실제탭 전환 확인과 구분한다. QA근거 .local/docker-3300-qa.cjs와 docker-3300-students.png. docs/docker-development.md·LOCAL_DEMO 주소/시작·종료·자동반영 안내 갱신. Git커밋/푸시/운영배포/운영DB쓰기 없음.
 
 
+## 배포 — 2026-10-07 운영 확인 후 수정 4건 (Claude, 운영자 승인)
+
+- 버튼 hover 흰 글자: 앞 레이어 `.admin-button:hover`(밝은 면)가 `.admin-button-primary:hover`를 같은 특이도·뒤 순서로 덮어 채움 버튼이 흰 바탕+흰 글자가 됨. CSS 끝에 종류별 hover·누름 규칙 추가. 자동 점검(scratchpad/hover-audit.mjs, 강제 hover·대비 3:1)으로 자가 시험 통과(일부러 깨면 1.04:1 검출).
+- 휴대폰 관리 `표시 학생 전원 반납/전원 미반납/일괄 대여` 줄: 위아래 선 사이 4px라 버튼이 끼어 보임 → gap 8 · 아래 16px · 아래 선만(`PhoneCheckForm.tsx`).
+- 학생 상세 운영 현황 `출결`: 표 세 개가 한 화면에 쌓임 → 3차 밑줄 탭(이번 주 출결표 / 출결 상세 이력 / 외출·휴가, 외출·휴가는 5건 제한 제거), 날짜 입력 손 스타일 제거(`StudentDetailTabs.tsx`). `.admin-shell [hidden]` 전역 숨김 규칙 추가.
+- 면담 기록 일관성: 다른 세션이 `InterviewManager.tsx`를 크게 바꾸는 중(학습 면담·DB 마이그레이션, 미커밋)이라 마크업은 건드리지 않고 CSS 끝 레이어로 학생 목록을 표 규격, 조회 조건을 필터 바, 일지 패널을 패널 규격에 맞춤.
+- 로컬 Docker 개발 서버가 부하로 여러 번 재시작·`useContext null` 오류 → `docker restart study-hall-dev-1`로 복구(로컬 전용). 다른 세션의 `/interviews/score-signals`가 로컬에서 40초 걸림.
+- 검증: typecheck·lint, 테스트 1007/1007, 로컬 화면 확인(면담 3탭, 학생 상세 출결 탭 전환, hover 색). 운영자 승인으로 커밋·배포.
+
 ## 배포 — 2026-10-07 전 화면 기준 확정 1~3단계 + 면담 일지 정돈 (Claude, 운영자 승인)
 
 - 1단계(기준): DESIGN.md 0절 12항 + `app/globals.css` 끝 `화면 기준 확정 레이어`. 버튼·입력 40px / 작게 32px / 크게 48px(로그인), 768px 미만 44/36. 버튼 글자 14px. 페이지 제목 22, 구획 제목 17. 표 안 `.admin-button` 은 글자화하지 않고 32px 외곽 버튼(앞선 표 글자화 규칙에서 .admin-button 제외). 정의 없던 `admin-button-secondary` 18곳 제거. 입력·선택 값 굵기 400. `.admin-meta-line`(세로선 회색 한 줄) 공용화.

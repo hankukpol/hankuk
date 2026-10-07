@@ -1243,8 +1243,8 @@ export function PhoneCheckForm({
                 </button>
               </div>
 
-              {/* 주 실행(저장)은 위 툴바에 있다. 여기 셋은 보조라 글자로 둔다. */}
-              <div className="flex flex-wrap items-center gap-x-4 border-y border-admin-line-soft py-1">
+              {/* 주 실행(저장)은 위 툴바에 있다. 여기 셋은 보조 외곽 버튼으로 한 줄에 둔다(아래 16px 여백과 구분선). */}
+              <div className="flex flex-wrap items-center gap-2 border-b border-admin-line-soft pb-4">
                 <button
                   type="button"
                   onClick={() => setAllForPeriod(activePeriodId, "SUBMITTED", visibleStudents)}

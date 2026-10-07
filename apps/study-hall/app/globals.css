@@ -4861,3 +4861,111 @@ table :is(a[class*="rounded"]:not(.admin-button), button[class*="rounded"]:not(.
     word-break: keep-all;
   }
 }
+
+/* 버튼 hover·누름은 위계별로 끝까지 정한다(2026-10-07 운영 지적: 채움 버튼에 마우스를 올리면 흰 바탕에 흰 글자).
+   원인: 앞 레이어의 .admin-button:hover(밝은 면)가 .admin-button-primary:hover(진한 면)를 같은 특이도로 덮었다.
+   종류를 함께 적은 선택자로 특이도를 올려 순서에 기대지 않는다. */
+.admin-button:hover:not(:disabled),
+.admin-button:active:not(:disabled) {
+  background: var(--admin-surface-soft);
+  color: var(--admin-text);
+}
+
+.admin-button.admin-button-primary:hover:not(:disabled),
+.admin-button.admin-button-primary:active:not(:disabled) {
+  border-color: var(--admin-accent-hover);
+  background: var(--admin-accent-hover);
+  color: var(--admin-on-accent);
+}
+
+.admin-button.admin-button-danger:hover:not(:disabled),
+.admin-button.admin-button-danger:active:not(:disabled) {
+  border-color: var(--admin-danger);
+  background: var(--admin-danger);
+  color: #ffffff;
+  filter: brightness(0.92);
+}
+
+.admin-button.admin-button-danger-outline:hover:not(:disabled),
+.admin-button.admin-button-danger-outline:active:not(:disabled) {
+  border-color: var(--admin-danger-line);
+  background: var(--admin-danger-soft);
+  color: var(--admin-danger);
+}
+
+/* 면담 기록을 다른 화면과 같은 규격으로(2026-10-07 운영 지적: 면담 기록만 다른 디자인).
+   - 왼쪽 학생 목록 = 표 규격: 머리 13/600 muted · surface-soft, 칸 13px · 12px 16px, 숫자 가운데.
+   - 목록 위 조회 조건 = 필터 바 규격(surface-soft 바탕, 16px).
+   - 오른쪽 일지 = 패널 규격: 머리 16px 20px · 제목 17/700(구획 제목), 묶음 사이 line-soft. */
+.admin-shell .interview-journal-students > div:first-child {
+  background: var(--admin-surface-soft);
+  padding: 16px;
+}
+
+.admin-shell .interview-student-row {
+  gap: 8px;
+  padding: 12px 16px;
+  font-size: 13px;
+}
+
+.admin-shell .interview-student-header {
+  border-top: 1px solid var(--admin-line-soft);
+  padding-block: 12px;
+  color: var(--admin-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.admin-shell .interview-student-item {
+  font-size: 13px;
+}
+
+.admin-shell .interview-student-name {
+  font-size: 14px;
+}
+
+.admin-shell .interview-journal-head {
+  min-height: 56px;
+  align-items: center;
+  padding: 16px 20px;
+}
+
+.admin-shell .interview-journal-name {
+  margin-bottom: 2px;
+  font-size: var(--admin-type-section);
+}
+
+.admin-shell .interview-journal-block {
+  padding: 16px 20px;
+}
+
+.admin-shell .interview-journal-block-flush {
+  padding: 16px 0 0;
+}
+
+.admin-shell .interview-journal-block-flush > .interview-block-head {
+  padding-inline: 20px;
+}
+
+.admin-shell .interview-block-head h3 {
+  font-size: 15px;
+}
+
+.admin-shell .interview-entry {
+  padding: 16px 20px;
+}
+
+.admin-shell .interview-entry-title {
+  font-size: 15px;
+}
+
+.admin-shell .interview-entry-rows dd,
+.admin-shell .interview-promise-list > li {
+  font-size: 14px;
+}
+
+/* hidden 속성은 언제나 숨긴다. .admin-section 처럼 display 를 정한 클래스가 붙으면 브라우저 기본 [hidden] 이 져서
+   탭으로 감춘 구획이 그대로 보였다(학생 상세 운영 현황, 2026-10-07). */
+.admin-shell [hidden] {
+  display: none !important;
+}

@@ -1,4 +1,5 @@
 import { kstDate } from "@/lib/management-policy";
+import { badRequest } from "@/lib/errors";
 import { isMockMode } from "@/lib/mock-data";
 import { readMockState } from "@/lib/mock-store";
 import { getPrismaClient } from "@/lib/service-helpers";
@@ -20,7 +21,7 @@ export async function closeDivisionExamPoints(slug: string) {
   const actor = isMockMode()
     ? (await readMockState()).admins.find(a=>a.isActive && (a.role === "SUPER_ADMIN" || (a.role === "ADMIN" && a.divisionSlug === slug)))
     : await (await getPrismaClient()).admin.findFirst({where:{isActive:true,OR:[{role:"SUPER_ADMIN"},{role:"ADMIN",division:{slug}}]},select:{id:true,role:true}});
-  if (!actor) throw new Error("자동 상벌점을 기록할 관리자가 없습니다.");
+  if (!actor) throw badRequest("자동 상벌점을 기록할 관리자가 없습니다.");
   const current = await syncExamPoints(slug, today, actor.id);
   const closed = await syncExamPoints(slug, lastDay, actor.id);
   const leave = previousConfig.enabled && previousConfig.settleUnusedLeaveAutomatically && !!previousConfig.effectiveFrom && lastDay >= previousConfig.effectiveFrom

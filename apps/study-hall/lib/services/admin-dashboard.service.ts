@@ -1,4 +1,5 @@
 import { unstable_cache } from "next/cache";
+import { notFound } from "@/lib/errors";
 
 import { isMockMode } from "@/lib/mock-data";
 import type { DivisionFeatureFlags } from "@/lib/division-features";
@@ -346,7 +347,7 @@ function getSnapshotOrThrow(snapshotMap: Map<string, AttendanceSnapshot>, date: 
   const snapshot = snapshotMap.get(date);
 
   if (!snapshot) {
-    throw new Error(`출석 스냅샷을 찾을 수 없습니다: ${date}`);
+    throw notFound(`출석 스냅샷을 찾을 수 없습니다: ${date}`);
   }
 
   return snapshot;

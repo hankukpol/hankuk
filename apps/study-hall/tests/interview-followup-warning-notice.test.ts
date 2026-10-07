@@ -29,6 +29,8 @@ function loadService<T>(name: string, dependencies: Record<string, unknown>): T 
   const testModule = { exports: {} };
   new Function("require", "module", "exports", code)(
     (id: string) => {
+      // 오류 종류(notFound·badRequest 등)는 순수 모듈이라 따로 주지 않아도 실제 것을 쓴다.
+      if (id === "@/lib/errors" && !(id in dependencies)) return errors;
       assert.ok(id in dependencies, `Unisolated service dependency: ${id}`);
       return dependencies[id];
     },

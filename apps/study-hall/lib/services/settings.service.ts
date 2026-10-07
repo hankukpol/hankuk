@@ -8,7 +8,7 @@ import {
   type DivisionFeatureFlags,
 } from "@/lib/division-features";
 import { getMockDivisionBySlug, isMockMode } from "@/lib/mock-data";
-import { notFound } from "@/lib/errors";
+import { notFound, badRequest } from "@/lib/errors";
 import {
   readMockState,
   updateMockState,
@@ -246,7 +246,7 @@ function validateWarningThresholdOrder(
       input.warnInterview < input.warnWithdraw
     )
   ) {
-    throw new Error("경고 단계 벌점은 1차 < 2차 < 면담 < 퇴실 순서로 설정되어야 합니다.");
+    throw badRequest("경고 단계 벌점은 1차 < 2차 < 면담 < 퇴실 순서로 설정되어야 합니다.");
   }
 }
 
@@ -671,7 +671,7 @@ export async function updateDivisionRuleSettings(
       );
 
       if (selectedRuleIds.some((ruleId) => !validRuleIds.has(ruleId))) {
-        throw new Error("자동 출결 상벌점 규칙은 현재 지점의 활성 상벌점 규칙만 선택할 수 있습니다.");
+        throw badRequest("자동 출결 상벌점 규칙은 현재 지점의 활성 상벌점 규칙만 선택할 수 있습니다.");
       }
 
       const current =
@@ -739,7 +739,7 @@ export async function updateDivisionRuleSettings(
     });
 
     if (validRuleCount !== selectedRuleIds.length) {
-      throw new Error("자동 출결 상벌점 규칙은 현재 지점의 활성 상벌점 규칙만 선택할 수 있습니다.");
+      throw badRequest("자동 출결 상벌점 규칙은 현재 지점의 활성 상벌점 규칙만 선택할 수 있습니다.");
     }
   }
 

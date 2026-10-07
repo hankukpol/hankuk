@@ -1,7 +1,7 @@
 import { examScoresSaveSchema, selectExamDateRecords } from "@/lib/exam-meta";
 import { getLegacyExamDateKey } from "@/lib/exam-session-identity";
 import { getMockDivisionBySlug, isMockMode } from "@/lib/mock-data";
-import { notFound, conflict } from "@/lib/errors";
+import { notFound, conflict, badRequest } from "@/lib/errors";
 import {
   readMockState,
   updateMockState,
@@ -360,7 +360,7 @@ export async function reorderExamTypes(divisionSlug: string, orderedIds: string[
         nextIdSet.size !== current.length ||
         orderedIds.some((id) => !currentIds.has(id))
       ) {
-        throw new Error("시험 템플릿 목록을 다시 확인해주세요.");
+        throw badRequest("시험 템플릿 목록을 다시 확인해주세요.");
       }
 
       const now = new Date().toISOString();
@@ -401,7 +401,7 @@ export async function reorderExamTypes(divisionSlug: string, orderedIds: string[
     nextIdSet.size !== current.length ||
     orderedIds.some((id) => !currentIds.has(id))
   ) {
-    throw new Error("시험 템플릿 목록을 다시 확인해주세요.");
+    throw badRequest("시험 템플릿 목록을 다시 확인해주세요.");
   }
 
   await prisma.$transaction(
@@ -434,7 +434,7 @@ export async function createExamType(divisionSlug: string, input: ExamTypeSchema
       const division = getMockDivisionBySlug(divisionSlug);
 
       if (!division) {
-        throw new Error("지점 정보를 찾을 수 없습니다.");
+        throw notFound("지점 정보를 찾을 수 없습니다.");
       }
 
       const current = state.examTypesByDivision[divisionSlug] ?? [];
@@ -532,7 +532,7 @@ export async function updateExamType(
       const next = updatedTypes.find((examType) => examType.id === examTypeId);
 
       if (!next) {
-        throw new Error("시험 종류를 찾을 수 없습니다.");
+        throw notFound("시험 종류를 찾을 수 없습니다.");
       }
 
       return next;
@@ -633,7 +633,7 @@ export async function updateExamType(
   });
 
   if (!updated) {
-    throw new Error("시험 종류를 찾을 수 없습니다.");
+    throw notFound("시험 종류를 찾을 수 없습니다.");
   }
 
   return toExamTypeItem(updated);
@@ -645,7 +645,7 @@ export async function deleteExamType(divisionSlug: string, examTypeId: string) {
       const current = state.examTypesByDivision[divisionSlug] ?? [];
 
       if (!current.some((examType) => examType.id === examTypeId)) {
-        throw new Error("시험 종류를 찾을 수 없습니다.");
+        throw notFound("시험 종류를 찾을 수 없습니다.");
       }
 
       // 성적 데이터가 존재하면 삭제 차단
@@ -656,7 +656,7 @@ export async function deleteExamType(divisionSlug: string, examTypeId: string) {
         (score) => score.examTypeId === examTypeId,
       );
       if (hasRegularScores || hasMorningScores) {
-        throw new Error("해당 시험 종류에 성적 데이터가 존재하여 삭제할 수 없습니다. 먼저 성적 데이터를 삭제해주세요.");
+        throw badRequest("해당 시험 종류에 성적 데이터가 존재하여 삭제할 수 없습니다. 먼저 성적 데이터를 삭제해주세요.");
       }
 
       state.examTypesByDivision[divisionSlug] = current.filter((examType) => examType.id !== examTypeId);
@@ -678,7 +678,7 @@ export async function deleteExamType(divisionSlug: string, examTypeId: string) {
   });
 
   if (!examType) {
-    throw new Error("시험 종류를 찾을 수 없습니다.");
+    throw notFound("시험 종류를 찾을 수 없습니다.");
   }
 
   // 성적 데이터가 존재하면 삭제 차단
@@ -688,7 +688,7 @@ export async function deleteExamType(divisionSlug: string, examTypeId: string) {
   ]);
 
   if (regularScoreCount > 0 || morningScoreCount > 0) {
-    throw new Error("해당 시험 종류에 성적 데이터가 존재하여 삭제할 수 없습니다. 먼저 성적 데이터를 삭제해주세요.");
+    throw badRequest("해당 시험 종류에 성적 데이터가 존재하여 삭제할 수 없습니다. 먼저 성적 데이터를 삭제해주세요.");
   }
 
   await prisma.examType.delete({

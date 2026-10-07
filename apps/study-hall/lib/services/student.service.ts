@@ -598,11 +598,11 @@ async function resolveSeatId(
   });
 
   if (!seat) {
-    throw new Error("좌석 정보를 찾을 수 없습니다.");
+    throw notFound("좌석 정보를 찾을 수 없습니다.");
   }
 
   if (!seat.isActive) {
-    throw new Error("비활성 좌석은 배정할 수 없습니다.");
+    throw badRequest("비활성 좌석은 배정할 수 없습니다.");
   }
 
   const occupied = await prisma.student.findFirst({
@@ -620,7 +620,7 @@ async function resolveSeatId(
   });
 
   if (occupied) {
-    throw new Error("이미 다른 학생에게 배정된 좌석입니다. 다른 좌석을 선택해 주세요.");
+    throw conflict("이미 다른 학생에게 배정된 좌석입니다. 다른 좌석을 선택해 주세요.");
   }
 
   return seat.id;
@@ -682,7 +682,7 @@ async function resolveDbTuitionPlan(
     : null;
 
   if (tuitionPlanId && !plan) {
-    throw new Error("등록 플랜을 찾을 수 없습니다.");
+    throw notFound("등록 플랜을 찾을 수 없습니다.");
   }
 
   return {
@@ -742,7 +742,7 @@ async function getStudentDetailLegacy(divisionSlug: string, studentId: string) {
     const raw = (state.studentsByDivision[divisionSlug] ?? []).find((item) => item.id === studentId);
 
     if (!raw) {
-      throw new Error("학생 정보를 찾을 수 없습니다.");
+      throw notFound("학생 정보를 찾을 수 없습니다.");
     }
 
     return {
@@ -801,7 +801,7 @@ async function getStudentDetailLegacy(divisionSlug: string, studentId: string) {
   ]);
 
   if (!raw) {
-  throw new Error("학생 정보를 찾을 수 없습니다.");
+  throw notFound("학생 정보를 찾을 수 없습니다.");
   }
 
   const netPoints = toNetPoints(pointAggregate._sum.points ?? 0);
@@ -835,7 +835,7 @@ async function createStudentRecord(
     const studentId = await updateMockState(async (state) => {
       const divisionStudents = state.studentsByDivision[divisionSlug];
       if (!divisionStudents) {
-        throw new Error("지점 정보를 찾을 수 없습니다.");
+        throw notFound("지점 정보를 찾을 수 없습니다.");
       }
       ensureMockStudentNumberAvailableInState(state, divisionSlug, studentNumber);
       const seatAssignment = isWithdrawn
@@ -894,7 +894,7 @@ async function createStudentRecord(
   });
 
   if (duplicate) {
-    throw new Error("이미 사용 중인 수험번호입니다.");
+    throw conflict("이미 사용 중인 수험번호입니다.");
   }
 
   const seatId = isWithdrawn ? null : await resolveSeatId(division.id, input.seatId);
@@ -1179,7 +1179,7 @@ export async function updateStudent(
       const current = state.studentsByDivision[divisionSlug] ?? [];
       const target = current.find((student) => student.id === studentId);
       if (!target) {
-        throw new Error("학생 정보를 찾을 수 없습니다.");
+        throw notFound("학생 정보를 찾을 수 없습니다.");
       }
       state.studentsByDivision[divisionSlug] = current.map((student) =>
         student.id === studentId
@@ -1227,7 +1227,7 @@ export async function updateStudent(
   });
 
   if (!student) {
-    throw new Error("학생 정보를 찾을 수 없습니다.");
+    throw notFound("학생 정보를 찾을 수 없습니다.");
   }
 
   const duplicate = await prisma.student.findFirst({
@@ -1244,7 +1244,7 @@ export async function updateStudent(
   });
 
   if (duplicate) {
-    throw new Error("이미 사용 중인 수험번호입니다.");
+    throw conflict("이미 사용 중인 수험번호입니다.");
   }
 
   const seatId = isWithdrawn ? null : await resolveSeatId(division.id, input.seatId, studentId);
@@ -1365,7 +1365,7 @@ export async function withdrawStudent(
       const current = state.studentsByDivision[divisionSlug] ?? [];
       const target = current.find((student) => student.id === studentId);
       if (!target) {
-        throw new Error("학생 정보를 찾을 수 없습니다.");
+        throw notFound("학생 정보를 찾을 수 없습니다.");
       }
       const now = new Date().toISOString();
       state.studentsByDivision[divisionSlug] = current.map((student) =>
@@ -1398,7 +1398,7 @@ export async function withdrawStudent(
   });
 
   if (!student) {
-    throw new Error("학생 정보를 찾을 수 없습니다.");
+    throw notFound("학생 정보를 찾을 수 없습니다.");
   }
 
   await prisma.student.update({

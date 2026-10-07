@@ -29,7 +29,7 @@ export const getManagementPolicy = cache(async (divisionSlug: string, onDate?: s
   }
   if (value == null) return null;
   const parsed = managementPolicySchema.safeParse(value);
-  if (!parsed.success) throw new Error("관리규정 설정 형식이 올바르지 않습니다. 관리자에게 확인해 주세요.");
+  if (!parsed.success) throw badRequest("관리규정 설정 형식이 올바르지 않습니다. 관리자에게 확인해 주세요.");
   return parsed.data.enabled === false ? null : parsed.data;
 });
 

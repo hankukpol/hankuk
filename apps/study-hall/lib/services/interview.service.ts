@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { badRequest, notFound } from "@/lib/errors";
 
 import { getMockAdminSession, getMockDivisionBySlug, isMockMode } from "@/lib/mock-data";
 import { revalidateDivisionOperationalViews } from "@/lib/revalidation";
@@ -394,10 +395,10 @@ type PreparedTask = {
 function prepareTasks(input: InterviewCreateInput, study: StudyInterviewContext): PreparedTask[] {
   return (input.tasks ?? []).map((task, position) => {
     if (task.subjectId && !study.allowedSubjectIds.has(task.subjectId)) {
-      throw new Error("이 학원의 시험 과목이 아닙니다. 할 일의 과목을 다시 선택해 주세요.");
+      throw badRequest("이 학원의 시험 과목이 아닙니다. 할 일의 과목을 다시 선택해 주세요.");
     }
     if (task.sessionId && !study.allowedSessionIds.has(task.sessionId)) {
-      throw new Error("이 학생이 본 시험이 아닙니다. 할 일의 시험을 다시 선택해 주세요.");
+      throw badRequest("이 학생이 본 시험이 아닙니다. 할 일의 시험을 다시 선택해 주세요.");
     }
     const priority = task.sessionId && task.subjectId
       ? study.diagnosis.priorities.find((row) => row.sessionId === task.sessionId && row.subjectId === task.subjectId)
@@ -431,7 +432,7 @@ export async function createInterview(
 ) {
   const category = input.category ?? "GENERAL";
   if (category === "STUDY" && !study) {
-    throw new Error("학습 면담 진단을 계산하지 못했습니다. 잠시 후 다시 저장해 주세요.");
+    throw badRequest("학습 면담 진단을 계산하지 못했습니다. 잠시 후 다시 저장해 주세요.");
   }
   const trigger = normalizeOptionalText(input.trigger);
   const content = normalizeOptionalText(input.content);
@@ -451,7 +452,7 @@ export async function createInterview(
       const division = getMockDivisionBySlug(divisionSlug);
 
       if (!division) {
-        throw new Error("지점 정보를 찾을 수 없습니다.");
+        throw notFound("지점 정보를 찾을 수 없습니다.");
       }
 
       const student = (state.studentsByDivision[divisionSlug] ?? []).find(
@@ -459,7 +460,7 @@ export async function createInterview(
       );
 
       if (!student) {
-        throw new Error("학생 정보를 찾을 수 없습니다.");
+        throw notFound("학생 정보를 찾을 수 없습니다.");
       }
 
       const now = new Date().toISOString();
@@ -489,7 +490,7 @@ export async function createInterview(
       // 지난 할 일 확인: 같은 학원·같은 학생의 할 일만 바꾼다.
       for (const review of reviews) {
         const task = existingTasks.find((item) => item.id === review.taskId && item.studentId === input.studentId);
-        if (!task) throw new Error("확인할 지난 할 일을 찾을 수 없습니다.");
+        if (!task) throw notFound("확인할 지난 할 일을 찾을 수 없습니다.");
         task.status = review.status;
         task.reviewNote = normalizeOptionalText(review.note);
         task.reviewedAt = now;
@@ -540,7 +541,7 @@ export async function createInterview(
   });
 
   if (!student) {
-    throw new Error("학생 정보를 찾을 수 없습니다.");
+    throw notFound("학생 정보를 찾을 수 없습니다.");
   }
 
   const interview = await prisma.$transaction(async (tx) => {
@@ -586,7 +587,7 @@ export async function createInterview(
         select: { id: true },
       });
       if (owned.length !== new Set(reviews.map((review) => review.taskId)).size) {
-        throw new Error("확인할 지난 할 일을 찾을 수 없습니다.");
+        throw notFound("확인할 지난 할 일을 찾을 수 없습니다.");
       }
       const reviewedAt = new Date();
       for (const review of reviews) {
@@ -624,7 +625,7 @@ export async function updateInterview(
       const record = records.find((item) => item.id === interviewId);
 
       if (!record) {
-        throw new Error("면담 기록을 찾을 수 없습니다.");
+        throw notFound("면담 기록을 찾을 수 없습니다.");
       }
 
       if (input.followUpDate !== undefined) {
@@ -653,7 +654,7 @@ export async function updateInterview(
     );
 
     if (!updated) {
-      throw new Error("면담 기록을 찾을 수 없습니다.");
+      throw notFound("면담 기록을 찾을 수 없습니다.");
     }
 
     return updated;
@@ -671,7 +672,7 @@ export async function updateInterview(
   });
 
   if (!existing) {
-    throw new Error("면담 기록을 찾을 수 없습니다.");
+    throw notFound("면담 기록을 찾을 수 없습니다.");
   }
 
   const isClosing = input.status !== undefined && input.status !== existing.status;
@@ -709,7 +710,7 @@ export async function updateInterview(
   );
 
   if (!serialized) {
-    throw new Error("면담 기록을 찾을 수 없습니다.");
+    throw notFound("면담 기록을 찾을 수 없습니다.");
   }
 
   return serialized;
@@ -727,7 +728,7 @@ export async function updateInterviewTask(
   if (isMockMode()) {
     const task = await updateMockState((state) => {
       const record = (state.interviewTasksByDivision?.[divisionSlug] ?? []).find((item) => item.id === taskId);
-      if (!record) throw new Error("할 일을 찾을 수 없습니다.");
+      if (!record) throw notFound("할 일을 찾을 수 없습니다.");
       const now = new Date().toISOString();
       if (input.status !== undefined && input.status !== record.status) {
         record.status = input.status;
@@ -748,7 +749,7 @@ export async function updateInterviewTask(
     where: { id: taskId, divisionId: division.id },
     select: { id: true, status: true, studentId: true },
   });
-  if (!existing) throw new Error("할 일을 찾을 수 없습니다.");
+  if (!existing) throw notFound("할 일을 찾을 수 없습니다.");
 
   const updated = await prisma.interviewTask.update({
     where: { id: taskId },

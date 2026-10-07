@@ -1,4 +1,5 @@
 import { revalidatePath, revalidateTag } from "next/cache";
+import { badRequest, notFound, conflict } from "@/lib/errors";
 
 import { isMockMode } from "@/lib/mock-data";
 import {
@@ -125,7 +126,7 @@ async function resolveDivisionForAdmin(
   }
 
   if (!divisionSlug) {
-    throw new Error("지점 선택이 필요합니다.");
+    throw badRequest("지점 선택이 필요합니다.");
   }
 
   if (isMockMode()) {
@@ -133,7 +134,7 @@ async function resolveDivisionForAdmin(
     const division = state.divisions.find((item) => item.slug === divisionSlug);
 
     if (!division) {
-      throw new Error("지점 정보를 찾을 수 없습니다.");
+      throw notFound("지점 정보를 찾을 수 없습니다.");
     }
 
     return {
@@ -169,7 +170,7 @@ export async function createManagedDivision(input: DivisionCreateInput) {
   if (isMockMode()) {
     return updateMockState(async (state) => {
       if (state.divisions.some((division) => division.slug === input.slug)) {
-        throw new Error("이미 사용 중인 지점 slug입니다.");
+        throw conflict("이미 사용 중인 지점 slug입니다.");
       }
       const division: MockDivisionRecord = {
         id: "mock-division-" + input.slug,
@@ -220,7 +221,7 @@ export async function updateManagedDivision(slug: string, input: DivisionUpdateI
     return updateMockState(async (state) => {
       const division = state.divisions.find((item) => item.slug === slug);
       if (!division) {
-        throw new Error("지점 정보를 찾을 수 없습니다.");
+        throw notFound("지점 정보를 찾을 수 없습니다.");
       }
       state.divisions = state.divisions.map((item) =>
         item.slug === slug
@@ -263,7 +264,7 @@ export async function deleteManagedDivision(slug: string): Promise<ManagedDivisi
     return updateMockState(async (state) => {
       const division = state.divisions.find((item) => item.slug === slug);
       if (!division) {
-        throw new Error("지점 정보를 찾을 수 없습니다.");
+        throw notFound("지점 정보를 찾을 수 없습니다.");
       }
       const now = new Date().toISOString();
       state.divisions = state.divisions.map((item) =>
@@ -301,7 +302,7 @@ export async function deleteManagedDivision(slug: string): Promise<ManagedDivisi
   });
 
   if (!division) {
-    throw new Error("지점 정보를 찾을 수 없습니다.");
+    throw notFound("지점 정보를 찾을 수 없습니다.");
   }
 
   await prisma.$transaction([
@@ -424,7 +425,7 @@ export async function createManagedAdminAccount(input: AdminAccountCreateInput) 
   if (isMockMode()) {
     return updateMockState(async (state) => {
       if (state.admins.some((admin) => admin.email.toLowerCase() === input.email.toLowerCase())) {
-        throw new Error("이미 사용 중인 이메일입니다.");
+        throw conflict("이미 사용 중인 이메일입니다.");
       }
       const timestamp = Date.now();
       const record: MockAdminRecord = {
@@ -497,7 +498,7 @@ export async function deleteManagedAdminAccount(id: string) {
     return updateMockState(async (state) => {
       const target = state.admins.find((admin) => admin.id === id);
       if (!target) {
-        throw new Error("계정 정보를 찾을 수 없습니다.");
+        throw notFound("계정 정보를 찾을 수 없습니다.");
       }
       state.admins = state.admins.map((admin) =>
         admin.id === id ? { ...admin, isActive: false, updatedAt: new Date().toISOString() } : admin,
@@ -509,7 +510,7 @@ export async function deleteManagedAdminAccount(id: string) {
   const prisma = await getPrismaClient();
   const admin = await prisma.admin.findUnique({ where: { id }, select: { id: true, name: true, userId: true } });
   if (!admin) {
-    throw new Error("계정 정보를 찾을 수 없습니다.");
+    throw notFound("계정 정보를 찾을 수 없습니다.");
   }
 
   await prisma.admin.update({ where: { id }, data: { isActive: false } });
@@ -522,7 +523,7 @@ export async function resetManagedAdminPassword(id: string, password: string) {
     const state = await readMockState();
     const target = state.admins.find((admin) => admin.id === id);
     if (!target) {
-      throw new Error("계정 정보를 찾을 수 없습니다.");
+      throw notFound("계정 정보를 찾을 수 없습니다.");
     }
     return { id: target.id, name: target.name };
   }
@@ -530,7 +531,7 @@ export async function resetManagedAdminPassword(id: string, password: string) {
   const prisma = await getPrismaClient();
   const admin = await prisma.admin.findUnique({ where: { id }, select: { id: true, name: true, userId: true } });
   if (!admin) {
-    throw new Error("계정 정보를 찾을 수 없습니다.");
+    throw notFound("계정 정보를 찾을 수 없습니다.");
   }
 
   await updateSupabaseManagedUserPassword(admin.userId, password);
@@ -544,7 +545,7 @@ export async function updateManagedAdminAccount(id: string, input: AdminAccountU
     return updateMockState(async (state) => {
       const target = state.admins.find((admin) => admin.id === id);
       if (!target) {
-        throw new Error("계정 정보를 찾을 수 없습니다.");
+        throw notFound("계정 정보를 찾을 수 없습니다.");
       }
       state.admins = state.admins.map((admin) =>
         admin.id === id

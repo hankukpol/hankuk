@@ -266,7 +266,7 @@ function validateSeatDrafts(seats: SeatDraftLayoutItem[], room: Pick<StudyRoomIt
     }
 
     if (seat.positionY < 1 || seat.positionY > room.rows) {
-      throw new Error("좌석의 행 위치가 자습실 범위를 벗어났습니다.");
+      throw badRequest("좌석의 행 위치가 자습실 범위를 벗어났습니다.");
     }
 
     if (isAisleColumn(seat.positionX, room.aisleColumns)) {
@@ -955,7 +955,7 @@ export async function createStudyRoom(divisionSlug: string, input: StudyRoomInpu
     return updateMockState(async (state) => {
       const division = getMockDivisionBySlug(divisionSlug);
       if (!division) {
-        throw new Error("지점 정보를 찾을 수 없습니다.");
+        throw notFound("지점 정보를 찾을 수 없습니다.");
       }
       const current = state.studyRoomsByDivision[divisionSlug] ?? [];
       if (current.some((room) => room.name === normalized.name)) {
@@ -993,7 +993,7 @@ export async function createStudyRoom(divisionSlug: string, input: StudyRoomInpu
   });
 
   if (duplicate) {
-    throw new Error("이미 같은 이름의 자습실이 있습니다.");
+    throw conflict("이미 같은 이름의 자습실이 있습니다.");
   }
 
   const displayOrder = await prisma.studyRoom.count({
@@ -1030,10 +1030,10 @@ export async function updateStudyRoom(
       const rooms = state.studyRoomsByDivision[divisionSlug] ?? [];
       const room = rooms.find((item) => item.id === roomId);
       if (!room) {
-        throw new Error("자습실 정보를 찾을 수 없습니다.");
+        throw notFound("자습실 정보를 찾을 수 없습니다.");
       }
       if (rooms.some((item) => item.id !== roomId && item.name === normalized.name)) {
-        throw new Error("이미 같은 이름의 자습실이 있습니다.");
+        throw conflict("이미 같은 이름의 자습실이 있습니다.");
       }
       const roomSeats = (state.seatsByDivision[divisionSlug] ?? []).filter((seat) => seat.studyRoomId === roomId);
           // 복도/그리드 변경 시 기존 좌석을 자동 정규화 (범위 밖/복도 위 좌석 비활성화)
@@ -1105,7 +1105,7 @@ export async function updateStudyRoom(
   });
 
   if (!room) {
-    throw new Error("자습실 정보를 찾을 수 없습니다.");
+    throw notFound("자습실 정보를 찾을 수 없습니다.");
   }
 
   const duplicate = await prisma.studyRoom.findFirst({
@@ -1122,7 +1122,7 @@ export async function updateStudyRoom(
   });
 
   if (duplicate) {
-    throw new Error("이미 같은 이름의 자습실이 있습니다.");
+    throw conflict("이미 같은 이름의 자습실이 있습니다.");
   }
 
   // 방 설정 업데이트 후 좌석을 자동 정규화 (복도/범위 변경 시 좌석 재배치)
@@ -1174,7 +1174,7 @@ export async function deleteStudyRoom(divisionSlug: string, roomId: string) {
       const rooms = state.studyRoomsByDivision[divisionSlug] ?? [];
       const room = rooms.find((item) => item.id === roomId);
       if (!room) {
-        throw new Error("자습실 정보를 찾을 수 없습니다.");
+        throw notFound("자습실 정보를 찾을 수 없습니다.");
       }
       if (rooms.length <= 1) {
         throw badRequest("자습실은 1개 이상 유지해야 합니다.");
@@ -1212,11 +1212,11 @@ export async function deleteStudyRoom(divisionSlug: string, roomId: string) {
   });
 
   if (!rooms.some((room) => room.id === roomId)) {
-    throw new Error("자습실 정보를 찾을 수 없습니다.");
+    throw notFound("자습실 정보를 찾을 수 없습니다.");
   }
 
   if (rooms.length <= 1) {
-    throw new Error("자습실은 1개 이상 유지해야 합니다.");
+    throw badRequest("자습실은 1개 이상 유지해야 합니다.");
   }
 
   // 이 자습실 좌석에 배정된 학생이 있으면 삭제 차단
@@ -1258,7 +1258,7 @@ export async function saveSeatLayout(
   const room = rooms.find((item) => item.id === roomId);
 
   if (!room) {
-    throw new Error("자습실 정보를 찾을 수 없습니다.");
+    throw notFound("자습실 정보를 찾을 수 없습니다.");
   }
 
   validateSeatDrafts(seats, room);
@@ -1774,11 +1774,11 @@ export async function assignStudentToSeat(
   });
 
   if (!seat) {
-    throw new Error("좌석 정보를 찾을 수 없습니다.");
+    throw notFound("좌석 정보를 찾을 수 없습니다.");
   }
 
   if (!seat.isActive) {
-    throw new Error("비활성 좌석은 배정할 수 없습니다.");
+    throw badRequest("비활성 좌석은 배정할 수 없습니다.");
   }
 
   try {
@@ -1796,11 +1796,11 @@ export async function assignStudentToSeat(
         });
 
         if (!targetStudent) {
-          throw new Error("학생 정보를 찾을 수 없습니다.");
+          throw notFound("학생 정보를 찾을 수 없습니다.");
         }
 
         if (!["ACTIVE", "ON_LEAVE"].includes(targetStudent.status)) {
-          throw new Error("재원 또는 휴가 상태 학생만 좌석을 배정할 수 있습니다.");
+          throw badRequest("재원 또는 휴가 상태 학생만 좌석을 배정할 수 있습니다.");
         }
 
         await tx.student.update({

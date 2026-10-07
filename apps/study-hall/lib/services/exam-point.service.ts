@@ -1,4 +1,5 @@
 import { includeManualMorningScores } from "@/lib/exam-attendance";
+import { notFound } from "@/lib/errors";
 import { syncMockExamAttendance, syncDbExamAttendance } from "@/lib/services/exam-attendance.service";
 import { buildVersionedExamPoints } from "@/lib/versioned-exam-points";
 import { randomUUID } from "node:crypto";
@@ -30,7 +31,7 @@ export function syncMockExamPoints(state: MockState, slug: string, month: string
   const raw = state.divisionSettingsByDivision[slug] as unknown as {examPointAutomation?:unknown;managementPolicy?:unknown};
   const config = parseExamPointAutomation(raw?.examPointAutomation);
   const division = state.divisions.find(d=>d.slug===slug);
-  if(!division) throw new Error("지점을 찾을 수 없습니다.");
+  if(!division) throw notFound("지점을 찾을 수 없습니다.");
   const types = new Map((state.examTypesByDivision[slug]??[]).map(t=>[t.id,t]));
   const sessions = (state.examSessionsByDivision[slug]??[]).filter(s=>s.divisionId===division.id && types.has(s.examTypeId));
   const sessionIds = new Set(sessions.map(s=>s.id));

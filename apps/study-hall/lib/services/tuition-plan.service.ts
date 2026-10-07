@@ -140,7 +140,7 @@ export async function createTuitionPlan(divisionSlug: string, input: TuitionPlan
     return updateMockState(async (state) => {
       const division = state.divisions.find((item) => item.slug === divisionSlug);
       if (!division) {
-        throw new Error("지점 정보를 찾을 수 없습니다.");
+        throw notFound("지점 정보를 찾을 수 없습니다.");
       }
       const current = state.tuitionPlansByDivision[divisionSlug] ?? [];
       if (current.some((plan) => plan.name === name)) {
@@ -177,7 +177,7 @@ export async function createTuitionPlan(divisionSlug: string, input: TuitionPlan
   });
 
   if (duplicate) {
-    throw new Error("이미 같은 이름의 등록 플랜이 있습니다.");
+    throw conflict("이미 같은 이름의 등록 플랜이 있습니다.");
   }
 
   const displayOrder = await prisma.tuitionPlan.count({
@@ -224,7 +224,7 @@ export async function updateTuitionPlan(
         throw notFound("등록 플랜을 찾을 수 없습니다.");
       }
       if (current.some((plan) => plan.id !== planId && plan.name === name)) {
-        throw new Error("이미 같은 이름의 등록 플랜이 있습니다.");
+        throw conflict("이미 같은 이름의 등록 플랜이 있습니다.");
       }
       const now = new Date().toISOString();
       state.tuitionPlansByDivision[divisionSlug] = current.map((plan) =>
@@ -259,7 +259,7 @@ export async function updateTuitionPlan(
   });
 
   if (!target) {
-    throw new Error("등록 플랜을 찾을 수 없습니다.");
+    throw notFound("등록 플랜을 찾을 수 없습니다.");
   }
 
   const duplicate = await prisma.tuitionPlan.findFirst({
@@ -276,7 +276,7 @@ export async function updateTuitionPlan(
   });
 
   if (duplicate) {
-    throw new Error("이미 같은 이름의 등록 플랜이 있습니다.");
+    throw conflict("이미 같은 이름의 등록 플랜이 있습니다.");
   }
 
   const plan = await prisma.tuitionPlan.update({
@@ -302,7 +302,7 @@ export async function deleteTuitionPlan(divisionSlug: string, planId: string) {
       const current = state.tuitionPlansByDivision[divisionSlug] ?? [];
       const target = current.find((plan) => plan.id === planId);
       if (!target) {
-        throw new Error("등록 플랜을 찾을 수 없습니다.");
+        throw notFound("등록 플랜을 찾을 수 없습니다.");
       }
       state.tuitionPlansByDivision[divisionSlug] = current.filter((plan) => plan.id !== planId);
       state.studentsByDivision[divisionSlug] = (state.studentsByDivision[divisionSlug] ?? []).map((student) =>
@@ -330,7 +330,7 @@ export async function deleteTuitionPlan(divisionSlug: string, planId: string) {
   });
 
   if (!target) {
-    throw new Error("등록 플랜을 찾을 수 없습니다.");
+    throw notFound("등록 플랜을 찾을 수 없습니다.");
   }
 
   await prisma.tuitionPlan.delete({

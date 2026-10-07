@@ -1,4 +1,5 @@
 import { getKstTodayYmd } from "@/lib/date-utils";
+import { notFound } from "@/lib/errors";
 import { getPointAggregationInfo } from "@/lib/point-aggregation-mode";
 import { kstMonthBounds } from "@/lib/management-policy";
 import { listStudentAttendanceHistory } from "@/lib/services/attendance.service";
@@ -83,7 +84,7 @@ export async function getInterviewContext(
   const student = await getStudentDetail(divisionSlug, studentId);
 
   if (!student) {
-    throw new Error("학생 정보를 찾을 수 없습니다.");
+    throw notFound("학생 정보를 찾을 수 없습니다.");
   }
 
   const today = getKstTodayYmd();

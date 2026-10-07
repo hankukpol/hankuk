@@ -1,4 +1,5 @@
 import { kstDate, isPolicyEffective } from "@/lib/management-policy";
+import { badRequest } from "@/lib/errors";
 import { getManagementPolicy } from "@/lib/services/management-policy.service";
 import { applyPolicyAttendancePoints } from "@/lib/services/policy-attendance.service";
 import { isMockMode } from "@/lib/mock-data";
@@ -42,7 +43,7 @@ export async function closeDivisionAttendance(divisionSlug: string, deadline = D
       const actorId = record.recordedById ?? (mock
         ? (await readMockState()).admins.find(admin => admin.isActive && (admin.role === "SUPER_ADMIN" || (admin.role === "ADMIN" && admin.divisionSlug === divisionSlug)))?.id
         : (await prisma!.admin.findFirst({where: {isActive: true, OR: [{role: "SUPER_ADMIN"}, {role: "ADMIN", divisionId: division!.id}]}, select: {id: true}}))?.id);
-      if (!actorId) throw new Error("출결 마감을 기록할 관리자가 없습니다.");
+      if (!actorId) throw badRequest("출결 마감을 기록할 관리자가 없습니다.");
       // 개근 상점은 자동 마감하되 벌점은 지점의 관리자 확정 설정을 지킨다.
       const merits = isPolicyEffective(dayPolicy, date) ? await syncPeriodicPerfectAttendancePoints(divisionSlug, date, actorId, dayPolicy, daySettings ?? settings) : await (await import("@/lib/services/attendance.service")).syncPerfectAttendancePoints(divisionSlug,date,actorId);
       if (merits.grantedCount || merits.revokedCount) revalidateDivisionOperationalViews(divisionSlug);

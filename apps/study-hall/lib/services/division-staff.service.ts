@@ -3,7 +3,7 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { isMockMode } from "@/lib/mock-data";
 import { readMockState, updateMockState, type MockAdminRecord } from "@/lib/mock-store";
 import type { StaffCreateInput, StaffUpdateInput } from "@/lib/division-staff-schemas";
-import { forbidden } from "@/lib/errors";
+import { forbidden, conflict, notFound } from "@/lib/errors";
 import {
   createSupabaseManagedUser,
   deleteSupabaseManagedUser,
@@ -112,7 +112,7 @@ export async function createDivisionStaff(
   if (isMockMode()) {
     return updateMockState(async (state) => {
       if (state.admins.some((a) => a.email.toLowerCase() === input.email.toLowerCase())) {
-        throw new Error("이미 사용 중인 이메일입니다.");
+        throw conflict("이미 사용 중인 이메일입니다.");
       }
       const timestamp = Date.now();
       const record: MockAdminRecord = {
@@ -176,7 +176,7 @@ export async function updateDivisionStaff(
   if (isMockMode()) {
     return updateMockState(async (state) => {
       const target = state.admins.find((a) => a.id === staffId && a.divisionId === divisionId);
-      if (!target) throw new Error("직원 정보를 찾을 수 없습니다.");
+      if (!target) throw notFound("직원 정보를 찾을 수 없습니다.");
       assertDivisionStaffMutationAllowed(actor, target, input.role);
       state.admins = state.admins.map((a) =>
         a.id === staffId
@@ -193,7 +193,7 @@ export async function updateDivisionStaff(
   const existing = await prisma.admin.findFirst({
     where: { id: staffId, divisionId, role: { in: ["ADMIN", "ASSISTANT"] } },
   });
-  if (!existing) throw new Error("직원 정보를 찾을 수 없습니다.");
+  if (!existing) throw notFound("직원 정보를 찾을 수 없습니다.");
   assertDivisionStaffMutationAllowed(actor, existing, input.role);
 
   const admin = await prisma.admin.update({
@@ -218,7 +218,7 @@ export async function deleteDivisionStaff(divisionId: string, staffId: string, a
   if (isMockMode()) {
     return updateMockState(async (state) => {
       const target = state.admins.find((a) => a.id === staffId && a.divisionId === divisionId);
-      if (!target) throw new Error("직원 정보를 찾을 수 없습니다.");
+      if (!target) throw notFound("직원 정보를 찾을 수 없습니다.");
       assertDivisionStaffMutationAllowed(actor, target);
       state.admins = state.admins.map((a) =>
         a.id === staffId ? { ...a, isActive: false, updatedAt: new Date().toISOString() } : a,
@@ -233,7 +233,7 @@ export async function deleteDivisionStaff(divisionId: string, staffId: string, a
     where: { id: staffId, divisionId, role: { in: ["ADMIN", "ASSISTANT"] } },
     select: { id: true, name: true, role: true },
   });
-  if (!existing) throw new Error("직원 정보를 찾을 수 없습니다.");
+  if (!existing) throw notFound("직원 정보를 찾을 수 없습니다.");
   assertDivisionStaffMutationAllowed(actor, existing);
 
   await prisma.admin.update({ where: { id: staffId }, data: { isActive: false } });
@@ -245,7 +245,7 @@ export async function permanentDeleteDivisionStaff(divisionId: string, staffId: 
   if (isMockMode()) {
     return updateMockState(async (state) => {
       const target = state.admins.find((a) => a.id === staffId && a.divisionId === divisionId);
-      if (!target) throw new Error("직원 정보를 찾을 수 없습니다.");
+      if (!target) throw notFound("직원 정보를 찾을 수 없습니다.");
       assertDivisionStaffMutationAllowed(actor, target);
       state.admins = state.admins.filter((a) => a.id !== staffId);
       return { id: target.id, name: target.name };
@@ -258,7 +258,7 @@ export async function permanentDeleteDivisionStaff(divisionId: string, staffId: 
     where: { id: staffId, divisionId, role: { in: ["ADMIN", "ASSISTANT"] } },
     select: { id: true, name: true, userId: true, role: true },
   });
-  if (!existing) throw new Error("직원 정보를 찾을 수 없습니다.");
+  if (!existing) throw notFound("직원 정보를 찾을 수 없습니다.");
   assertDivisionStaffMutationAllowed(actor, existing);
 
   await prisma.admin.delete({ where: { id: staffId } });
@@ -276,7 +276,7 @@ export async function resetDivisionStaffPassword(
   if (isMockMode()) {
     const state = await readMockState();
     const target = state.admins.find((a) => a.id === staffId && a.divisionId === divisionId);
-    if (!target) throw new Error("직원 정보를 찾을 수 없습니다.");
+    if (!target) throw notFound("직원 정보를 찾을 수 없습니다.");
     assertDivisionStaffMutationAllowed(actor, target);
     return { id: target.id, name: target.name };
   }
@@ -287,7 +287,7 @@ export async function resetDivisionStaffPassword(
     where: { id: staffId, divisionId, role: { in: ["ADMIN", "ASSISTANT"] } },
     select: { id: true, name: true, userId: true, role: true },
   });
-  if (!existing) throw new Error("직원 정보를 찾을 수 없습니다.");
+  if (!existing) throw notFound("직원 정보를 찾을 수 없습니다.");
   assertDivisionStaffMutationAllowed(actor, existing);
 
   await updateSupabaseManagedUserPassword(existing.userId, password);

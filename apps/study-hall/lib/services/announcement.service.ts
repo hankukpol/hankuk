@@ -11,8 +11,7 @@ import {
 } from "@/lib/mock-store";
 import type { AnnouncementSchemaInput } from "@/lib/announcement-schemas";
 import { badRequest, forbidden, notFound } from "@/lib/errors";
-import {
-} from "@/lib/service-helpers";
+import { getDivisionBySlugOrThrow } from "@/lib/service-helpers";
 
 type AnnouncementActor = {
   id: string;
@@ -176,21 +175,8 @@ function serializeAnnouncement(
   } satisfies AnnouncementItem;
 }
 
-async function getDivisionOrThrow(divisionSlug: string) {
-  const { prisma } = await import("@/lib/prisma");
-
-  const division = await prisma.division.findUnique({
-    where: {
-      slug: divisionSlug,
-    },
-  });
-
-  if (!division) {
-    throw notFound("지점 정보를 찾을 수 없습니다.");
-  }
-
-  return division;
-}
+// 학원 조회는 공용 함수 하나(요청당 한 번)를 쓴다(2026-10-07 리팩토링: 서비스마다 따로 두던 사본 정리).
+const getDivisionOrThrow = getDivisionBySlugOrThrow;
 
 function assertGlobalPermission(actor: AnnouncementActor) {
   if (actor.role !== "SUPER_ADMIN") {

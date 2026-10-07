@@ -1,6 +1,5 @@
 import { getManagementPolicy } from "@/lib/services/management-policy.service";
 import { isPolicyEffective, isControlledPeriod, type ManagementPolicy } from "@/lib/management-policy";
-import { cache } from "react";
 import { classifyAttendanceArrival } from "@/lib/attendance-arrival";
 import { logServerError } from "@/lib/server-log";
 import { getAttendanceCountStatus, isClassAttendance, canEditLeaveAttendance, isLeaveAttendanceStatus } from "@/lib/attendance-meta";
@@ -16,7 +15,7 @@ import { normalizeYmdDate } from "@/lib/date-utils";
 import { badRequest, notFound } from "@/lib/errors";
 import { isMockMode } from "@/lib/mock-data";
 import { revalidateDivisionOperationalViews } from "@/lib/revalidation";
-import { getPrismaClient } from "@/lib/service-helpers";
+import { getPrismaClient, getDivisionBySlugOrThrow } from "@/lib/service-helpers";
 import { getPeriods } from "@/lib/services/period.service";
 import { getDivisionSettings } from "@/lib/services/settings.service";
 import { getDivisionStudents } from "@/lib/services/student.service";
@@ -356,18 +355,8 @@ function buildAttendanceSnapshot(
   };
 }
 
-const getDivisionOrThrow = cache(async function getDivisionOrThrow(divisionSlug: string) {
-  const prisma = await getPrismaClient();
-  const division = await prisma.division.findUnique({
-    where: { slug: divisionSlug },
-  });
-
-  if (!division) {
-    throw notFound(`Division not found for slug: ${divisionSlug}`);
-  }
-
-  return division;
-});
+// 학원 조회는 공용 함수 하나(요청당 한 번)를 쓴다(2026-10-07 리팩토링: 서비스마다 따로 두던 사본 정리).
+const getDivisionOrThrow = getDivisionBySlugOrThrow;
 
 async function ensureAssistantAllowed(
   divisionSlug: string,

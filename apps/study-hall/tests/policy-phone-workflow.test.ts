@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { withDivisionLookup } from "./helpers/division-lookup";
 import { mkdtemp, rm } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -63,7 +64,7 @@ async function fixture(t: TestContext) {
     "@/lib/phone-submission-schemas": schemas,
     "@/lib/errors": { badRequest: (message: string) => new Error(message), notFound: (message: string) => new Error(message) },
     "@/lib/revalidation": { revalidateDivisionOperationalViews() {} },
-    "@/lib/service-helpers": { getPrismaClient() { throw new Error("Real DB access forbidden in this fixture"); } },
+    "@/lib/service-helpers": withDivisionLookup({ getPrismaClient() { throw new Error("Real DB access forbidden in this fixture"); } }),
     "@/lib/services/student.service": { listStudents: async (slug: string) => slug === "police" ? students : [] },
     "@/lib/services/period.service": { getPeriods: async () => periods },
     "@/lib/services/settings.service": { getDivisionFeatureSettings: async () => ({ featureFlags: { attendanceManagement: attendanceEnabled } }) },

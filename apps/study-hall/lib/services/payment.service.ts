@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { cache } from "react";
 
 import { Prisma } from "@prisma/client/index";
 
@@ -30,6 +29,7 @@ import {
 import {
   getPrismaClient,
   normalizeOptionalText,
+  getDivisionBySlugOrThrow,
 } from "@/lib/service-helpers";
 import type { StudentDetail } from "@/lib/services/student.service";
 import { getStudentDetail } from "@/lib/services/student.service";
@@ -404,20 +404,8 @@ async function ensureDefaultPaymentCategories(divisionId: string) {
   });
 }
 
-const getDivisionOrThrow = cache(async function getDivisionOrThrow(divisionSlug: string) {
-  const prisma = await getPrismaClient();
-  const division = await prisma.division.findUnique({
-    where: {
-      slug: divisionSlug,
-    },
-  });
-
-  if (!division) {
-    throw notFound("지점 정보를 찾을 수 없습니다.");
-  }
-
-  return division;
-});
+// 학원 조회는 공용 함수 하나(요청당 한 번)를 쓴다(2026-10-07 리팩토링: 서비스마다 따로 두던 사본 정리).
+const getDivisionOrThrow = getDivisionBySlugOrThrow;
 
 function findMockTuitionPlan(
   plans: MockTuitionPlanRecord[],

@@ -2,7 +2,6 @@ import { getManagementPolicy } from "@/lib/services/management-policy.service";
 import { examPointDisplayNote } from "@/lib/exam-point-automation";
 import { isPolicyEffective, kstDate } from "@/lib/management-policy";
 import { revalidatePath, revalidateTag } from "next/cache";
-import { cache } from "react";
 import { Prisma } from "@prisma/client";
 
 import { getMockAdminSession, getMockDivisionBySlug, isMockMode } from "@/lib/mock-data";
@@ -19,6 +18,7 @@ import { getPointCategoryLabel } from "@/lib/point-meta";
 import {
   getPrismaClient,
   normalizeOptionalText,
+  getDivisionBySlugOrThrow,
 } from "@/lib/service-helpers";
 import { getPeriods } from "@/lib/services/period.service";
 import {
@@ -354,20 +354,8 @@ function toPointRuleItem(rule: {
   } satisfies PointRuleItem;
 }
 
-const getDivisionOrThrow = cache(async function getDivisionOrThrow(divisionSlug: string) {
-  const prisma = await getPrismaClient();
-  const division = await prisma.division.findUnique({
-    where: {
-      slug: divisionSlug,
-    },
-  });
-
-  if (!division) {
-    throw notFound("지점 정보를 찾을 수 없습니다.");
-  }
-
-  return division;
-});
+// 학원 조회는 공용 함수 하나(요청당 한 번)를 쓴다(2026-10-07 리팩토링: 서비스마다 따로 두던 사본 정리).
+const getDivisionOrThrow = getDivisionBySlugOrThrow;
 
 // 상벌점 규칙 분류 칸은 문자열(마이그레이션 20260401), 학원별 분류 칸(point_categories)도 운영 DB 에 있다
 // (2026-10-07 migrate status 35/35). 예전에는 규칙을 읽을 때마다 information_schema 를 두 번 조회했다.

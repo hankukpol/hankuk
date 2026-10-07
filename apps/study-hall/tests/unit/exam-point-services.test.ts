@@ -1,4 +1,5 @@
 import * as examAttendanceHelpers from "../../lib/exam-attendance";
+import { withDivisionLookup } from "../helpers/division-lookup";
 import * as examAttendance from "../../lib/services/exam-attendance.service";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -34,7 +35,7 @@ function fixture() {
     "@/lib/services/academy-configuration-history.service":{getHistoricalAcademyConfiguration:async()=>null},
     "@/lib/exam-point-automation":calculator,"@/lib/management-policy":{...policy,kstDate:()=>today},
     "@/lib/mock-data":{isMockMode:()=>true},"@/lib/date-utils":dateUtils,"@/lib/mock-store":{readMockState:async()=>state,updateMockState:async(fn:(state:unknown)=>unknown)=>fn(state)},
-    "@/lib/service-helpers":{},"@/lib/revalidation":{revalidateDivisionOperationalViews(){}},
+    "@/lib/service-helpers":withDivisionLookup({}),"@/lib/revalidation":{revalidateDivisionOperationalViews(){}},
     "@/lib/errors":{badRequest:(text:string)=>new Error(text),notFound:(text:string)=>new Error(text)},
     "@/lib/services/settings-history.service":{recordDivisionSettingsChange:async()=>{}},
   };

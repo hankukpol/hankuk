@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { withDivisionLookup } from "./helpers/division-lookup";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -21,7 +22,7 @@ async function fixture(t: TestContext) {
     "@/lib/mock-store":store,
     "next/cache":{revalidateTag(){},revalidatePath(){},unstable_cache:(fn:unknown)=>fn},
     "@/lib/revalidation":{revalidateDivisionOperationalViews(){}},
-    "@/lib/service-helpers":{normalizeOptionalText:(value?:string|null)=>value?.trim()||null,getPrismaClient(){throw new Error("Operating DB must not be called");}},
+    "@/lib/service-helpers":withDivisionLookup({normalizeOptionalText:(value?:string|null)=>value?.trim()||null,getPrismaClient(){throw new Error("Operating DB must not be called");}}),
   });
   t.after(async()=>{restore();loaded.restore();await rm(directory,{recursive:true,force:true});});
   await store.readMockState();
@@ -152,7 +153,7 @@ test("application date correction preserves snapshots and ledgers with an audit 
   const loaded=loadWithMocks<typeof import("../lib/services/academy-application-date.service")>(path.join(root,"lib/services/academy-application-date.service.ts"),{
     "@/lib/mock-data":{isMockMode:()=>true},"@/lib/mock-store":f.store,
     "@/lib/revalidation":{revalidateDivisionOperationalViews(){}},
-    "@/lib/service-helpers":{getPrismaClient(){throw new Error("Operating DB must not be called");}},
+    "@/lib/service-helpers":withDivisionLookup({getPrismaClient(){throw new Error("Operating DB must not be called");}}),
   });
   t.after(loaded.restore);
   const service=loaded.module;

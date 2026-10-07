@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { withDivisionLookup } from "./helpers/division-lookup";
 import * as configurationHistory from "../lib/academy-configuration-history";
 import * as arrivalMeta from "../lib/attendance-arrival";
 import { randomUUID } from "node:crypto";
@@ -78,7 +79,7 @@ function fixture() {
       updateMockState: async (mutate: (value: typeof state) => unknown) => mutate(state),
     },
     "@/lib/errors": { badRequest: (message: string) => new Error(message), notFound: (message: string) => new Error(message) },
-    "@/lib/service-helpers": { getPrismaClient: () => { throw new Error("Database access forbidden in fixture"); } },
+    "@/lib/service-helpers": withDivisionLookup({ getPrismaClient: () => { throw new Error("Database access forbidden in fixture"); } }),
     "@/lib/revalidation": { revalidateDivisionOperationalViews() {} },
     "@/lib/server-log": { logServerError: (_scope: string, error: unknown) => { throw error; } },
     "@/lib/services/student.service": { getDivisionStudents: async (slug: "police" | "fire") => state.studentsByDivision[slug] },
@@ -520,7 +521,7 @@ test("DB-backed stats count a saved absence with missing periods and retain date
   const service = loadService<AttendanceService>("attendance", {
     ...f.dependencies,
     "@/lib/mock-data": { isMockMode: () => false },
-    "@/lib/service-helpers": { getPrismaClient: async () => prisma },
+    "@/lib/service-helpers": withDivisionLookup({ getPrismaClient: async () => prisma }),
   });
   const stats = await service.getAttendanceStats("police", date, date);
   assert.equal(stats.totals.absent, 1);
@@ -582,7 +583,7 @@ test("DB attendance writes preserve arrival times and carry the division filter"
     },
     $transaction: async (queries: Promise<unknown>[]) => Promise.all(queries),
   };
-  const service = loadService<AttendanceService>("attendance", { ...f.dependencies, "@/lib/mock-data": { isMockMode: () => false }, "@/lib/service-helpers": { getPrismaClient: async () => prisma } });
+  const service = loadService<AttendanceService>("attendance", { ...f.dependencies, "@/lib/mock-data": { isMockMode: () => false }, "@/lib/service-helpers": withDivisionLookup({ getPrismaClient: async () => prisma }) });
   await service.upsertAttendanceBatch("police", admin, { date, periodId: "09:15", records: [{ studentId: "p1", status: "TARDY" }] });
   await service.applyRecurringAttendance("police", admin, { studentIds: ["p1"], dateFrom: date, dateTo: date, weekdays: [2], startPeriodId: "09:15", endPeriodId: "09:15", status: "TARDY", overwriteExisting: true });
   assert.deepEqual(writes.map(r => r.checkInTime?.toISOString()), ["2026-09-08T00:17:00.000Z", "2026-09-08T00:17:00.000Z"]);
@@ -621,7 +622,7 @@ test("DB confirmation locks the division/date, preserves IDs, and only removes c
     },
   };
   const prisma = { $transaction: async (run: (client: typeof tx) => Promise<unknown>) => { locked = false; return run(tx); } };
-  const service = loadService<PolicyAttendanceService>("policy-attendance", { ...f.dependencies, "@/lib/mock-data": { isMockMode: () => false }, "@/lib/service-helpers": { getPrismaClient: async () => prisma } });
+  const service = loadService<PolicyAttendanceService>("policy-attendance", { ...f.dependencies, "@/lib/mock-data": { isMockMode: () => false }, "@/lib/service-helpers": withDivisionLookup({ getPrismaClient: async () => prisma }) });
   await assert.rejects(service.confirmPolicyAttendance("police", date, assistant.id), /관리자만/);
   assert.equal(locked, false);
   await service.confirmPolicyAttendance("police", date, admin.id);
@@ -796,7 +797,7 @@ test("DB와 mock 출석 통계 모두 사유로 수업을 구분하고 직렬 �
   const service = loadService<AttendanceService>("attendance", {
     ...f.dependencies,
     "@/lib/mock-data": { isMockMode: () => false },
-    "@/lib/service-helpers": { getPrismaClient: async () => prisma },
+    "@/lib/service-helpers": withDivisionLookup({ getPrismaClient: async () => prisma }),
   });
   assert.deepEqual(await service.getAttendanceStats("police", date, date), expected);
   assert.equal(reads, 1);

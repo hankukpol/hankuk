@@ -5,6 +5,7 @@ import { revalidateTag, unstable_cache } from "next/cache";
 import { readMockState, type MockPeriodRecord, updateMockState } from "@/lib/mock-store";
 import { getMockDivisionBySlug, isMockMode } from "@/lib/mock-data";
 import { revalidateDivisionOperationalViews } from "@/lib/revalidation";
+import { getDivisionBySlugOrThrow } from "@/lib/service-helpers";
 
 export type PeriodRecord = {
   id: string;
@@ -41,19 +42,8 @@ function reindexMockPeriods(periods: MockPeriodRecord[]) {
   }));
 }
 
-async function getDivisionOrThrow(divisionSlug: string) {
-  const { prisma } = await import("@/lib/prisma");
-
-  const division = await prisma.division.findUnique({
-    where: { slug: divisionSlug },
-  });
-
-  if (!division) {
-    throw new Error(`Division not found for slug: ${divisionSlug}`);
-  }
-
-  return division;
-}
+// 학원 조회는 공용 함수 하나(요청당 한 번)를 쓴다(2026-10-07 리팩토링: 서비스마다 따로 두던 사본 정리).
+const getDivisionOrThrow = getDivisionBySlugOrThrow;
 
 async function reorderDivisionPeriodsInDb(divisionId: string, orderedIds: string[]) {
   const { prisma } = await import("@/lib/prisma");

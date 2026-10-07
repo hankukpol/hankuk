@@ -1,4 +1,5 @@
 import test, { type TestContext } from "node:test";
+import { withDivisionLookup } from "./helpers/division-lookup";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import ts from "typescript";
@@ -138,10 +139,10 @@ function fixture(t: TestContext, now = "2026-10-01T00:00:00+09:00") {
         return next;
       },
     },
-    "@/lib/service-helpers": {
+    "@/lib/service-helpers": withDivisionLookup({
       getPrismaClient: () => { throw new Error("Real database access is forbidden in this fixture"); },
       normalizeOptionalText: (value?: string | null) => value?.trim() || null,
-    },
+    }),
     "@/lib/services/settings.service": { getDivisionSettings: async (slug: string) => state.divisionSettingsByDivision[slug] },
     "@/lib/services/period.service": { getPeriods: async (slug: string) => state.periodsByDivision[slug] ?? [] },
     "@/lib/services/attendance.service": { syncAttendanceDerivedPoints: async (slug: string, date: string) => { attendanceSyncs.push(`${slug}:${date}`); } },
@@ -414,7 +415,7 @@ test("DB 정산 분기도 병가 별도 인정·재원 기간·직렬 필터가 
   };
   const service = f.load<typeof import("../lib/services/leave.service")>("leave", {
     "@/lib/mock-data": { isMockMode: () => false },
-    "@/lib/service-helpers": { getPrismaClient: async () => prisma },
+    "@/lib/service-helpers": withDivisionLookup({ getPrismaClient: async () => prisma }),
   });
   const result = await service.previewLeaveSettlement("police", { month: "2026-09" });
   assert.deepEqual(result.items.map((s) => [s.studentId, s.holidayRemaining, s.rewardPoints]), [["a", 2, 4]]);
@@ -427,7 +428,7 @@ test("DB 반복위반 조회가 재원생과 해당 직렬로 제한된다", asy
   const findMany = async (query: { where: { student: unknown } }) => { calls.push(query); return []; };
   const service = f.load<typeof import("../lib/services/policy-review.service")>("policy-review", {
     "@/lib/mock-data": { isMockMode: () => false },
-    "@/lib/service-helpers": { getPrismaClient: async () => ({ pointRecord: { findMany }, phoneSubmission: { findMany } }) },
+    "@/lib/service-helpers": withDivisionLookup({ getPrismaClient: async () => ({ pointRecord: { findMany }, phoneSubmission: { findMany } }) }),
   });
   assert.deepEqual(await service.getPolicyReviewSignals("police"), []);
   assert.equal(calls.length, 2);
@@ -607,7 +608,7 @@ test("DB 정산은 직렬별 지급 여부를 직렬화 트랜잭션 안에서 �
   };
   const service = f.load<typeof import("../lib/services/leave.service")>("leave", {
     "@/lib/mock-data": { isMockMode: () => false },
-    "@/lib/service-helpers": { getPrismaClient: async () => prisma },
+    "@/lib/service-helpers": withDivisionLookup({ getPrismaClient: async () => prisma }),
   });
   assert.deepEqual(await service.settleLeaveMonth("police", actor, { month: "2026-09" }), { month: "2026-09", createdCount: 0, skippedCount: 1, totalRewardPoints: 0 });
   assert.equal(transactions, 1);
@@ -689,7 +690,7 @@ test("DB 휴무 취소와 정산 정정은 한 트랜잭션이며 점수 쓰기 
   const tx={leavePermission:{findFirst:async(q:any)=>{scopes.push(q.where);return draft.permission;},findMany:async(q:any)=>{scopes.push(q.where);return [draft.permission];},update:async(q:any)=>{Object.assign(draft.permission,q.data);return draft.permission;},updateMany:async(q:any)=>{scopes.push(q.where);Object.assign(draft.permission,q.data);return {count:1};}},pointRecord:{findMany:async(q:any)=>{scopes.push(q.where);return [structuredClone(draft.point)];},updateMany:async(q:any)=>{scopes.push(q.where);if(failPoints)throw new Error("injected point write failure");Object.assign(draft.point,q.data);return {count:1};}}};
   const result=await fn(tx);state=draft;return result;
  }};
- const leave=f.load<typeof import("../lib/services/leave.service")>("leave",{"@/lib/mock-data":{isMockMode:()=>false},"@/lib/service-helpers":{getPrismaClient:async()=>prisma}});
+ const leave=f.load<typeof import("../lib/services/leave.service")>("leave",{"@/lib/mock-data":{isMockMode:()=>false},"@/lib/service-helpers":withDivisionLookup({getPrismaClient:async()=>prisma})});
  failPoints=true;await assert.rejects(leave.cancelLeavePermission("police",state.permission.id,actor),/injected point write/);assert.deepEqual(state,before);
  failPoints=false;await leave.cancelLeavePermission("police",state.permission.id,actor);
  assert.equal(state.permission.status,"REJECTED");assert.equal(state.point.points,4);assert.equal(state.point.id,"settled");

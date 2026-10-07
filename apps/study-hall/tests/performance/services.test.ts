@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { withDivisionLookup } from "../helpers/division-lookup";
 import * as arrivalMeta from "../../lib/attendance-arrival";
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
@@ -45,6 +46,20 @@ function loadService<T>(name: string, dependencies: Record<string, unknown>, int
     "@/lib/errors": { notFound: (message: string) => new Error(message), badRequest: (message: string) => new Error(message), conflict: (message: string) => new Error(message), forbidden: (message: string) => new Error(message) },
     ...dependencies,
   };
+  // 서비스들은 학원 조회를 공용 getDivisionBySlugOrThrow 로 한다. 따로 주지 않았으면 같은 가짜 prisma 로 찾는다.
+  const helpers = (stubs["@/lib/service-helpers"] ?? {}) as Record<string, unknown>;
+  if (!helpers.getDivisionBySlugOrThrow) {
+    const prisma = () => (stubs["@/lib/prisma"] as { prisma?: { division?: { findUnique?: (args: unknown) => Promise<unknown> } } } | undefined)?.prisma;
+    stubs["@/lib/service-helpers"] = {
+      getPrismaClient: async () => prisma(),
+      ...helpers,
+      getDivisionBySlugOrThrow: async (slug: string) => {
+        const division = await prisma()?.division?.findUnique?.({ where: { slug } });
+        if (!division) throw new Error("지점 정보를 찾을 수 없습니다.");
+        return division;
+      },
+    };
+  }
   const testModule = { exports: {} };
   const isolatedRequire = (id: string) => stubs[id] ?? {};
   new Function("require", "module", "exports", code)(isolatedRequire, testModule, testModule.exports);
@@ -602,7 +617,7 @@ test("bulk student registration skips taken numbers, survives failed rows and re
   type StudentService = typeof import("../../lib/services/student.service");
   const service = loadService<StudentService>("student", {
     "@/lib/mock-data": { isMockMode: () => true, getMockDivisionBySlug: () => ({ id: "police" }) },
-    "@/lib/service-helpers": { normalizeOptionalText: (value?: string | null) => (value?.trim() ? value.trim() : null) },
+    "@/lib/service-helpers": withDivisionLookup({ normalizeOptionalText: (value?: string | null) => (value?.trim() ? value.trim() : null) }),
     "node:crypto": { randomUUID },
     "@/lib/mock-store": {
       readMockState: async () => state,

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { withDivisionLookup } from "../helpers/division-lookup";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import ts from "typescript";
@@ -35,7 +36,7 @@ function service(mock: boolean, imported = false) {
     "@/lib/mock-store": { readMockState: async () => state, updateMockState: async (fn: (s: typeof state) => void) => fn(state) },
     "@/lib/errors": { notFound: (message: string) => new Error(message), conflict: (message: string) => new Error(message) },
     "@/lib/services/student.service": { listStudents: async () => students },
-    "@/lib/prisma": { prisma }, "@/lib/service-helpers": {},
+    "@/lib/prisma": { prisma }, "@/lib/service-helpers": withDivisionLookup({ getPrismaClient: async () => prisma }),
   };
   const code = ts.transpileModule(readFileSync(new URL("../../lib/services/exam.service.ts", import.meta.url), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const mod = { exports: {} };

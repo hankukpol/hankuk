@@ -19,6 +19,7 @@ import {
   listSupabaseUsersByIds,
   updateSupabaseManagedUserPassword,
 } from "@/lib/supabase/admin";
+import { getDivisionBySlugOrThrow } from "@/lib/service-helpers";
 
 export type ManagedDivision = {
   id: string;
@@ -109,20 +110,8 @@ function serializeMockAdmin(admin: MockAdminRecord, divisionNameBySlug: Map<stri
   } satisfies ManagedAdminAccount;
 }
 
-async function getDivisionOrThrow(slug: string) {
-  const prisma = await getPrismaClient();
-  const division = await prisma.division.findUnique({
-    where: {
-      slug,
-    },
-  });
-
-  if (!division) {
-    throw new Error("지점 정보를 찾을 수 없습니다.");
-  }
-
-  return division;
-}
+// 학원 조회는 공용 함수 하나(요청당 한 번)를 쓴다(2026-10-07 리팩토링: 서비스마다 따로 두던 사본 정리).
+const getDivisionOrThrow = getDivisionBySlugOrThrow;
 
 async function resolveDivisionForAdmin(
   divisionSlug: string | null | undefined,

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { withDivisionLookup } from "./helpers/division-lookup";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -110,7 +111,7 @@ function serviceFixture(mock = true) {
     "node:crypto": { randomUUID }, "@/lib/perfect-attendance": meta, "@/lib/management-policy": policyMeta,
     "@/lib/mock-data": { isMockMode: () => mock },
     "@/lib/mock-store": { updateMockState: async (mutate: (s: typeof state) => unknown) => mutate(state) },
-    "@/lib/service-helpers": { getPrismaClient: async () => ({ $transaction: async (run: (db: typeof tx) => unknown) => { locked = false; return run(tx); } }) },
+    "@/lib/service-helpers": withDivisionLookup({ getPrismaClient: async () => ({ $transaction: async (run: (db: typeof tx) => unknown) => { locked = false; return run(tx); } }) }),
   };
   const code = ts.transpileModule(readFileSync("lib/services/perfect-attendance.service.ts", "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const loadedModule = { exports: {} };

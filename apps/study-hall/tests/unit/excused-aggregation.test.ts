@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { withDivisionLookup } from "../helpers/division-lookup";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import ts from "typescript";
@@ -230,7 +231,7 @@ async function loadSuperAdminOverview(mockMode: boolean, capturedSelect?: Array<
     "super-admin-overview",
     {
       "@/lib/mock-data": { isMockMode: () => mockMode },
-      "@/lib/service-helpers": { getPrismaClient: async () => prisma },
+      "@/lib/service-helpers": withDivisionLookup({ getPrismaClient: async () => prisma }),
       "@/lib/services/attendance.service": { getAttendanceSnapshot: async () => snapshot(date, records) },
       "@/lib/services/management-policy.service": { getManagementPolicy: async () => null },
       "@/lib/services/settings.service": { getDivisionSettings: async () => settings() },

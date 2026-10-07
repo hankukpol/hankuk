@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { withDivisionLookup } from "./helpers/division-lookup";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import ts from "typescript";
@@ -178,10 +179,10 @@ function fixture(interviews: MockInterviewRecord[] = [], tasks: MockInterviewTas
     "@/lib/date-utils": dateUtils,
     "@/lib/management-policy": { kstDate: () => "2026-10-07" },
     "@/lib/mock-store": { readMockState: async () => state, updateMockState: async (fn: (draft: typeof state) => unknown) => fn(state) },
-    "@/lib/service-helpers": {
+    "@/lib/service-helpers": withDivisionLookup({
       getPrismaClient: async () => { throw new Error("mock mode should not reach the database"); },
       isPrismaSchemaMismatchError: () => false,
-    },
+    }),
   });
   return { service, state };
 }

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { withDivisionLookup } from "../helpers/division-lookup";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import ts from "typescript";
@@ -16,7 +17,7 @@ function load<T>(name: string, stubs: Record<string, unknown>, internals: string
   const dependencies = {
     "@/lib/exam-analysis-settings": analysis, "@/lib/settings-schemas": settingsSchemas,
     "@/lib/division-features": features, "@/lib/point-meta": points,
-    "@/lib/service-helpers": { normalizeOptionalText: (value?: string | null) => value?.trim() || null },
+    "@/lib/service-helpers": withDivisionLookup({ normalizeOptionalText: (value?: string | null) => value?.trim() || null }),
     "@/lib/mock-data": { isMockMode: () => true, getMockDivisionBySlug: () => undefined },
     "@/lib/errors": { notFound: (message: string) => new Error(message) },
     // 규칙 저장이 변경 이력을 남긴다. 이 파일은 분석 설정만 보므로 기록은 비워 두고,

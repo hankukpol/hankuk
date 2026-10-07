@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { withDivisionLookup } from "../helpers/division-lookup";
 import * as arrivalMeta from "../../lib/attendance-arrival";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -63,11 +64,11 @@ function loadAttendanceService(state: Record<string, unknown>) {
         throw error;
       },
     },
-    "@/lib/service-helpers": {
+    "@/lib/service-helpers": withDivisionLookup({
       getPrismaClient: () => {
         throw new Error("DB access is forbidden in this fixture");
       },
-    },
+    }),
     "@/lib/services/management-policy.service": { getManagementPolicy: async () => null },
     "@/lib/services/exam-point.service": { syncExamPoints: async () => ({grantedCount:0,revokedCount:0}) },
     "@/lib/services/period.service": { getPeriods: async () => [period] },

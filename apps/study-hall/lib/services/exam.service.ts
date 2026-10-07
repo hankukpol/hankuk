@@ -13,8 +13,7 @@ import type {
   ExamScoresBatchSchemaInput,
   ExamTypeSchemaInput,
 } from "@/lib/exam-schemas";
-import {
-} from "@/lib/service-helpers";
+import { getDivisionBySlugOrThrow } from "@/lib/service-helpers";
 import { listStudents } from "@/lib/services/student.service";
 
 type ExamActor = {
@@ -245,21 +244,8 @@ function assignRanks<T extends { totalScore: number | null }>(rows: T[]) {
   }));
 }
 
-async function getDivisionOrThrow(divisionSlug: string) {
-  const { prisma } = await import("@/lib/prisma");
-
-  const division = await prisma.division.findUnique({
-    where: {
-      slug: divisionSlug,
-    },
-  });
-
-  if (!division) {
-    throw notFound("지점 정보를 찾을 수 없습니다.");
-  }
-
-  return division;
-}
+// 학원 조회는 공용 함수 하나(요청당 한 번)를 쓴다(2026-10-07 리팩토링: 서비스마다 따로 두던 사본 정리).
+const getDivisionOrThrow = getDivisionBySlugOrThrow;
 
 async function getExamTypeOrThrow(divisionSlug: string, examTypeId: string) {
   const examTypes = await listExamTypes(divisionSlug);

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import ts from "typescript";
+import { withDivisionLookup } from "../helpers/division-lookup";
 
 const day = "2026-09-08";
 const actor = { id: "admin", role: "ADMIN" as const };
@@ -39,6 +40,8 @@ for (const mock of [true, false]) {
         "@/lib/services/exam.service": { listExamTypes: async () => [{ id: "morning", category: "MORNING", subjects: [{ id: "new-subject", isActive: true }] }] },
         "@/lib/services/student.service": {},
         "@/lib/prisma": { prisma },
+        // 학원 조회는 공용 getDivisionBySlugOrThrow(같은 가짜 prisma)로 한다.
+        "@/lib/service-helpers": withDivisionLookup({ getPrismaClient: async () => prisma }),
       };
       const code = ts.transpileModule(readFileSync("lib/services/morning-exam.service.ts", "utf8"), {
         compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },

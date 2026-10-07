@@ -1,5 +1,4 @@
 import { revalidateTag, unstable_cache } from "next/cache";
-import { cache } from "react";
 import { Prisma } from "@prisma/client/index";
 import { indexFirstBy } from "@/lib/record-index";
 
@@ -13,8 +12,7 @@ import {
   type MockStudentRecord,
   type MockStudyRoomRecord,
 } from "@/lib/mock-store";
-import {
-} from "@/lib/service-helpers";
+import { getDivisionBySlugOrThrow } from "@/lib/service-helpers";
 import {
   buildSeatLabel,
   createDefaultSeatDraftLayout,
@@ -524,20 +522,8 @@ function findMockSeatForStudent(seats: MockSeatRecord[], student: MockStudentRec
   return matches.length === 1 ? matches[0] : null;
 }
 
-const getDivisionOrThrow = cache(async function getDivisionOrThrow(divisionSlug: string) {
-  const prisma = await getPrismaClient();
-  const division = await prisma.division.findUnique({
-    where: {
-      slug: divisionSlug,
-    },
-  });
-
-  if (!division) {
-    throw notFound("지점 정보를 찾을 수 없습니다.");
-  }
-
-  return division;
-});
+// 학원 조회는 공용 함수 하나(요청당 한 번)를 쓴다(2026-10-07 리팩토링: 서비스마다 따로 두던 사본 정리).
+const getDivisionOrThrow = getDivisionBySlugOrThrow;
 
 async function ensureDefaultStudyRoom(divisionSlug: string, divisionId: string) {
   const prisma = await getPrismaClient();

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { withDivisionLookup } from "./helpers/division-lookup";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import ts from "typescript";
@@ -84,11 +85,11 @@ function interviewFixture(interviews: MockInterviewRecord[]) {
       readMockState: async () => state,
       updateMockState: async (fn: (draft: typeof state) => unknown) => fn(state),
     },
-    "@/lib/service-helpers": {
+    "@/lib/service-helpers": withDivisionLookup({
       getPrismaClient: async () => {
         throw new Error("mock mode should not reach the database");
       },
-    },
+    }),
   });
 
   return { service, state };

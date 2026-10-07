@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import { getPeriods, type PeriodRecord } from "@/lib/services/period.service";
 import { getManagementPolicy } from "@/lib/services/management-policy.service";
 import { isControlledPeriod, isPolicyEffective, isHealthLeaveExempt, kstDate, type ManagementPolicy } from "@/lib/management-policy";
-import { cache } from "react";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
@@ -23,7 +22,11 @@ import type {
   LeaveSettlementSchemaInput,
 } from "@/lib/leave-schemas";
 import type { LeaveStatusValue, LeaveTypeValue } from "@/lib/leave-meta";
-import { getPrismaClient, normalizeOptionalText } from "@/lib/service-helpers";
+import {
+  getPrismaClient,
+  normalizeOptionalText,
+  getDivisionBySlugOrThrow,
+} from "@/lib/service-helpers";
 import { syncAttendanceDerivedPoints } from "@/lib/services/attendance.service";
 import { getDivisionSettings } from "@/lib/services/settings.service";
 
@@ -306,20 +309,8 @@ function serializeLeaveRecord(
   } satisfies LeavePermissionItem;
 }
 
-const getDivisionOrThrow = cache(async function getDivisionOrThrow(divisionSlug: string) {
-  const prisma = await getPrismaClient();
-  const division = await prisma.division.findUnique({
-    where: {
-      slug: divisionSlug,
-    },
-  });
-
-  if (!division) {
-    throw notFound("지점 정보를 찾을 수 없습니다.");
-  }
-
-  return division;
-});
+// 학원 조회는 공용 함수 하나(요청당 한 번)를 쓴다(2026-10-07 리팩토링: 서비스마다 따로 두던 사본 정리).
+const getDivisionOrThrow = getDivisionBySlugOrThrow;
 
 async function applyMockLeaveAttendance(
   divisionSlug: string,

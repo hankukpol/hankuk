@@ -613,7 +613,11 @@ test("admin cohort weakness table: risk order, fail cells, summary and personal 
   const html = renderToStaticMarkup(React.createElement(CohortWeaknessTable, { data, division: "police", query: "kind=regular" }));
   assert.deepEqual(Array.from(html.matchAll(/aria-label="(학생\d) 개인 분석"/g)).map(m => m[1]), ["학생2", "학생3", "학생1"], "과락 → 하락 → 점수 낮은 순");
   assert.match(html, /3명 · 과락 1명 \(형법 1명\) · 하락 1명/);
-  assert.match(html, /class="admin-table-amount text-admin-danger">30</);
+  assert.match(html, /class="tabular-nums text-admin-danger">30</, "과락 점수는 빨간 글자, 가운데 정렬(금액 정렬 클래스 없음)");
+  // 이름(개인 분석 링크)과 수험번호는 다른 열이고, 칸 안에 버튼 상자·접힘 상자를 넣지 않는다(운영자 요청 2026-10-07).
+  assert.match(html, /<th scope="col">이름<\/th><th scope="col">수험번호<\/th>/);
+  assert.match(html, /<th scope="row"><a class="admin-table-link" href="[^"]+" aria-label="학생2 개인 분석">학생2<\/a><\/th><td class="tabular-nums">90002<\/td>/);
+  assert.doesNotMatch(html, /<details|admin-text-action|admin-table-amount/);
   assert.match(html, /text-admin-danger">과락 형법 · 최대 손실 형법 70점</);
   assert.match(html, /text-admin-warning">과락 없음 · 최대 손실 형법 30점 · 석차 하락</);
   assert.match(html, /href="\/police\/admin\/exams\/students\/2\?kind=regular"/);
@@ -624,6 +628,22 @@ test("admin cohort weakness table: risk order, fail cells, summary and personal 
   assert.match(html, /<a class="admin-button admin-button-compact" href="\/police\/admin\/interviews\?studentId=2&amp;category=study" aria-label="학생2 학습 면담">학습 면담<\/a>/);
   const preview = renderToStaticMarkup(React.createElement(CohortWeaknessTable, { data: { ...data, isPreview: true }, division: "police", query: "kind=regular" }));
   assert.doesNotMatch(preview, /학습 면담/);
+});
+
+test("morning cohort weakness lists only real findings per line, including subjects too sparse to judge", () => {
+  const { CohortWeaknessTable } = load("components/exams/preview/CohortWeaknessTable.tsx");
+  const subjectDefinitions = [{ id: "a", name: "헌법", fullScore: 100, itemCount: 20, alternateGroup: null }, { id: "b", name: "형법", fullScore: 100, itemCount: 20, alternateGroup: null }];
+  const sub = (studentId: string, subjectId: string, average: number, flags: { kind: string; detail: string }[] = [], scores = [average]) => ({ studentId, name: `학생${studentId}`, studentNumber: `9100${studentId}`, subjectId, subjectName: subjectId === "a" ? "헌법" : "형법", average, attended: scores.length, expected: 4, flags, series: scores.map((score, i) => ({ score, date: `2026-09-0${i + 1}` })) });
+  const data = { kind: "morning", scope: "cohort", failCutoffPercent: 40, isPreview: false, morningCohort: { subjectDefinitions, studentSubjects: [
+    sub("1", "a", 80), sub("1", "b", 82),
+    sub("2", "a", 50, [{ kind: "consecutiveDrops", detail: "3회 연속 하락" }, { kind: "classGap", detail: "반 평균보다 12점 낮음" }]), sub("2", "b", 60, [{ kind: "lowAttendance", detail: "응시율 25%" }], [60]),
+  ] } };
+  const html = renderToStaticMarkup(React.createElement(CohortWeaknessTable, { data, division: "police", query: "kind=morning" }));
+  assert.match(html, /<p class="text-admin-warning">점수 하락: 헌법<\/p>/);
+  assert.match(html, /<p class="text-admin-warning">학원 평균보다 낮음: 헌법<\/p>/);
+  assert.match(html, /<p class="text-admin-text-muted">응시 부족: 형법<\/p>/, "추세를 판단하지 않은 과목도 한 줄로 보인다");
+  assert.match(html, /<p class="text-admin-text-muted">특이 사항 없음<\/p>/, "문제가 없으면 '과락 없음' 같은 문장을 늘어놓지 않는다");
+  assert.doesNotMatch(html, /과락 기준 미달 없음|<details/);
 });
 
 test("interview journal header offers a study interview only when the academy uses exams", () => {

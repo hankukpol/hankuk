@@ -66,10 +66,9 @@
 .reviewQueue thead th:nth-child(2) { width: 16%; }
 .reviewQueue thead th:nth-child(3) { width: 28%; }
 .dateCell { white-space: nowrap !important; }
-.scopeTabs, .itemTabs { display: flex; flex-wrap: wrap; gap: 0; overflow: visible; border: 1px solid var(--admin-line); background: var(--admin-surface-soft); }
-.scopeTabs :global(.admin-subtab), .itemTabs :global(.admin-subtab) { flex: 1 1 0; min-width: 0; white-space: normal; word-break: keep-all; border-bottom: 0; color: var(--admin-text-secondary); }
-.scopeTabs :global(.admin-subtab) + :global(.admin-subtab), .itemTabs :global(.admin-subtab) + :global(.admin-subtab) { border-left: 1px solid var(--admin-line); }
-.scopeTabs :global(.admin-subtab[data-active="true"]) { background: var(--admin-accent-soft); color: var(--admin-accent); box-shadow: inset 0 -1px var(--admin-accent); }
+.itemTabs { display: flex; flex-wrap: wrap; gap: 0; overflow: visible; border: 1px solid var(--admin-line); background: var(--admin-surface-soft); }
+.itemTabs :global(.admin-subtab) { flex: 1 1 0; min-width: 0; white-space: normal; word-break: keep-all; border-bottom: 0; color: var(--admin-text-secondary); }
+.itemTabs :global(.admin-subtab) + :global(.admin-subtab) { border-left: 1px solid var(--admin-line); }
 .itemTabs { background: var(--admin-surface); }
 .itemTabs :global(.admin-subtab[data-active="true"]) { background: var(--admin-accent-soft); color: var(--admin-accent); }
 .mainTabs { overflow: visible; }
@@ -79,7 +78,7 @@
  .desktopCell { display: none !important; }
  .mobileCell { display: block; margin-top: 8px; font-weight: 400; }
  .mainTabs { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
- .mainTabs :global(.admin-subtab), .scopeTabs :global(.admin-subtab), .itemTabs :global(.admin-subtab) { padding: 8px 4px; min-height: var(--admin-control-height); }
+ .mainTabs :global(.admin-subtab), .itemTabs :global(.admin-subtab) { padding: 8px 4px; min-height: var(--admin-control-height); }
  .reviewQueue thead th:first-child { width: 34%; }
  .reviewQueue thead th:nth-child(2) { width: 30%; }
  .reviewQueue thead th:nth-child(3) { width: 36%; }

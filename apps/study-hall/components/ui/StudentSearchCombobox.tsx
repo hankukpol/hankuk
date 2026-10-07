@@ -87,7 +87,8 @@ export function StudentSearchCombobox({
             }, 150);
           }}
           placeholder={placeholder}
-          className="w-full bg-transparent text-sm text-slate-700 placeholder-slate-400"
+          // 글자 크기·색은 다른 입력칸과 같은 공통 입력 규격을 따른다(테두리·초점 링은 바깥 .admin-input-group 이 그린다).
+          className="w-full bg-transparent"
         />
       </div>
 

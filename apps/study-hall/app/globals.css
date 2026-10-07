@@ -3802,6 +3802,32 @@ table :is(a[class*="rounded"]:not(.admin-button), button[class*="rounded"]:not(.
   box-shadow: var(--admin-focus-ring);
 }
 
+/* 입력 그룹(아이콘 + 입력: 학생 선택 검색, 공지 검색)은 입력 한 칸처럼 보인다(2026-10-07).
+   위 두 규칙이 그룹 안쪽 input 에도 모서리·그림자·초점 링을 그려, 클릭하면 상자 안에 둥근 상자가 하나 더 생겼다.
+   안쪽 input 은 비우고 높이·테두리·그림자·초점 링은 그룹이 다른 입력과 같은 값으로 그린다. */
+.admin-shell .admin-input-group {
+  min-height: var(--admin-control-height);
+  padding-block: 0;
+  border-color: var(--admin-line);
+  box-shadow: var(--admin-shadow-xs);
+}
+
+.admin-shell .admin-input-group:focus-within {
+  border-color: var(--admin-accent);
+  box-shadow: var(--admin-focus-ring);
+}
+
+.admin-shell .admin-input-group :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="hidden"]):not([type="color"])),
+.admin-shell .admin-input-group :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="hidden"]):not([type="color"])):focus-visible {
+  align-self: stretch;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  outline: 0;
+}
+
 /* --- 보조 작업: 외곽 버튼 (이전 5.6 '테두리 없는 글자'를 대체) --- */
 .admin-shell .admin-text-action {
   display: inline-flex;

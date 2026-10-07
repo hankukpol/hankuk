@@ -1,5 +1,13 @@
 # 현재 구현·검증 상태
 
+## 커밋(미배포) — 2026-10-07 검색칸·반 분석 과목 탭·학생별 취약점 표 정리 (Claude, 운영자 요청)
+
+- 학생 선택 검색칸(`StudentSearchCombobox`)·공지 검색: 안쪽 input 에 공통 입력 규칙(모서리·그림자·초점 링)이 겹쳐 클릭하면 상자 안에 둥근 상자가 생겼다 → `app/globals.css` 입력 규칙 바로 뒤에 `.admin-input-group` 정규화(그룹이 40px·테두리·그림자·초점 링을 그리고 안쪽 input 은 비움). 글자는 공통 입력 규격(15px).
+- 반 분석 `분석 과목` 탭: 상자형(`scopeTabs`) → 3차 밑줄 탭(`admin-subtabs-underline`, scrollable). `PreviewReport.tsx`, `preview.module.css`.
+- `학생별 취약점` 표(`CohortWeaknessTable.tsx`): 이름·수험번호 열 분리(이름은 table-link), 전 칸 가운데 정렬, 필터 칩 → 세그먼트, `확인할 내용`은 문제 종류만 한 줄씩(+ `응시 부족`, `report-summary.ts` `lowAttendance` 추가), 행마다 있던 `과목별 판단 근거` 접힘 상자 제거.
+- 검증: typecheck·lint 통과, 테스트 1013/1013(렌더 테스트 1개 추가·1개 수정), 로컬 3300 Playwright 캡처(`.local/study-diagnosis-qa/search-focus.png`, `cohort-top.png`): 검색칸 높이 40·초점 시 바깥 테두리만 accent+링, 과목 탭 한 줄·밑줄, 표 9열 모두 center, details 0.
+- 커밋: `globals.css`·`DESIGN.md`·`CURRENT_STATE.md`에 함께 있던 다른 세션의 미커밋 작업(브레드크럼·화면 계층)은 빼고 이 변경 부분만 골라 넣었다. 운영 배포는 운영자 승인 후.
+
 ## 최신 배포 — 2026-10-07 학습 면담 시작 지점·기간 맞춤 (Claude, 운영자 요청 1·2·3)
 
 계획 대비 빠졌던 3가지를 넣었다. ① 반 분석 `학생별 취약점` 표에 `작업` 열 `학습 면담` 버튼(`CohortWeaknessTable.tsx`, 미리보기 데이터 제외) ② 면담 일지 머리 `학습 면담` 버튼(`InterviewJournal.tsx` `onCreateStudy`, 학원 시험 관리가 켜진 경우 `admin/interviews/page.tsx` → `studyInterviewEnabled`) ③ 면담 슬라이드의 성적 요약·학습 진단 조회와 `성적 분석 ↗`(`kind=morning&from&to`)·`상담 자료 ↗`(`from&to`) 링크가 같은 기간(`reportRange(오늘)`, 4주)을 쓴다(`InterviewManager.tsx`, `InterviewScorePanel.tsx`, `StudyInterviewEditor.tsx`). 계획에서 남은 차이: 상담 자료 `다음 주 과제` 칸은 빈칸 유지(운영자 결정 2026-10-07 — 상담 자료는 면담 전에 인쇄하고 새 할 일은 면담 중 손으로 적는다. 정해 둔 할 일은 `지난 할 일` 구획에 나온다), 정기 결론 문장의 `상위 n%`는 그대로.

@@ -9,7 +9,6 @@ import {
   parseInterviewContent,
   journalPromises,
   type JournalSection,
-  type StudentJournalSummary,
 } from "@/lib/interview-journal";
 import { formatKstDateTime } from "@/lib/date-utils";
 import { getWarningStageLabel, toDemeritPoints } from "@/lib/student-meta";
@@ -76,10 +75,13 @@ type JournalProps = {
   onCreate: (studentId: string) => void;
   /** 있으면 머리에 '학습 면담' 버튼을 둔다(시험 관리를 쓰는 학원). */
   onCreateStudy?: (studentId: string) => void;
+  /** drawer: 오른쪽 슬라이드 안에 그린다 — 학생 이름은 슬라이드 제목이 맡고, 패널 테두리·좌우 여백을 두지 않는다. */
+  variant?: "panel" | "drawer";
 };
 
 /** 한 학생의 면담 일지. 학생 머리 → 지켜야 할 약속 → 면담 기록(최신순)을 패널 하나에 담는다. */
-export function InterviewJournal({ divisionSlug, student, interviews, today, closingId, onCloseInterview, onCreate, onCreateStudy }: JournalProps) {
+export function InterviewJournal({ divisionSlug, student, interviews, today, closingId, onCloseInterview, onCreate, onCreateStudy, variant = "panel" }: JournalProps) {
+  const drawer = variant === "drawer";
   const promiseInterview = latestPromiseInterview(interviews);
   const promises = promiseInterview ? journalPromises(promiseInterview) : [];
   const demerit = student.demeritPoints ?? toDemeritPoints(student.netPoints);
@@ -93,10 +95,10 @@ export function InterviewJournal({ divisionSlug, student, interviews, today, clo
   );
 
   return (
-    <section className="admin-panel interview-journal" aria-label={`${student.name} 면담 일지`}>
+    <section className={drawer ? "interview-journal interview-journal-drawer" : "admin-panel interview-journal"} aria-label={`${student.name} 면담 일지`}>
       <header className="interview-journal-head">
         <div className="min-w-0">
-          <h2 className="interview-journal-name">{student.name}</h2>
+          {drawer ? null : <h2 className="interview-journal-name">{student.name}</h2>}
           <p className="interview-meta-line">
             <span className="tabular-nums">{student.studentNumber}</span>
             <span className="tabular-nums">면담 {interviews.length}회</span>
@@ -168,7 +170,7 @@ export function InterviewJournal({ divisionSlug, student, interviews, today, clo
         ) : (
           <div className="admin-empty-state mx-5 mb-5">
             <p className="font-semibold">{student.name} 학생의 면담 기록이 없습니다.</p>
-            <p className="admin-help mt-2">오른쪽 위 ‘면담 기록’으로 첫 면담을 남깁니다.</p>
+            <p className="admin-help mt-2">위 ‘면담 기록’으로 첫 면담을 남깁니다.</p>
           </div>
         )}
       </div>
@@ -227,51 +229,5 @@ export function JournalEntry({ interview, today, action }: { interview: Intervie
         </div>
       </div>
     </article>
-  );
-}
-
-type StudentListProps = {
-  students: StudentListItem[];
-  summaries: Map<string, StudentJournalSummary>;
-  selectedId: string;
-  warnInterview: number;
-  onSelect: (studentId: string) => void;
-};
-
-/** 왼쪽 학생 목록. 표처럼 학생 · 면담 수 · 최근 날짜 세 열, 알릴 것은 이름 아래 색 글자 한 줄. */
-export function JournalStudentList({ students, summaries, selectedId, warnInterview, onSelect }: StudentListProps) {
-  return (
-    <div className="interview-student-table">
-      <div className="interview-student-row interview-student-header" aria-hidden="true">
-        <span>학생</span>
-        <span>면담</span>
-        <span>최근</span>
-      </div>
-      <ul className="interview-student-list" aria-label="학생 목록">
-        {students.map((student) => {
-          const summary = summaries.get(student.id);
-          const demerit = student.demeritPoints ?? toDemeritPoints(student.netPoints);
-          const notes = [
-            summary?.overdue ? <span key="due" className="text-admin-danger">확인일 지남</span> : null,
-            demerit >= warnInterview ? <span key="warn" className="text-admin-warning">벌점 {demerit}점</span> : null,
-          ].filter(Boolean);
-          return (
-            <li key={student.id}>
-              <button type="button" className="interview-student-row interview-student-item" data-journal-student={student.id} aria-pressed={student.id === selectedId} onClick={() => onSelect(student.id)}>
-                <span className="min-w-0">
-                  <span className="block truncate">
-                    <span className="interview-student-name">{student.name}</span>
-                    <span className="ml-2 text-[13px] tabular-nums text-admin-text-muted">{student.studentNumber}</span>
-                  </span>
-                  {notes.length ? <span className="interview-meta-line mt-1 text-[13px] font-semibold">{notes}</span> : null}
-                </span>
-                <span className="tabular-nums">{summary ? summary.count : "–"}</span>
-                <span className="tabular-nums text-admin-text-secondary">{summary?.lastDate ? journalDayLabel(summary.lastDate) : "–"}</span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
   );
 }

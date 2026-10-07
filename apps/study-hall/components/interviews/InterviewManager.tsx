@@ -18,7 +18,7 @@ import { RecommendedStudents } from "@/components/interviews/RecommendedStudents
 import { EMPTY_STUDY_DRAFT, StudyInterviewEditor, type StudyInterviewDraft } from "@/components/interviews/StudyInterviewEditor";
 import { recommendStudents, type InterviewScoreSignal } from "@/lib/interview-recommend";
 import { reportRange } from "@/lib/student-report";
-import { InterviewJournal, JournalStudentList, PromiseList } from "@/components/interviews/InterviewJournal";
+import { InterviewJournal, PromiseList } from "@/components/interviews/InterviewJournal";
 import { toDemeritPoints } from "@/lib/student-meta";
 import {
   INTERVIEW_RESULT_TYPE_OPTIONS,
@@ -76,7 +76,7 @@ type FormState = {
   guardianContacted: boolean;
 };
 
-type ListFilter = "interviewed" | "all";
+type ListFilter = "interviewed" | "overdue" | "all";
 
 function getKstToday() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -100,10 +100,6 @@ function toFormState(studentId?: string, prefill?: InterviewPrefill | null, cate
     followUpDate: "",
     guardianContacted: false,
   };
-}
-
-function isMobileViewport() {
-  return typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
 }
 
 export function InterviewManager({
@@ -140,7 +136,9 @@ export function InterviewManager({
     if (initialStudentId && students.some((student) => student.id === initialStudentId)) return initialStudentId;
     return sortJournal(initialInterviews)[0]?.studentId ?? defaultStudentId;
   });
-  const [mobileJournalOpen, setMobileJournalOpen] = useState(false);
+  // 학생 일지는 다른 화면의 상세 보기와 같이 오른쪽 슬라이드로 연다(운영자 결정 2026-10-07).
+  // 학생 상세에서 넘어온 경우(initialStudentId)는 그 학생 일지를 바로 연다.
+  const [journalOpen, setJournalOpen] = useState(() => Boolean(!prefill && initialStudentId && students.some((student) => student.id === initialStudentId)));
   const [isEditorOpen, setIsEditorOpen] = useState(Boolean(prefill));
   const [isSaving, setIsSaving] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -187,7 +185,7 @@ export function InterviewManager({
     }
     const keyword = query.trim();
     return Array.from(pool.values())
-      .filter((student) => listFilter === "all" || summaries.has(student.id))
+      .filter((student) => listFilter === "all" || (listFilter === "overdue" ? Boolean(summaries.get(student.id)?.overdue) : summaries.has(student.id)))
       .filter((student) => !keyword || student.name.includes(keyword) || student.studentNumber.includes(keyword))
       .sort((left, right) => {
         const a = summaries.get(left.id);
@@ -199,6 +197,24 @@ export function InterviewManager({
   }, [activeStudents, listFilter, query, studentById, summaries]);
 
   const interviewedCount = summaries.size;
+  const overdueCount = useMemo(() => Array.from(summaries.values()).filter((summary) => summary.overdue).length, [summaries]);
+  // 표의 '다음 확인일'·'지킬 약속' 칸: 학생마다 확인 전 면담의 가장 이른 확인일과, 약속이 적힌 가장 최근 면담의 첫 약속.
+  const journalFacts = useMemo(() => {
+    const byStudent = new Map<string, InterviewItem[]>();
+    for (const interview of interviews) byStudent.set(interview.studentId, [...(byStudent.get(interview.studentId) ?? []), interview]);
+    const facts = new Map<string, { nextFollowUp: string | null; promise: string | null; morePromises: number }>();
+    byStudent.forEach((list, studentId) => {
+      const sorted = sortJournal(list);
+      const nextFollowUp = sorted
+        .filter((interview) => interview.status === "OPEN" && interview.followUpDate)
+        .map((interview) => interview.followUpDate!.slice(0, 10))
+        .sort()[0] ?? null;
+      const promiseInterview = latestPromiseInterview(sorted);
+      const promises = promiseInterview ? journalPromises(promiseInterview) : [];
+      facts.set(studentId, { nextFollowUp, promise: promises[0] ?? null, morePromises: Math.max(0, promises.length - 1) });
+    });
+    return facts;
+  }, [interviews]);
   const selectedJournalStudent = studentById.get(selectedId) ?? null;
   const selectedJournal = useMemo(
     () => sortJournal(interviews.filter((interview) => interview.studentId === selectedId)),
@@ -280,29 +296,16 @@ export function InterviewManager({
     return () => controller.abort();
   }, [divisionSlug, form.studentId, isEditorOpen]);
 
-  // 처음 열 때 고른 학생이 목록 아래쪽에 있어도 보이게 목록만 그 자리로 옮긴다.
-  useEffect(() => {
-    const item = document.querySelector<HTMLElement>(`[data-journal-student="${CSS.escape(selectedId)}"]`);
-    const list = item?.closest<HTMLElement>(".interview-student-list");
-    if (item && list && list.scrollHeight > list.clientHeight) list.scrollTop = item.offsetTop - list.clientHeight / 2;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 첫 화면에서 한 번만
-  }, []);
-
-  function selectStudent(studentId: string) {
-    setSelectedId(studentId);
-    if (isMobileViewport()) setMobileJournalOpen(true);
-  }
-
   function openJournal(studentId: string) {
-    setViewTab("journal");
-    if (!summaries.has(studentId)) setListFilter("all");
-    selectStudent(studentId);
+    setSelectedId(studentId);
+    setJournalOpen(true);
   }
 
   function openCreatePanel(studentId?: string, category: InterviewCategory = "GENERAL") {
     setForm(toFormState(studentId ?? (selectedId || defaultStudentId), null, category));
     setStudyDraft(EMPTY_STUDY_DRAFT);
-    setMobileJournalOpen(false);
+    // 드로어 위에 드로어를 겹치지 않는다: 일지를 닫고 입력 슬라이드를 연다.
+    setJournalOpen(false);
     setIsEditorOpen(true);
   }
 
@@ -430,6 +433,7 @@ export function InterviewManager({
 
   const journal = selectedJournalStudent ? (
     <InterviewJournal
+      variant="drawer"
       divisionSlug={divisionSlug}
       student={selectedJournalStudent}
       interviews={selectedJournal}
@@ -439,11 +443,7 @@ export function InterviewManager({
       onCreate={(studentId) => openCreatePanel(studentId)}
       onCreateStudy={studyInterviewEnabled ? (studentId) => openCreatePanel(studentId, "STUDY") : undefined}
     />
-  ) : (
-    <div className="admin-empty-state">
-      <p className="font-semibold">왼쪽에서 학생을 고르면 면담 일지가 열립니다.</p>
-    </div>
-  );
+  ) : null;
 
   return (
     <>
@@ -473,35 +473,78 @@ export function InterviewManager({
         </div>
         </MobileWorkspaceTools>
 
-        <AdminTabPanel id="journal" activeId={viewTab} idPrefix="interview-view">
-          <div className="interview-journal-layout">
-            <section className="admin-panel interview-journal-students" aria-label="학생 선택">
-              <div className="space-y-3 border-b border-admin-line-soft p-4">
-                <nav className="admin-subtabs" aria-label="학생 범위">
-                  {([
-                    { value: "interviewed", label: "면담한 학생", count: interviewedCount },
-                    { value: "all", label: "전체", count: listFilter === "all" ? listStudents.length : undefined },
-                  ] as const).map((option) => (
-                    <button key={option.value} type="button" className="admin-subtab" aria-pressed={listFilter === option.value} onClick={() => setListFilter(option.value)}>
-                      {option.label}
-                      {option.count !== undefined ? <span className="ml-2 tabular-nums text-admin-text-muted">{option.count}</span> : null}
-                    </button>
-                  ))}
-                </nav>
-                <label className="relative block">
-                  <span className="sr-only">학생 검색</span>
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-admin-text-muted" aria-hidden="true" />
-                  <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="이름·수험번호" className="w-full pl-9" />
-                </label>
-              </div>
-              {listStudents.length ? (
-                <JournalStudentList students={listStudents} summaries={summaries} selectedId={selectedId} warnInterview={warnInterview} onSelect={selectStudent} />
-              ) : (
-                <p className="admin-help p-4">{query ? `‘${query}’에 맞는 학생이 없습니다.` : "면담 기록이 있는 학생이 없습니다. ‘전체’에서 학생을 고르세요."}</p>
-              )}
-            </section>
-            <div className="min-w-0 max-md:hidden">{journal}</div>
+        <AdminTabPanel id="journal" activeId={viewTab} idPrefix="interview-view" className="admin-flat-page">
+          {/* 다른 목록 화면과 같은 순서: 조회 조건(필터 바) → 상태 구분(건수) → 표 → 이름을 누르면 오른쪽 슬라이드. */}
+          <div className="admin-filter-bar">
+            <label>
+              <span className="admin-label mb-2 block">학생 검색</span>
+              <span className="admin-input-group">
+                <Search className="h-5 w-5 shrink-0 text-admin-text-muted" aria-hidden="true" />
+                <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="이름·수험번호" className="w-full bg-transparent" />
+              </span>
+            </label>
           </div>
+          <nav className="admin-subtabs" aria-label="학생 범위">
+            {([
+              { value: "interviewed", label: "면담한 학생", count: interviewedCount },
+              { value: "overdue", label: "확인일 지남", count: overdueCount },
+              { value: "all", label: "전체", count: undefined },
+            ] as const).map((option) => (
+              <button key={option.value} type="button" className="admin-subtab" aria-pressed={listFilter === option.value} onClick={() => setListFilter(option.value)}>
+                {option.label}
+                {option.count !== undefined ? <span className="ml-2 tabular-nums text-admin-text-muted">{option.count}</span> : listFilter === "all" ? <span className="ml-2 tabular-nums text-admin-text-muted">{listStudents.length}</span> : null}
+              </button>
+            ))}
+          </nav>
+          {listStudents.length ? (
+            <div className="admin-table-frame">
+              <table aria-label="학생별 면담 일지" className="interview-journal-table">
+                <thead>
+                  <tr><th>이름</th><th>수험번호</th><th>면담</th><th>최근 면담</th><th>다음 확인일</th><th>지킬 약속</th><th>벌점</th><th>상태</th><th>작업</th></tr>
+                </thead>
+                <tbody>
+                  {listStudents.map((student) => {
+                    const summary = summaries.get(student.id);
+                    const facts = journalFacts.get(student.id);
+                    const demerit = student.demeritPoints ?? toDemeritPoints(student.netPoints);
+                    const status = !summary
+                      ? { text: "면담 없음", tone: "text-admin-text-muted" }
+                      : summary.overdue
+                        ? { text: "확인일 지남", tone: "text-admin-danger font-semibold" }
+                        : summary.openCount
+                          ? { text: "후속 확인 전", tone: "text-admin-warning font-semibold" }
+                          : { text: "확인 완료", tone: "text-admin-text-muted" };
+                    return (
+                      <tr key={student.id}>
+                        <th scope="row">
+                          <button type="button" className="admin-table-link" onClick={() => openJournal(student.id)} aria-label={`${student.name} 면담 일지 열기`}>{student.name}</button>
+                        </th>
+                        <td className="tabular-nums">{student.studentNumber}</td>
+                        <td className="tabular-nums">{summary ? `${summary.count}회` : "–"}</td>
+                        <td className="tabular-nums">{summary?.lastDate ? journalDayLabel(summary.lastDate) : "–"}</td>
+                        <td className={`tabular-nums${summary?.overdue ? " font-semibold text-admin-danger" : ""}`}>{facts?.nextFollowUp ? journalDayLabel(facts.nextFollowUp) : "–"}</td>
+                        <td className="interview-table-promise">
+                          {facts?.promise ? <>{facts.promise}{facts.morePromises ? <span className="admin-help ml-2">외 {facts.morePromises}개</span> : null}</> : <span className="admin-help">–</span>}
+                        </td>
+                        <td className={`tabular-nums${demerit >= warnInterview ? " font-semibold text-admin-warning" : ""}`}>{demerit}점</td>
+                        <td><span className={status.tone}>{status.text}</span></td>
+                        <td>
+                          <button type="button" className="admin-button admin-button-compact" onClick={() => openCreatePanel(student.id)} aria-label={`${student.name} 면담 기록`}>
+                            <Plus className="h-4 w-4" aria-hidden="true" />면담 기록
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="admin-empty-state">
+              <p className="font-semibold">{query ? `‘${query}’에 맞는 학생이 없습니다.` : listFilter === "overdue" ? "확인일이 지난 면담이 없습니다." : "면담 기록이 있는 학생이 없습니다."}</p>
+              {!query && listFilter !== "all" ? <p className="admin-help mt-2">‘전체’에서 학생을 고르면 첫 면담을 기록할 수 있습니다.</p> : null}
+            </div>
+          )}
         </AdminTabPanel>
 
         <AdminTabPanel id="followUp" activeId={viewTab} idPrefix="interview-view" className="space-y-4">
@@ -560,7 +603,7 @@ export function InterviewManager({
         </AdminTabPanel>
       </div>
 
-      <SlideOver open={mobileJournalOpen && Boolean(selectedJournalStudent)} onClose={() => setMobileJournalOpen(false)} title={selectedJournalStudent ? `${selectedJournalStudent.name} 면담 일지` : "면담 일지"}>
+      <SlideOver open={journalOpen && Boolean(selectedJournalStudent)} onClose={() => setJournalOpen(false)} title={selectedJournalStudent ? `${selectedJournalStudent.name} 면담 일지` : "면담 일지"}>
         {journal}
       </SlideOver>
 

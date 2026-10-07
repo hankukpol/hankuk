@@ -658,6 +658,19 @@ test("interview journal header offers a study interview only when the academy us
   assert.doesNotMatch(without, /학습 면담/);
 });
 
+test("interview journal in the drawer: no panel frame and no repeated student name (the drawer title has it)", () => {
+  const { InterviewJournal } = load("components/interviews/InterviewJournal.tsx");
+  const student = { id: "s1", name: "학생", studentNumber: "91001", netPoints: 0, demeritPoints: 0, warningStage: "NORMAL", warningStageLabel: null };
+  const props = { divisionSlug: "police", student, interviews: [], today: "2026-10-07", closingId: null, onCloseInterview: () => undefined, onCreate: () => undefined };
+  const drawer = renderToStaticMarkup(React.createElement(InterviewJournal, { ...props, variant: "drawer" }));
+  assert.match(drawer, /<section class="interview-journal interview-journal-drawer"/);
+  assert.doesNotMatch(drawer, /admin-panel|interview-journal-name/);
+  assert.match(drawer, />면담 기록<\/button>/);
+  const panel = renderToStaticMarkup(React.createElement(InterviewJournal, props));
+  assert.match(panel, /<section class="admin-panel interview-journal"/);
+  assert.match(panel, /<h2 class="interview-journal-name">학생<\/h2>/);
+});
+
 
 test("score print sheet: student info, subject table, study list and every exam as table rows — no screen copy", () => {
   const { ScorePrintSheet } = load("components/exams/preview/ScorePrintSheet.tsx");

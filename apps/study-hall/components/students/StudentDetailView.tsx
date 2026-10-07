@@ -438,7 +438,7 @@ export function StudentDetailView({
               {canEdit && warningManagementEnabled && pointManagementEnabled && initialStudent.demeritPoints === undefined ? <button type="button" onClick={() => { setSelectedWarnTarget(initialStudent.warningStage); setIsWarnAdjustOpen(true); }} className="admin-button"><SlidersHorizontal className="h-4 w-4" />경고 조정</button> : null}
               {examManagementEnabled ? <a className="admin-button" href={`/${divisionSlug}/admin/exams/students/${encodeURIComponent(initialStudent.id)}`}><BarChart3 className="h-4 w-4" />성적 분석</a> : null}
               {interviewManagementEnabled && examManagementEnabled ? <a className="admin-button" href={`/${divisionSlug}/admin/interviews?studentId=${encodeURIComponent(initialStudent.id)}&category=study`}><MessageSquareText className="h-4 w-4" />학습 면담</a> : null}
-              <a className="admin-button admin-button-primary" href={`/${divisionSlug}/admin/students/${encodeURIComponent(initialStudent.id)}/report`}><FileText className="h-4 w-4" />상담 자료 인쇄</a>
+              <a className="admin-button admin-button-primary" href={`/${divisionSlug}/admin/students/${encodeURIComponent(initialStudent.id)}/report`}><FileText className="h-4 w-4" />상담 자료 인쇄 (면담용)</a>
             </div>
           </MobileWorkspaceTools>
         </div>

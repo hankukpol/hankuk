@@ -36,7 +36,8 @@ export function ScorePrintButton({ data, mode, headline }: { data: PreviewData; 
     <>
       <button type="button" className="admin-button" onClick={() => setRequest((value) => value + 1)}>
         <Printer className="h-4 w-4" aria-hidden="true" />
-        성적표 인쇄
+        {/* 관리자 화면에는 상담 자료(면담용)와 나란히 있으므로 누구에게 주는 종이인지 적는다. */}
+        {mode === "admin" ? "성적표 인쇄 (학생용)" : "성적표 인쇄"}
       </button>
       {request
         ? createPortal(

@@ -601,7 +601,8 @@ test("morning personal report: four question tabs, subject table, study list and
   assert.match(repeatedWeek, /<span class="admin-help">9\/23 <\/span>35/);
   assert.match(repeatedWeek, /<span class="admin-help">9\/24 <\/span>65/);
   const admin = renderToStaticMarkup(React.createElement(MorningPersonalReport, { data, mode: "admin", division: "police" }));
-  assert.match(admin, /href="\/police\/admin\/students\/s\/report\?from=2026-08-01&amp;to=2026-09-25"[^>]*>.*상담 자료 인쇄</, "관리자는 같은 기간의 A4 상담 자료로 이동");
+  assert.match(admin, /href="\/police\/admin\/students\/s\/report\?from=2026-08-01&amp;to=2026-09-25"[^>]*>.*상담 자료 인쇄 \(면담용\)</, "관리자는 같은 기간의 A4 상담 자료로 이동");
+  assert.match(admin, />성적표 인쇄 \(학생용\)<\/button>/, "관리자 화면의 두 인쇄 버튼은 누구에게 주는 종이인지 적는다");
   assert.match(admin, /aria-label="출결 요약"/);
 });
 
@@ -717,6 +718,14 @@ test("counseling report prints only tables: grouped excused rows, weekly arrival
   assert.match(weeks, /<td class="report-down"><span class="report-day">9\/20<\/span>10:01<\/td>/, "지각한 날 시각은 빨간 글자");
   assert.match(html, /<table class="report-table report-signs">/);
   for (const card of ["report-kpis", "report-callout", "report-arrivals", "<dl", "<ul", "<p class=\"report-empty"]) assert.doesNotMatch(html, new RegExp(card), card);
+
+  // 면담용 상담 자료는 학생용 성적표와 겹치지 않는다: 아침 성적은 결론·과목표만, 먼저 공부할 것 표는 없다.
+  const subject = { subjectId: "a", name: "헌법", my: 70, benchmark: 60, gap: 10, attended: 1, expected: 1, paired: 1, few: false, failCount: 0, status: "good", statusLabel: "잘하고 있음", weeks: [[{ date: "2026-09-14", my: 70, below: false }]] };
+  const morning = { examTypeName: "아침", failCutoffPercent: 40, summary: { weeks: ["2026-09-14"], subjects: [subject], overall: { my: 70, benchmark: 60, gap: 10, attended: 1, expected: 1 }, headline: { text: "모든 과목이 전체 평균 이상입니다.", tone: "success" }, scaledNote: false } };
+  const withMorning = renderToStaticMarkup(React.createElement(StudentCounselingReport, { report: { ...report, morning }, today: "2026-10-07" }));
+  assert.match(withMorning, /<th scope="row">헌법<\/th>/);
+  assert.doesNotMatch(withMorning, /먼저 공부할 것<\/h3>|다시 볼 문항/);
+  assert.match(withMorning, /먼저 공부할 것은 아래 학습 진단에, 시험마다 점수와 틀린 문항은 학생용 성적표에 있습니다/);
 });
 
 test("regular score print sheet: total rank in the header, subject rank only for admin, recent totals and study rows", () => {

@@ -1,5 +1,5 @@
 import { getExamPreview } from "@/lib/exam-preview/service";
-import { morningPersonalSummary, morningStudyRows } from "@/lib/exam-preview/morning-personal";
+import { morningPersonalSummary } from "@/lib/exam-preview/morning-personal";
 import type { PreviewData } from "@/lib/exam-preview/types";
 import { monthsInRange, summarizeArrivals, summarizeAttendance, summarizePoints, type ReportRange } from "@/lib/student-report";
 import { listArrivalMonth } from "@/lib/services/arrival.service";
@@ -76,8 +76,8 @@ export async function getStudentCounselingReport(slug: string, studentId: string
     points: points ? summarizePoints(points, range) : null,
     standing: context ? { demeritPoints: context.points.demeritPoints, warningStage: context.points.warningStageLabel, aggregation: context.points.aggregationLabel, leave: context.leave } : null,
     interviews: sortedInterviews.slice(0, 3),
-    // '먼저 공부할 것' 줄 수는 학원 설정(examAnalysis.diagnosis.maxTasks)이다.
-    morning: morningData ? { examTypeName: morningData.examType.name, summary: morningPersonalSummary(morningData), study: morningStudyRows(morningData).slice(0, settings.diagnosis.maxTasks), easyThreshold: morningData.easyThreshold, failCutoffPercent: morningData.failCutoffPercent } : null,
+    // 상담 자료(면담용)의 아침 성적은 결론·과목표만. 먼저 공부할 것은 학습 진단, 시험별 점수는 학생용 성적표가 맡는다.
+    morning: morningData ? { examTypeName: morningData.examType.name, summary: morningPersonalSummary(morningData), failCutoffPercent: morningData.failCutoffPercent } : null,
     diagnosis,
     studyTasks: latestStudy ? { interviewDate: latestStudy.date, tasks: studyTasks } : null,
     regular: regularData ? { examTypeName: regularData.examType.name, date: regularData.range.to, report: regularData.regular!, failCutoffPercent: regularData.failCutoffPercent } : null,

@@ -14,6 +14,7 @@ const verdictLabel = VERDICT_WORDS;
 
 /**
  * 학생 상담 자료(A4). 면담 때 학생과 함께 보며 적는 종이다.
+ * 면담용이다. 학생에게 주는 성적표(ScorePrintSheet)와 겹치지 않게 성적은 결론·과목표만 두고, 공부할 것은 학습 진단 표 하나로 본다.
  * 순서: 한눈에 보기 → 성적(아침·정기) → 학습 진단·지난 할 일 → 출결 → 등원 시각 → 상벌점 → 최근 면담 → 상담 기록(빈칸).
  * 모든 정보는 표로 적는다(카드·색 상자 없음, components/print/PrintParts.tsx).
  * 출결은 교시마다 한 줄이 아니다: 지각·결석은 날짜별, 사유결석·휴무·반휴는 같은 사유끼리 한 줄이다(운영자 요청 2026-10-07).
@@ -81,22 +82,8 @@ export function StudentCounselingReport({ report, today }: { report: Report; tod
                 ))}
               </tbody>
             </table>
-            <h3 className="report-subhead">먼저 공부할 것</h3>
-            {morning.study.length ? (
-              <table className="report-table">
-                <thead><tr><th>순서</th><th>과목</th><th>시험일</th><th>시험 범위</th><th>내 점수 / 평균</th><th>다시 볼 문항</th></tr></thead>
-                <tbody>
-                  {morning.study.map((r, i) => (
-                    <tr key={`${r.sessionId}-${r.subjectId}`}>
-                      <td>{i + 1}</td><td>{r.subjectName}</td><td>{md(r.date)}({weekdayLabel(r.date)})</td><td className="wrap">{r.topic || "범위 미등록"}</td>
-                      <td className="num">{n(r.my)} / {n(r.external)}</td>
-                      <td className="wrap"><strong>{r.easy.map((item) => `${item.itemNo}`).join(", ")}</strong>{r.easy.length && r.other.length ? " · " : ""}{r.other.map((item) => `${item.itemNo}`).join(", ")}{r.easy.length + r.other.length ? "번" : ""}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : <PrintEmpty>기간 내 틀린 문항이 없습니다.</PrintEmpty>}
-            <p className="report-note">굵은 번호는 응시자 {n(morning.easyThreshold, "%")} 이상이 맞힌 문제입니다. 빨간 점수는 과락(만점의 {n(morning.failCutoffPercent, "%")} 미만)입니다.</p>
+            {/* 먼저 공부할 것은 아래 학습 진단의 할 일 표가 같은 시험을 원인·방법과 함께 보여 준다. 시험마다 점수·틀린 문항은 학생용 성적표에 있다(운영자 결정 2026-10-07: 두 인쇄물 중복 정리). */}
+            <p className="report-note">{morning.failCutoffPercent > 0 ? `빨간 점수는 과락(만점의 ${n(morning.failCutoffPercent, "%")} 미만)입니다. ` : ""}먼저 공부할 것은 아래 학습 진단에, 시험마다 점수와 틀린 문항은 학생용 성적표에 있습니다.</p>
           </>
         ) : <PrintEmpty>조회 기간에 응시한 아침 모의고사가 없습니다.</PrintEmpty>}
       </Section>
